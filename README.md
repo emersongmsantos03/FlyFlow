@@ -55,40 +55,38 @@ VITE_FIREBASE_PROJECT_ID=
 VITE_FIREBASE_STORAGE_BUCKET=
 VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
+VITE_FIREBASE_MEASUREMENT_ID=
 ```
 
 As chaves `VITE_*` fazem parte da configuração pública do aplicativo Web. A proteção real está no login e nas regras do Firestore, não em esconder esses valores.
 
 ### 2. Publicar regras e site
 
-Instale e autentique o Firebase CLI:
+Autentique o Firebase CLI:
 
 ```bash
-npm install -g firebase-tools
+npm install -g firebase-tools@15.23.0
 firebase login
-Copy-Item .firebaserc.example .firebaserc
 ```
 
-Substitua `SEU_FIREBASE_PROJECT_ID` no `.firebaserc` e publique:
+O repositório já está associado ao projeto `flyflow-a97ab`. Para publicar:
 
 ```bash
 npm run deploy:firebase
 ```
 
-O arquivo `firebase.json` configura o Hosting como SPA, cache de arquivos versionados e publicação das regras e índices do Firestore. As regras em `firestore.rules` isolam cada espaço de trabalho e só permitem acesso a membros autenticados e ativos.
+O arquivo `firebase.json` configura E-mail/Senha no Authentication, o Hosting como SPA, cache de arquivos versionados e a publicação das regras e índices do Firestore. As regras em `firestore.rules` isolam cada espaço de trabalho e só permitem acesso a membros autenticados e ativos.
 
 ### 3. Continuar usando o GitHub Pages
 
-Também é possível manter o frontend gratuito no GitHub Pages e usar apenas Firebase Auth + Firestore como backend. Cadastre estas variáveis como `Repository secrets` no GitHub para que o workflow atual as injete no build:
+Também é possível manter o frontend gratuito no GitHub Pages e usar apenas Firebase Auth + Firestore como backend. A configuração pública do aplicativo Web está em `.env.production` e o workflow atual já a inclui no build.
 
-- `VITE_FIREBASE_API_KEY`
-- `VITE_FIREBASE_AUTH_DOMAIN`
-- `VITE_FIREBASE_PROJECT_ID`
-- `VITE_FIREBASE_STORAGE_BUCKET`
-- `VITE_FIREBASE_MESSAGING_SENDER_ID`
-- `VITE_FIREBASE_APP_ID`
+O domínio `emersongmsantos03.github.io` já está autorizado no Firebase Authentication.
 
-No Firebase Authentication, adicione `emersongmsantos03.github.io` aos domínios autorizados caso o frontend continue no GitHub Pages.
+Ambientes publicados:
+
+- Firebase Hosting: `https://flyflow-a97ab.web.app`
+- GitHub Pages: `https://emersongmsantos03.github.io/FlyFlow/`
 
 ### Como os dados são organizados
 
@@ -228,6 +226,7 @@ VITE_FIREBASE_PROJECT_ID=
 VITE_FIREBASE_STORAGE_BUCKET=
 VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
+VITE_FIREBASE_MEASUREMENT_ID=
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_GOOGLE_MAPS_API_KEY=

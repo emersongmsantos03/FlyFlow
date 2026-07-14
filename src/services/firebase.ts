@@ -1,4 +1,5 @@
 import { deleteApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app'
+import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics'
 import {
   browserLocalPersistence,
   browserSessionPersistence,
@@ -22,6 +23,7 @@ export const firebaseConfig: FirebaseOptions = {
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || undefined,
   messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || undefined,
   appId: env.VITE_FIREBASE_APP_ID,
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || undefined,
 }
 
 export const isFirebaseConfigured = Boolean(
@@ -45,6 +47,14 @@ const createFirestore = (firebaseApp: FirebaseApp): Firestore => {
 
 export const firebaseAuth = app ? getAuth(app) : null
 export const firebaseDb = app ? createFirestore(app) : null
+
+if (app && firebaseConfig.measurementId && typeof window !== 'undefined') {
+  void isAnalyticsSupported()
+    .then((supported) => {
+      if (supported) getAnalytics(app)
+    })
+    .catch(() => undefined)
+}
 
 export const signInWithFirebase = async (email: string, password: string, remember: boolean) => {
   if (!firebaseAuth) throw new Error('Firebase não configurado.')
