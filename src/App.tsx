@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   AlertTriangle,
+  ArrowRightLeft,
   BarChart3,
   Bell,
   Briefcase,
@@ -13,6 +14,7 @@ import {
   Download,
   FileText,
   LayoutDashboard,
+  Landmark,
   LogOut,
   Mail,
   MapPin,
@@ -62,6 +64,9 @@ import {
   getProjectPaidAmount,
   getProjectProfit,
   getPeriodRange,
+  getBankAccountBalance,
+  getMonthlyRecurringExpenseAmount,
+  getTotalBankBalance,
   isExpenseOverdue,
   isOfficialExpense,
   isPaidExpense,
@@ -157,6 +162,7 @@ import { isSupabaseConfigured, supabase } from './services/supabase'
 import {
   appointmentStatuses,
   appointmentTypes,
+  bankAccountTypes,
   equipmentConditions,
   expenseCategories,
   expenseRecurrenceFrequencies,
@@ -171,6 +177,8 @@ import {
   serviceTypes,
   type AppState,
   type Appointment,
+  type BankAccount,
+  type BankTransfer,
   type Client,
   type Equipment,
   type Expense,
@@ -200,6 +208,8 @@ type Page =
   | 'settings'
   | 'users'
 
+type FinanceTab = 'receitas' | 'despesas' | 'receber' | 'fluxo' | 'contas' | 'arquivados'
+
 type ModalType =
   | 'lead'
   | 'leadDetail'
@@ -209,6 +219,8 @@ type ModalType =
   | 'task'
   | 'payment'
   | 'expense'
+  | 'bankAccount'
+  | 'bankTransfer'
   | 'quote'
   | 'proposal'
   | 'proposalOptions'
@@ -336,11 +348,31 @@ interface QuotePaymentFormValues {
   amount: number
   paidAt: string
   paymentMethod: Payment['paymentMethod']
+  bankAccountId: string
   account: string
   transactionNumber: string
   receiptUrl: string
   notes: string
   confirmedReceived: boolean
+}
+
+interface BankAccountFormValues {
+  name: string
+  bankName: string
+  accountType: BankAccount['accountType']
+  agency: string
+  accountNumber: string
+  openingBalance: number
+  active: boolean
+  notes: string
+}
+
+interface BankTransferFormValues {
+  fromAccountId: string
+  toAccountId: string
+  amount: number
+  transferredAt: string
+  description: string
 }
 
 interface ReceiptFormValues {
@@ -877,7 +909,7 @@ function App() {
     const stored = window.localStorage.getItem('flyflow:crm-view')
     return stored === 'table' || stored === 'tasks' ? stored : 'kanban'
   })
-  const [financeTab, setFinanceTab] = useState<'receitas' | 'despesas' | 'receber' | 'fluxo' | 'arquivados'>('receitas')
+  const [financeTab, setFinanceTab] = useState<FinanceTab>('receitas')
   const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>('diaria')
   const [quickActionsOpen, setQuickActionsOpen] = useState(false)
   const [selectedProposalClientId, setSelectedProposalClientId] = useState<string>('')
@@ -891,6 +923,8 @@ function App() {
   const [selectedPaymentProjectId, setSelectedPaymentProjectId] = useState<string>('')
   const [selectedFinancePaymentId, setSelectedFinancePaymentId] = useState<string>('')
   const [selectedFinanceExpenseId, setSelectedFinanceExpenseId] = useState<string>('')
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('')
+  const [selectedBankTransferId, setSelectedBankTransferId] = useState<string>('')
   const [selectedQuoteActionId, setSelectedQuoteActionId] = useState<string>('')
   const [serviceConfirmation, setServiceConfirmation] = useState<ServiceConfirmationState | null>(null)
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>('')
@@ -1138,6 +1172,14 @@ function App() {
   const selectedFinanceExpense = useMemo(
     () => state.expenses.find((expense) => expense.id === selectedFinanceExpenseId),
     [selectedFinanceExpenseId, state.expenses],
+  )
+  const selectedBankAccount = useMemo(
+    () => state.bankAccounts.find((account) => account.id === selectedBankAccountId),
+    [selectedBankAccountId, state.bankAccounts],
+  )
+  const selectedBankTransfer = useMemo(
+    () => state.bankTransfers.find((transfer) => transfer.id === selectedBankTransferId),
+    [selectedBankTransferId, state.bankTransfers],
   )
   const selectedAppointment = useMemo(
     () => state.appointments.find((appointment) => appointment.id === selectedAppointmentId),
@@ -2098,6 +2140,11 @@ function App() {
       setToast('Confirme que o pagamento foi recebido e informe a data.')
       return
     }
+    const existingPayment = selectedFinancePaymentId ? state.payments.find((payment) => payment.id === selectedFinancePaymentId) : undefined
+    if (values.status === 'Recebida' && !state.bankAccounts.some((account) => account.id === values.bankAccountId && (account.active || account.id === existingPayment?.bankAccountId))) {
+      setToast('Selecione uma conta bancária ativa para o recebimento.')
+      return
+    }
 
     const currentPaid = project
       ? state.payments.filter((payment) => payment.projectId === project.id && payment.id !== selectedFinancePaymentId && payment.status === 'Recebida' && payment.paymentType !== 'Reembolso').reduce((total, payment) => total + payment.amount, 0)
@@ -2133,6 +2180,7 @@ function App() {
               : undefined
           : undefined)
         const existingSourcePayment = existing ?? (sourceKey ? current.payments.find((item) => item.sourceKey === sourceKey) : undefined)
+        const bankAccount = values.bankAccountId ? current.bankAccounts.find((account) => account.id === values.bankAccountId) : undefined
         const payment: Payment = {
           id: existingSourcePayment?.id ?? createId('pay'),
           ...values,
@@ -2142,6 +2190,8 @@ function App() {
           quoteId: currentQuote?.id,
           paidAt: values.paidAt ? asIsoFromInput(values.paidAt) : undefined,
           receiptUrl: values.receiptUrl || undefined,
+          bankAccountId: bankAccount?.id,
+          account: bankAccount?.name || values.account || undefined,
           confirmedAt: values.status === 'Recebida' && values.confirmedReceived ? now : undefined,
           sourceKey,
           createdAt: existingSourcePayment?.createdAt ?? now,
@@ -2284,10 +2334,16 @@ function App() {
       setToast('Já existe uma despesa com este número de transação.')
       return
     }
+    const existingExpense = selectedFinanceExpenseId ? state.expenses.find((expense) => expense.id === selectedFinanceExpenseId) : undefined
+    if (values.status === 'Paga' && !state.bankAccounts.some((account) => account.id === values.bankAccountId && (account.active || account.id === existingExpense?.bankAccountId))) {
+      setToast('Selecione a conta bancária usada no pagamento.')
+      return
+    }
     const now = new Date().toISOString()
     updateState(
       (current) => {
         const existing = selectedFinanceExpenseId ? current.expenses.find((item) => item.id === selectedFinanceExpenseId) : undefined
+        const bankAccount = values.bankAccountId ? current.bankAccounts.find((account) => account.id === values.bankAccountId) : undefined
         const expense: Expense = {
           id: existing?.id ?? createId('exp'),
           ...values,
@@ -2297,6 +2353,8 @@ function App() {
           recurrenceFrequency: values.recurring ? values.recurrenceFrequency : undefined,
           recurrenceEndDate: values.recurring && values.recurrenceEndDate ? values.recurrenceEndDate : undefined,
           receiptUrl: existing?.receiptUrl,
+          bankAccountId: bankAccount?.id,
+          account: bankAccount?.name || values.account || undefined,
           archivedAt: existing?.archivedAt,
           archivedBy: existing?.archivedBy,
           createdAt: existing?.createdAt ?? now,
@@ -2322,6 +2380,138 @@ function App() {
   const openExpenseEditor = (expense?: Expense) => {
     setSelectedFinanceExpenseId(expense?.id ?? '')
     setModal('expense')
+  }
+
+  const openBankAccountEditor = (account?: BankAccount) => {
+    setSelectedBankAccountId(account?.id ?? '')
+    setModal('bankAccount')
+  }
+
+  const saveBankAccount = (values: BankAccountFormValues) => {
+    const normalizedName = values.name.trim().toLowerCase()
+    if (state.bankAccounts.some((account) => account.id !== selectedBankAccountId && account.name.trim().toLowerCase() === normalizedName)) {
+      setToast('Já existe uma conta bancária com este nome.')
+      return
+    }
+    const now = new Date().toISOString()
+    updateState((current) => {
+      const existing = selectedBankAccountId ? current.bankAccounts.find((account) => account.id === selectedBankAccountId) : undefined
+      const account: BankAccount = {
+        id: existing?.id ?? createId('bank'),
+        ...values,
+        name: values.name.trim(),
+        bankName: values.bankName.trim(),
+        agency: values.agency.trim() || undefined,
+        accountNumber: values.accountNumber.trim() || undefined,
+        notes: values.notes.trim(),
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      }
+      return {
+        ...current,
+        bankAccounts: existing
+          ? current.bankAccounts.map((item) => item.id === existing.id ? account : item)
+          : [account, ...current.bankAccounts],
+        payments: existing
+          ? current.payments.map((payment) => payment.bankAccountId === existing.id ? { ...payment, account: account.name, updatedAt: now } : payment)
+          : current.payments,
+        expenses: existing
+          ? current.expenses.map((expense) => expense.bankAccountId === existing.id ? { ...expense, account: account.name, updatedAt: now } : expense)
+          : current.expenses,
+        statusHistory: [createStatusHistory('Conta bancária', account.id, existing ? 'Conta bancária editada' : 'Conta bancária criada', `${account.name} · ${account.bankName}.`, activeUserId, existing?.active ? 'Ativa' : existing ? 'Inativa' : undefined, account.active ? 'Ativa' : 'Inativa', now), ...current.statusHistory],
+      }
+    }, selectedBankAccountId ? 'Conta bancária atualizada.' : 'Conta bancária criada.')
+    setSelectedBankAccountId('')
+    setModal(null)
+  }
+
+  const deleteBankAccount = (account: BankAccount) => {
+    const linkedPayments = state.payments.filter((payment) => payment.bankAccountId === account.id).length
+    const linkedExpenses = state.expenses.filter((expense) => expense.bankAccountId === account.id).length
+    const linkedTransfers = state.bankTransfers.filter((transfer) => transfer.fromAccountId === account.id || transfer.toAccountId === account.id).length
+    if (linkedPayments || linkedExpenses || linkedTransfers) {
+      showNotice({
+        title: 'Conta com movimentações',
+        description: `Esta conta possui ${linkedPayments} receita(s), ${linkedExpenses} despesa(s) e ${linkedTransfers} transferência(s). Edite a conta e desative-a para preservar o histórico.`,
+        tone: 'warning',
+      })
+      return
+    }
+    requestConfirm({
+      title: 'Excluir conta bancária?',
+      description: `${account.name} será removida definitivamente.`,
+      confirmLabel: 'Excluir conta',
+      tone: 'danger',
+      onConfirm: () => {
+        const now = new Date().toISOString()
+        updateState((current) => ({
+          ...current,
+          bankAccounts: current.bankAccounts.filter((item) => item.id !== account.id),
+          statusHistory: [createStatusHistory('Conta bancária', account.id, 'Conta bancária excluída', account.name, activeUserId, account.active ? 'Ativa' : 'Inativa', 'Excluída', now), ...current.statusHistory],
+        }), 'Conta bancária excluída.')
+      },
+    })
+  }
+
+  const openBankTransferEditor = (transfer?: BankTransfer) => {
+    setSelectedBankTransferId(transfer?.id ?? '')
+    setModal('bankTransfer')
+  }
+
+  const saveBankTransfer = (values: BankTransferFormValues) => {
+    const source = state.bankAccounts.find((account) => account.id === values.fromAccountId && account.active)
+    const destination = state.bankAccounts.find((account) => account.id === values.toAccountId && account.active)
+    if (!source || !destination || source.id === destination.id) {
+      setToast('Selecione duas contas ativas e diferentes.')
+      return
+    }
+    const existing = selectedBankTransferId ? state.bankTransfers.find((transfer) => transfer.id === selectedBankTransferId) : undefined
+    const availableBeforeTransfer = getBankAccountBalance(state, source)
+      + (existing?.fromAccountId === source.id ? existing.amount : 0)
+      - (existing?.toAccountId === source.id ? existing.amount : 0)
+    if (values.amount <= 0 || values.amount > availableBeforeTransfer) {
+      setToast(`Saldo disponível em ${source.name}: ${formatCurrency(availableBeforeTransfer)}.`)
+      return
+    }
+    const now = new Date().toISOString()
+    updateState((current) => {
+      const transfer: BankTransfer = {
+        id: existing?.id ?? createId('transfer'),
+        ...values,
+        transferredAt: asIsoFromInput(values.transferredAt),
+        description: values.description.trim() || `Transferência de ${source.name} para ${destination.name}`,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      }
+      return {
+        ...current,
+        bankTransfers: existing
+          ? current.bankTransfers.map((item) => item.id === existing.id ? transfer : item)
+          : [transfer, ...current.bankTransfers],
+        statusHistory: [createStatusHistory('Transferência', transfer.id, existing ? 'Transferência editada' : 'Transferência realizada', `${source.name} → ${destination.name} · ${formatCurrency(transfer.amount)}.`, activeUserId, undefined, 'Concluída', now), ...current.statusHistory],
+      }
+    }, selectedBankTransferId ? 'Transferência atualizada.' : 'Transferência registrada.')
+    setSelectedBankTransferId('')
+    setModal(null)
+  }
+
+  const deleteBankTransfer = (transfer: BankTransfer) => {
+    const source = state.bankAccounts.find((account) => account.id === transfer.fromAccountId)
+    const destination = state.bankAccounts.find((account) => account.id === transfer.toAccountId)
+    requestConfirm({
+      title: 'Excluir transferência?',
+      description: `${formatCurrency(transfer.amount)} de ${source?.name || 'conta de origem'} para ${destination?.name || 'conta de destino'} será estornado dos saldos.`,
+      confirmLabel: 'Excluir transferência',
+      tone: 'danger',
+      onConfirm: () => {
+        const now = new Date().toISOString()
+        updateState((current) => ({
+          ...current,
+          bankTransfers: current.bankTransfers.filter((item) => item.id !== transfer.id),
+          statusHistory: [createStatusHistory('Transferência', transfer.id, 'Transferência excluída', `${source?.name || '-'} → ${destination?.name || '-'} · ${formatCurrency(transfer.amount)}.`, activeUserId, 'Concluída', 'Excluída', now), ...current.statusHistory],
+        }), 'Transferência excluída e saldos recalculados.')
+      },
+    })
   }
 
   const archiveFinancialRecord = (kind: 'payment' | 'expense', id: string, archived: boolean) => {
@@ -2412,38 +2602,8 @@ function App() {
       })
       return
     }
-    requestConfirm({
-      title: `Marcar ${paymentLabel} como pago?`,
-      description: `${formatCurrency(payment.amount)} será registrado como recebido agora. O comprovante poderá ser anexado separadamente.`,
-      confirmLabel: 'Confirmar pagamento',
-      onConfirm: () => {
-        const now = new Date().toISOString()
-        updateState((current) => {
-          const payments = current.payments.map((item) => item.id === payment.id ? { ...item, status: 'Recebida' as const, paidAt: now, confirmedReceived: true, confirmedAt: now, updatedAt: now } : item)
-          const project = payment.projectId ? current.projects.find((item) => item.id === payment.projectId) : undefined
-          const receivedTotal = project
-            ? payments.filter((item) => item.projectId === project.id && item.status === 'Recebida' && item.paymentType !== 'Reembolso').reduce((total, item) => total + item.amount, 0)
-            : 0
-          return {
-            ...current,
-            payments,
-            quotes: payment.paymentType === 'Sinal' && payment.quoteId
-              ? current.quotes.map((quote) => quote.id === payment.quoteId ? { ...quote, status: 'Entrada recebida', updatedAt: now } : quote)
-              : current.quotes,
-            projects: project ? current.projects.map((item) => item.id === project.id ? {
-              ...recalculateProjectFinancials(item, payments),
-              projectStatus: payment.paymentType === 'Pagamento final' && receivedTotal >= project.totalValue ? 'Pago' : item.projectStatus,
-            } : item) : current.projects,
-            statusHistory: [createStatusHistory('Pagamento', payment.id, 'Pagamento confirmado', `${payment.paymentType} de ${formatCurrency(payment.amount)} marcado como recebido.`, activeUserId, payment.status, 'Recebida', now), ...current.statusHistory],
-          }
-        }, `${payment.paymentType} marcado como pago.`)
-
-        if (payment.paymentType === 'Sinal') {
-          const lead = payment.leadId ? state.leads.find((item) => item.id === payment.leadId) : undefined
-          if (lead) beginServiceConfirmation(lead, payment.quoteId)
-        }
-      },
-    })
+    openPaymentEditor(payment)
+    setToast(`Confirme o recebimento do ${paymentLabel} e escolha a conta de destino.`)
   }
 
   const addQuote = (values: QuoteFormValues) => {
@@ -2722,6 +2882,10 @@ function App() {
       setToast('Informe valor e data do pagamento.')
       return
     }
+    if (!state.bankAccounts.some((account) => account.id === values.bankAccountId && account.active)) {
+      setToast('Selecione a conta bancária que recebeu a entrada.')
+      return
+    }
     if (values.amount > quote.totalValue) {
       setToast('A entrada não pode ser maior que o total da proposta.')
       return
@@ -2742,6 +2906,7 @@ function App() {
         const remainingValue = Math.max(quote.totalValue - values.amount, 0)
         const depositKey = `quote-deposit:${quote.id}`
         const existingDeposit = current.payments.find((payment) => payment.sourceKey === depositKey)
+        const bankAccount = current.bankAccounts.find((account) => account.id === values.bankAccountId)
         const depositPayment: Payment = {
           id: existingDeposit?.id ?? createId('pay'),
           projectId: existingDeposit?.projectId,
@@ -2756,7 +2921,8 @@ function App() {
           status: 'Recebida',
           notes: values.notes || 'Entrada recebida e conferida.',
           receiptUrl: values.receiptUrl || undefined,
-          account: values.account,
+          bankAccountId: bankAccount?.id,
+          account: bankAccount?.name || values.account,
           transactionNumber: values.transactionNumber || undefined,
           confirmedReceived: true,
           confirmedAt: now,
@@ -4275,6 +4441,10 @@ function App() {
               onArchiveRecord={archiveFinancialRecord}
               onDeleteRecord={deleteFinancialRecord}
               onUpdatePaymentStatus={updatePaymentStatus}
+              onOpenBankAccount={openBankAccountEditor}
+              onDeleteBankAccount={deleteBankAccount}
+              onOpenBankTransfer={openBankTransferEditor}
+              onDeleteBankTransfer={deleteBankTransfer}
             />
           ) : null}
           {page === 'equipment' ? (
@@ -4519,6 +4689,16 @@ function App() {
       {modal === 'expense' ? (
         <Modal title={selectedFinanceExpense ? 'Editar despesa' : 'Nova despesa'} onClose={() => { setModal(null); setSelectedFinanceExpenseId('') }}>
           <ExpenseForm expense={selectedFinanceExpense} state={state} onCancel={() => { setModal(null); setSelectedFinanceExpenseId('') }} onSubmit={addExpense} />
+        </Modal>
+      ) : null}
+      {modal === 'bankAccount' ? (
+        <Modal title={selectedBankAccount ? 'Editar conta bancária' : 'Nova conta bancária'} size="sm" onClose={() => { setModal(null); setSelectedBankAccountId('') }}>
+          <BankAccountForm account={selectedBankAccount} onCancel={() => { setModal(null); setSelectedBankAccountId('') }} onSubmit={saveBankAccount} />
+        </Modal>
+      ) : null}
+      {modal === 'bankTransfer' ? (
+        <Modal title={selectedBankTransfer ? 'Editar transferência' : 'Transferir entre contas'} size="sm" onClose={() => { setModal(null); setSelectedBankTransferId('') }}>
+          <BankTransferForm state={state} transfer={selectedBankTransfer} onCancel={() => { setModal(null); setSelectedBankTransferId('') }} onSubmit={saveBankTransfer} />
         </Modal>
       ) : null}
       {modal === 'receipt' && selectedReceiptPayment ? (
@@ -5868,15 +6048,15 @@ function QuotesPage({
                       ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onCreateRevision(quote)}><Copy size={15} /> Nova versão</Button>
                       : null
           return (
-            <article key={quote.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-              <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+            <article key={quote.id} className="quote-card overflow-hidden rounded-xl border shadow-sm">
+              <div className="quote-card-summary grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
                 <button className="min-w-0 text-left" type="button" onClick={() => setExpandedQuoteId(expanded ? '' : quote.id)}>
                   <div className="flex flex-wrap items-center gap-2"><span className="text-[0.68rem] font-black uppercase tracking-wide text-gray-400">{quote.quoteNumber}</span><StatusBadge>{quote.status}</StatusBadge>{receipts.length ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Paperclip size={13} /> {receipts.length}</span> : null}</div>
                   <h3 className="mt-1 truncate text-sm font-black text-gray-950 sm:text-base">{displayTitle}</h3>
                   <p className="mt-0.5 truncate text-xs text-gray-500">{recipientCompany} · {items.length} item(ns) · validade {formatDate(quote.expirationDate)}</p>
                 </button>
                 <div className="grid grid-cols-3 gap-4 text-right text-xs lg:min-w-[260px]"><div><p className="font-bold text-gray-400">Total</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.totalValue)}</p></div><div><p className="font-bold text-gray-400">Sinal</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.depositValue)}</p></div><div><p className="font-bold text-gray-400">Entrega</p><p className="mt-0.5 font-black text-gray-900">{formatDate(quote.deliveryDeadline)}</p></div></div>
-                <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+                <div className="quote-card-primary-actions flex flex-wrap items-center gap-1.5 lg:justify-end">
                   {quote.archivedAt || quote.deletedAt ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onRestoreQuote(quote)}>Restaurar</Button> : primaryAction}
                   {!quote.archivedAt && !quote.deletedAt && canApprove && !approvalIsPrimary ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onApprove(quote)}><CheckCircle2 size={15} /> Aprovar</Button> : null}
                   {!(quote.archivedAt || quote.deletedAt) ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onDownloadPdf(quote)}><Download size={15} /><span className="hidden sm:inline">PDF</span></Button> : null}
@@ -5884,12 +6064,12 @@ function QuotesPage({
                 </div>
               </div>
 
-              {expanded ? <div className="border-t border-gray-100 bg-gray-50/70 p-3">
+              {expanded ? <div className="quote-card-details border-t p-3">
                 <div className="grid gap-3 lg:grid-cols-[1fr_0.8fr]">
-                  <div className="rounded-lg border border-gray-200 bg-white p-3"><p className="text-xs font-black uppercase text-gray-500">Itens</p><div className="mt-2 space-y-1.5">{items.map((item) => <div key={item.id} className="flex items-start justify-between gap-3 text-sm"><span>{item.quantity}x {item.description}</span><strong className="whitespace-nowrap">{formatCurrency(item.totalPrice)}</strong></div>)}{!items.length ? <p className="text-sm text-gray-500">Nenhum item.</p> : null}</div></div>
-                  <div className="rounded-lg border border-gray-200 bg-white p-3"><div className="flex items-center justify-between"><p className="text-xs font-black uppercase text-gray-500">Pagamentos</p><span className="text-xs font-bold text-gray-400">{receipts.length} comprovante(s)</span></div><div className="mt-2 space-y-1.5">{payments.map((payment) => <div key={payment.id} className="flex items-center justify-between gap-3 text-xs"><span>{payment.paymentType} · {formatCurrency(payment.amount)}</span><StatusBadge>{payment.status}</StatusBadge></div>)}{!payments.length ? <p className="text-sm text-gray-500">Sem lançamentos.</p> : null}{receipts.map((file) => <a key={file.id} className="flex items-center gap-1 text-xs font-bold text-emerald-700 underline" href={file.fileUrl} target="_blank" rel="noreferrer"><Paperclip size={13} /> {file.fileName}</a>)}</div></div>
+                  <div className="quote-card-section rounded-lg border p-3"><p className="text-xs font-black uppercase text-gray-500">Itens</p><div className="mt-2 space-y-1.5">{items.map((item) => <div key={item.id} className="flex items-start justify-between gap-3 text-sm"><span>{item.quantity}x {item.description}</span><strong className="whitespace-nowrap">{formatCurrency(item.totalPrice)}</strong></div>)}{!items.length ? <p className="text-sm text-gray-500">Nenhum item.</p> : null}</div></div>
+                  <div className="quote-card-section rounded-lg border p-3"><div className="flex items-center justify-between"><p className="text-xs font-black uppercase text-gray-500">Pagamentos</p><span className="text-xs font-bold text-gray-400">{receipts.length} comprovante(s)</span></div><div className="mt-2 space-y-1.5">{payments.map((payment) => <div key={payment.id} className="flex items-center justify-between gap-3 text-xs"><span>{payment.paymentType} · {formatCurrency(payment.amount)}</span><StatusBadge>{payment.status}</StatusBadge></div>)}{!payments.length ? <p className="text-sm text-gray-500">Sem lançamentos.</p> : null}{receipts.map((file) => <a key={file.id} className="flex items-center gap-1 text-xs font-bold text-emerald-700 underline" href={file.fileUrl} target="_blank" rel="noreferrer"><Paperclip size={13} /> {file.fileName}</a>)}</div></div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-1.5">
+                <div className="quote-card-actions mt-3 flex flex-wrap items-center gap-1.5">
                   {!quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Arquivada', 'Excluída logicamente'].includes(quote.status) ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEditQuote(quote)}><Pencil size={14} /> Editar</Button> : null}
                   <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onCopyQuote(quote)}><Copy size={14} /> Copiar</Button>
                   {whatsapp ? <a className="focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1 text-xs font-bold text-gray-900" href={whatsappLink(whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={14} /> WhatsApp</a> : null}
@@ -5897,7 +6077,7 @@ function QuotesPage({
                   {!quote.archivedAt && !quote.deletedAt && quote.status !== 'Cancelada' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="ghost" type="button" onClick={() => onCancelQuote(quote)}>Cancelar</Button> : null}
                   {!quote.archivedAt && !quote.deletedAt ? <Button className="min-h-9 px-3 py-1 text-xs text-red-600" variant="ghost" type="button" onClick={() => onDeleteQuote(quote)}><Trash2 size={14} /> Excluir</Button> : null}
                 </div>
-                <details className="mt-3 rounded-lg border border-gray-200 bg-white p-3"><summary className="cursor-pointer text-xs font-black uppercase text-gray-500">Histórico</summary><div className="mt-3 space-y-3">{history.map((entry) => <div key={entry.id} className="border-l-2 border-[#d8a500] pl-3 text-sm"><strong>{entry.action}</strong><p className="text-xs text-gray-500">{formatDateTime(entry.createdAt)}</p><p className="text-gray-600">{entry.details}</p></div>)}{!history.length ? <p className="text-sm text-gray-500">Criada em {formatDateTime(quote.createdAt)}</p> : null}</div></details>
+                <details className="quote-card-section mt-3 rounded-lg border p-3"><summary className="cursor-pointer text-xs font-black uppercase text-gray-500">Histórico</summary><div className="mt-3 space-y-3">{history.map((entry) => <div key={entry.id} className="border-l-2 border-[#d8a500] pl-3 text-sm"><strong>{entry.action}</strong><p className="text-xs text-gray-500">{formatDateTime(entry.createdAt)}</p><p className="text-gray-600">{entry.details}</p></div>)}{!history.length ? <p className="text-sm text-gray-500">Criada em {formatDateTime(quote.createdAt)}</p> : null}</div></details>
               </div> : null}
             </article>
           )
@@ -5920,24 +6100,33 @@ function FinancePage({
   onArchiveRecord,
   onDeleteRecord,
   onUpdatePaymentStatus,
+  onOpenBankAccount,
+  onDeleteBankAccount,
+  onOpenBankTransfer,
+  onDeleteBankTransfer,
 }: {
   state: AppState
   metrics: ReturnType<typeof calculateDashboardMetrics>
   monthlySeries: ReturnType<typeof buildMonthlySeries>
-  financeTab: 'receitas' | 'despesas' | 'receber' | 'fluxo' | 'arquivados'
-  onFinanceTabChange: (tab: 'receitas' | 'despesas' | 'receber' | 'fluxo' | 'arquivados') => void
+  financeTab: FinanceTab
+  onFinanceTabChange: (tab: FinanceTab) => void
   onOpenReceipt: (payment: Payment) => void
   onOpenPayment: (payment?: Payment) => void
   onOpenExpense: (expense?: Expense) => void
   onArchiveRecord: (kind: 'payment' | 'expense', id: string, archived: boolean) => void
   onDeleteRecord: (kind: 'payment' | 'expense', record: Payment | Expense) => void
   onUpdatePaymentStatus: (payment: Payment, status: Payment['status']) => void
+  onOpenBankAccount: (account?: BankAccount) => void
+  onDeleteBankAccount: (account: BankAccount) => void
+  onOpenBankTransfer: (transfer?: BankTransfer) => void
+  onDeleteBankTransfer: (transfer: BankTransfer) => void
 }) {
   const exportFinancialCsv = () => {
     const rows = [
-      ['Tipo', 'Descrição', 'Valor', 'Data', 'Status', 'Projeto'],
-      ...state.payments.filter((item) => !item.deletedAt).map((payment) => ['Receita', payment.paymentType, payment.amount, payment.paidAt || payment.dueDate, payment.status, payment.projectId || '']),
-      ...state.expenses.filter((item) => !item.deletedAt).map((expense) => ['Despesa', expense.description, expense.amount, expense.paidAt || expense.expenseDate, expense.status, expense.projectId || '']),
+      ['Tipo', 'Descrição', 'Valor', 'Data', 'Status', 'Projeto', 'Conta', 'Recorrência'],
+      ...state.payments.filter((item) => !item.deletedAt).map((payment) => ['Receita', payment.paymentType, payment.amount, payment.paidAt || payment.dueDate, payment.status, payment.projectId || '', state.bankAccounts.find((account) => account.id === payment.bankAccountId)?.name || payment.account || '', '']),
+      ...state.expenses.filter((item) => !item.deletedAt).map((expense) => ['Despesa', expense.description, expense.amount, expense.paidAt || expense.expenseDate, expense.status, expense.projectId || '', state.bankAccounts.find((account) => account.id === expense.bankAccountId)?.name || expense.account || '', expense.recurring ? expense.recurrenceFrequency || 'Mensal' : 'Única']),
+      ...state.bankTransfers.map((transfer) => ['Transferência', transfer.description, transfer.amount, transfer.transferredAt, 'Concluída', '', `${state.bankAccounts.find((account) => account.id === transfer.fromAccountId)?.name || ''} → ${state.bankAccounts.find((account) => account.id === transfer.toAccountId)?.name || ''}`, '']),
     ]
     const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';')).join('\n')
     const link = document.createElement('a')
@@ -5959,21 +6148,23 @@ function FinancePage({
             {receiptShortcut ? <Button variant="secondary" type="button" onClick={() => onOpenReceipt(receiptShortcut)}><Paperclip size={16} /> {pendingReceipts ? 'Anexar comprovante' : 'Comprovantes'}</Button> : null}
             <Button type="button" onClick={() => onOpenPayment()}><Plus size={16} /> Receita</Button>
             <Button variant="secondary" type="button" onClick={() => onOpenExpense()}><Plus size={16} /> Despesa</Button>
+            <Button variant="secondary" type="button" onClick={() => onOpenBankTransfer()}><ArrowRightLeft size={16} /> Transferir</Button>
             <Button variant="secondary" type="button" onClick={exportFinancialCsv}><Download size={16} /> Exportar CSV</Button>
           </div>
         }
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard icon={<DollarSign size={20} />} label="Recebido" value={formatCurrency(metrics.received)} tone="positive" />
         <MetricCard icon={<Clock size={20} />} label="Pendente" value={formatCurrency(metrics.pendingReceivable)} tone="warning" />
         <MetricCard icon={<AlertTriangle size={20} />} label="Despesas oficiais" value={formatCurrency(metrics.expenses)} tone="danger" />
         <MetricCard icon={<TrendingUp size={20} />} label="Lucro líquido" value={formatCurrency(metrics.netProfit)} tone={metrics.netProfit >= 0 ? 'positive' : 'danger'} />
+        <MetricCard icon={<Landmark size={20} />} label="Saldo nas contas" value={formatCurrency(getTotalBankBalance(state))} tone={getTotalBankBalance(state) >= 0 ? 'positive' : 'danger'} />
       </div>
       {pendingReceipts ? <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-bold text-amber-800" type="button" onClick={() => receiptShortcut && onOpenReceipt(receiptShortcut)}><span>{pendingReceipts} comprovante(s) pendente(s) de anexação ou conferência.</span><span className="whitespace-nowrap underline">Anexar agora</span></button> : null}
       <div className="flex flex-wrap gap-2">
-        {(['receitas', 'despesas', 'receber', 'fluxo', 'arquivados'] as const).map((tab) => (
+        {(['receitas', 'despesas', 'receber', 'fluxo', 'contas', 'arquivados'] as const).map((tab) => (
           <Button key={tab} variant={financeTab === tab ? 'primary' : 'secondary'} type="button" onClick={() => onFinanceTabChange(tab)}>
-            {tab === 'receber' ? 'contas a receber' : tab}
+            {tab === 'receber' ? 'contas a receber' : tab === 'contas' ? 'contas bancárias' : tab}
           </Button>
         ))}
       </div>
@@ -5993,9 +6184,61 @@ function FinancePage({
             </ResponsiveContainer>
           </div>
         </Panel>
+      ) : financeTab === 'contas' ? (
+        <BankAccountsPanel state={state} onCreate={onOpenBankAccount} onEdit={onOpenBankAccount} onDelete={onDeleteBankAccount} onTransfer={onOpenBankTransfer} onDeleteTransfer={onDeleteBankTransfer} />
       ) : (
         <FinancialTable tab={financeTab} state={state} onOpenReceipt={onOpenReceipt} onOpenPayment={onOpenPayment} onOpenExpense={onOpenExpense} onArchiveRecord={onArchiveRecord} onDeleteRecord={onDeleteRecord} onUpdatePaymentStatus={onUpdatePaymentStatus} />
       )}
+    </div>
+  )
+}
+
+function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDeleteTransfer }: {
+  state: AppState
+  onCreate: (account?: BankAccount) => void
+  onEdit: (account: BankAccount) => void
+  onDelete: (account: BankAccount) => void
+  onTransfer: (transfer?: BankTransfer) => void
+  onDeleteTransfer: (transfer: BankTransfer) => void
+}) {
+  const accounts = [...state.bankAccounts].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name))
+  const transfers = [...state.bankTransfers].sort((a, b) => new Date(b.transferredAt).getTime() - new Date(a.transferredAt).getTime())
+  return (
+    <div className="space-y-4">
+      <Panel title="Contas bancárias" action={<div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onTransfer()}><ArrowRightLeft size={16} /> Transferir</Button><Button type="button" onClick={() => onCreate()}><Plus size={16} /> Nova conta</Button></div>}>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div><p className="text-xs font-black uppercase tracking-wide text-gray-500">Saldo consolidado</p><p className="mt-1 text-2xl font-black text-gray-950">{formatCurrency(getTotalBankBalance(state))}</p></div>
+          <p className="max-w-lg text-sm text-gray-500">O saldo considera o valor inicial, receitas recebidas, despesas pagas e transferências entre contas.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {accounts.map((account) => {
+            const balance = getBankAccountBalance(state, account)
+            const movementCount = state.payments.filter((item) => item.bankAccountId === account.id && item.status === 'Recebida' && !item.deletedAt).length
+              + state.expenses.filter((item) => item.bankAccountId === account.id && isPaidExpense(item) && !item.deletedAt).length
+              + state.bankTransfers.filter((item) => item.fromAccountId === account.id || item.toAccountId === account.id).length
+            return (
+              <article key={account.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-black text-gray-950">{account.name}</h3><StatusBadge>{account.active ? 'Ativa' : 'Inativa'}</StatusBadge></div><p className="mt-1 text-sm text-gray-500">{account.bankName} · {account.accountType}</p></div>
+                  <Landmark className="shrink-0 text-amber-600" size={20} />
+                </div>
+                <p className={`mt-5 text-2xl font-black ${balance < 0 ? 'text-red-600' : 'text-gray-950'}`}>{formatCurrency(balance)}</p>
+                <p className="mt-1 text-xs text-gray-500">{movementCount} movimentação(ões) · inicial {formatCurrency(account.openingBalance)}</p>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-200 pt-3"><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEdit(account)}><Pencil size={14} /> Editar</Button><IconActionButton label="Excluir conta" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDelete(account)} /></div>
+              </article>
+            )
+          })}
+        </div>
+      </Panel>
+      <Panel title="Transferências entre contas">
+        <div className="overflow-x-auto">
+          <table className="data-table">
+            <thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th>Descrição</th><th>Valor</th><th>Ações</th></tr></thead>
+            <tbody>{transfers.map((transfer) => <tr key={transfer.id}><td data-label="Data">{formatDateTime(transfer.transferredAt)}</td><td data-label="Origem">{state.bankAccounts.find((account) => account.id === transfer.fromAccountId)?.name || '-'}</td><td data-label="Destino">{state.bankAccounts.find((account) => account.id === transfer.toAccountId)?.name || '-'}</td><td data-label="Descrição">{transfer.description}</td><td data-label="Valor"><strong>{formatCurrency(transfer.amount)}</strong></td><td data-label="Ações"><div className="flex gap-1"><IconActionButton label="Editar transferência" icon={<Pencil size={15} />} onClick={() => onTransfer(transfer)} /><IconActionButton label="Excluir transferência" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDeleteTransfer(transfer)} /></div></td></tr>)}</tbody>
+          </table>
+          {!transfers.length ? <p className="rounded-lg bg-gray-50 p-5 text-center text-sm text-gray-500">Nenhuma transferência registrada.</p> : null}
+        </div>
+      </Panel>
     </div>
   )
 }
@@ -6020,6 +6263,7 @@ function FinancialTable({
   onUpdatePaymentStatus: (payment: Payment, status: Payment['status']) => void
 }) {
   const [search, setSearch] = useState('')
+  const [expenseScope, setExpenseScope] = useState<'all' | 'single' | 'recurring'>('all')
   const matchesFinancial = (text: string) => !search.trim() || text.toLowerCase().includes(search.trim().toLowerCase())
   if (tab === 'arquivados') {
     const archivedPayments = state.payments.filter((item) => item.archivedAt || item.deletedAt)
@@ -6027,13 +6271,20 @@ function FinancialTable({
     return <Panel title="Arquivados e excluídos logicamente"><div className="space-y-3">{[...archivedPayments.map((record) => ({ kind: 'payment' as const, record, title: record.paymentType, value: record.amount })), ...archivedExpenses.map((record) => ({ kind: 'expense' as const, record, title: record.description, value: record.amount }))].map(({ kind, record, title, value }) => <article key={`${kind}-${record.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 p-3"><div><strong>{title}</strong><p className="text-sm text-gray-500">{formatCurrency(value)} · {record.deletedAt ? `Excluído: ${record.deletionReason || 'sem motivo'}` : 'Arquivado'}</p></div><Button variant="secondary" type="button" onClick={() => onArchiveRecord(kind, record.id, false)}>Restaurar</Button></article>)}{!archivedPayments.length && !archivedExpenses.length ? <p className="rounded-lg bg-gray-50 p-5 text-center text-sm text-gray-500">Nenhum lançamento arquivado.</p> : null}</div></Panel>
   }
   if (tab === 'despesas') {
-    const expenses = state.expenses.filter((expense) => !expense.archivedAt && !expense.deletedAt && matchesFinancial(`${expense.description} ${expense.category} ${expense.supplier} ${expense.recurrenceFrequency || ''}`))
+    const expenses = state.expenses.filter((expense) => !expense.archivedAt && !expense.deletedAt && (expenseScope === 'all' || (expenseScope === 'recurring' ? expense.recurring : !expense.recurring)) && matchesFinancial(`${expense.description} ${expense.category} ${expense.supplier} ${expense.recurrenceFrequency || ''}`))
+    const visibleExpenses = state.expenses.filter((expense) => !expense.archivedAt && !expense.deletedAt)
+    const uniqueTotal = visibleExpenses.filter((expense) => !expense.recurring && isOfficialExpense(expense)).reduce((total, expense) => total + expense.amount, 0)
+    const recurringMonthly = visibleExpenses.reduce((total, expense) => total + getMonthlyRecurringExpenseAmount(expense), 0)
     return (
       <Panel title="Despesas">
-        <input className="field-input mb-3" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar despesas…" />
+        <div className="mb-3 grid gap-3 lg:grid-cols-[1fr_auto]">
+          <input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar despesas…" />
+          <div className="flex flex-wrap gap-2">{([['all', 'Todas'], ['single', 'Únicas'], ['recurring', 'Recorrentes']] as const).map(([value, label]) => <Button className="min-h-10 px-3 py-1 text-xs" key={value} variant={expenseScope === value ? 'primary' : 'secondary'} type="button" onClick={() => setExpenseScope(value)}>{label}</Button>)}</div>
+        </div>
+        <div className="mb-4 grid gap-3 sm:grid-cols-2"><SmallStat label="Despesas únicas registradas" value={formatCurrency(uniqueTotal)} /><SmallStat label="Compromisso recorrente mensal" value={formatCurrency(recurringMonthly)} /></div>
         <div className="overflow-x-auto">
           <table className="data-table">
-            <thead><tr><th>Descrição</th><th>Categoria</th><th>Tipo</th><th>Valor</th><th>Data</th><th>Recorrência</th><th>Situação</th><th>Ações</th></tr></thead>
+            <thead><tr><th>Descrição</th><th>Categoria</th><th>Tipo</th><th>Valor</th><th>Data</th><th>Recorrência</th><th>Conta</th><th>Situação</th><th>Ações</th></tr></thead>
             <tbody>
               {expenses.map((expense) => (
                 <tr key={expense.id}>
@@ -6043,6 +6294,7 @@ function FinancialTable({
                   <td data-label="Valor">{formatCurrency(expense.amount)}</td>
                   <td data-label="Data">{formatDate(expense.expenseDate)}</td>
                   <td data-label="Recorrência">{expense.recurring ? <span className="text-xs font-bold text-gray-700">{expense.recurrenceFrequency || 'Mensal'}</span> : <span className="text-xs text-gray-500">Única</span>}</td>
+                  <td data-label="Conta">{state.bankAccounts.find((account) => account.id === expense.bankAccountId)?.name || expense.account || '-'}</td>
                   <td data-label="Situação"><StatusBadge>{isExpenseOverdue(expense) ? 'Vencida' : expense.status}</StatusBadge></td>
                   <td data-label="Ações"><div className="flex flex-wrap gap-1"><IconActionButton label="Editar despesa" icon={<Pencil size={15} />} onClick={() => onOpenExpense(expense)} /><Button className="min-h-9 px-2 text-xs" variant="ghost" type="button" onClick={() => onArchiveRecord('expense', expense.id, true)}>Arquivar</Button><IconActionButton label="Excluir despesa" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDeleteRecord('expense', expense)} /></div></td>
                 </tr>
@@ -6060,7 +6312,7 @@ function FinancialTable({
       <input className="field-input mb-3" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar cliente, tipo ou transação…" />
       <div className="overflow-x-auto">
         <table className="data-table">
-          <thead><tr><th>Cliente</th><th>Projeto</th><th>Tipo</th><th>Valor</th><th>Vencimento</th><th>Recebimento</th><th>Status</th><th>Comprovante</th><th>Ações</th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Projeto</th><th>Tipo</th><th>Valor</th><th>Vencimento</th><th>Recebimento</th><th>Conta</th><th>Status</th><th>Comprovante</th><th>Ações</th></tr></thead>
           <tbody>
             {payments.map((payment) => {
               const client = state.clients.find((item) => item.id === payment.clientId)
@@ -6073,6 +6325,7 @@ function FinancialTable({
                   <td data-label="Valor">{formatCurrency(payment.amount)}</td>
                   <td data-label="Vencimento">{formatDate(payment.dueDate)}</td>
                   <td data-label="Recebimento">{formatDate(payment.paidAt)}</td>
+                  <td data-label="Conta">{state.bankAccounts.find((account) => account.id === payment.bankAccountId)?.name || payment.account || '-'}</td>
                   <td data-label="Status"><StatusBadge>{isPaymentOverdue(payment) ? 'Vencida' : payment.status}</StatusBadge></td>
                   <td data-label="Comprovante">
                     <div className="flex flex-wrap gap-2">
@@ -6612,6 +6865,7 @@ function ReportsPage({
         data: payment.paidAt || payment.dueDate,
         situacao: payment.status,
         recorrencia: '',
+        conta: state.bankAccounts.find((account) => account.id === payment.bankAccountId)?.name || payment.account || '',
       })),
       ...state.expenses.filter((item) => !item.deletedAt).map((expense) => ({
         tipo: 'Despesa',
@@ -6621,6 +6875,17 @@ function ReportsPage({
         data: expense.paidAt || expense.expenseDate,
         situacao: expense.status,
         recorrencia: expense.recurring ? expense.recurrenceFrequency || 'Mensal' : '',
+        conta: state.bankAccounts.find((account) => account.id === expense.bankAccountId)?.name || expense.account || '',
+      })),
+      ...state.bankTransfers.map((transfer) => ({
+        tipo: 'Transferência',
+        descricao: transfer.description,
+        categoria: '',
+        valor: transfer.amount,
+        data: transfer.transferredAt,
+        situacao: 'Concluída',
+        recorrencia: '',
+        conta: `${state.bankAccounts.find((account) => account.id === transfer.fromAccountId)?.name || ''} → ${state.bankAccounts.find((account) => account.id === transfer.toAccountId)?.name || ''}`,
       })),
     ]
     downloadCsv(`hero-drone-financeiro-${dateInput()}.csv`, rows)
@@ -6656,6 +6921,9 @@ function ReportsPage({
   const maxLeadSource = Math.max(...sortedLeadSources.map((item) => item.total), 1)
   const maxService = Math.max(...sortedServices.map((item) => item.total), 1)
   const recurringExpenses = state.expenses.filter((expense) => expense.recurring && !expense.deletedAt && !expense.archivedAt && expense.status !== 'Cancelada')
+  const uniquePeriodExpenses = reportExpenses.filter((expense) => !expense.recurring).reduce((total, expense) => total + expense.amount, 0)
+  const recurringPeriodExpenses = reportExpenses.filter((expense) => expense.recurring).reduce((total, expense) => total + expense.amount, 0)
+  const bankPositions = state.bankAccounts.map((account) => ({ account, balance: getBankAccountBalance(state, account) })).sort((a, b) => b.balance - a.balance)
   const periodLabel = periodOptions.find((option) => option.value === period)?.label || 'Período atual'
   const regimeLabel = regime === 'cash' ? 'Caixa · valores pagos' : 'Competência · valores lançados'
 
@@ -6675,20 +6943,23 @@ function ReportsPage({
         <p className="max-w-xl text-xs leading-5 text-gray-500">Altere período e regime no cabeçalho. Em Caixa entram somente receitas recebidas e despesas pagas; em Competência entram os lançamentos do período.</p>
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard icon={<Wallet size={20} />} label="Faturamento" value={formatCurrency(metrics.revenue)} />
         <MetricCard icon={<TrendingUp size={20} />} label="Lucro líquido" value={formatCurrency(metrics.netProfit)} tone={metrics.netProfit >= 0 ? 'positive' : 'danger'} />
         <MetricCard icon={<BarChart3 size={20} />} label="Margem líquida" value={`${metrics.margin.toFixed(1)}%`} tone={metrics.margin >= 25 ? 'positive' : 'warning'} />
         <MetricCard icon={<Briefcase size={20} />} label="Ticket médio" value={formatCurrency(metrics.averageTicket)} />
+        <MetricCard icon={<Landmark size={20} />} label="Saldo bancário" value={formatCurrency(getTotalBankBalance(state))} tone={getTotalBankBalance(state) >= 0 ? 'positive' : 'danger'} />
       </div>
 
-      <section className="report-mini-grid grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <section className="report-mini-grid grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <DashboardIndicator icon={<DollarSign size={17} />} label="Despesas do período" value={formatCurrency(metrics.expenses)} tone="danger" />
         <DashboardIndicator icon={<Clock size={17} />} label="A receber" value={formatCurrency(metrics.pendingReceivable)} tone="warning" />
         <DashboardIndicator icon={<AlertTriangle size={17} />} label="Despesas vencidas" value={metrics.overdueExpenses} tone={metrics.overdueExpenses ? 'danger' : 'neutral'} />
         <DashboardIndicator icon={<CalendarDays size={17} />} label="Custo recorrente/mês" value={formatCurrency(metrics.recurringMonthlyExpenses)} tone="warning" />
         <DashboardIndicator icon={<Users size={17} />} label="Conversão de contatos" value={`${metrics.leadConversion.toFixed(1)}%`} />
         <DashboardIndicator icon={<Camera size={17} />} label="Projetos no período" value={metrics.projectCount} />
+        <DashboardIndicator icon={<Wallet size={17} />} label="Contas a pagar" value={formatCurrency(metrics.pendingExpenses)} tone="warning" />
+        <DashboardIndicator icon={<DollarSign size={17} />} label="Despesas únicas" value={formatCurrency(uniquePeriodExpenses)} tone="danger" />
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[1.45fr_0.75fr]">
@@ -6711,6 +6982,18 @@ function ReportsPage({
 
         <Panel title="Composição das despesas">
           {expenseBreakdown.length ? <><div className="h-56"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={expenseBreakdown} dataKey="total" nameKey="category" innerRadius={52} outerRadius={78} paddingAngle={4} stroke="var(--surface)" strokeWidth={3}>{expenseBreakdown.map((_, index) => <Cell key={index} fill={chartColors[index % chartColors.length]} />)}</Pie><Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px' }} formatter={(value) => formatCurrency(Number(value))} /></PieChart></ResponsiveContainer></div><div className="space-y-2">{expenseBreakdown.slice(0, 4).map((item, index) => <div key={item.category} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-gray-600"><i className="h-2 w-2 shrink-0 rounded-full" style={{ background: chartColors[index % chartColors.length] }} /><span className="truncate">{item.category}</span></span><strong className="text-gray-950">{formatCurrency(item.total)}</strong></div>)}</div></> : <DashboardEmptyState icon={<DollarSign size={20} />} message="Nenhuma despesa neste período." />}
+        </Panel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Panel title="Posição por conta bancária">
+          <div className="space-y-3">
+            {bankPositions.map(({ account, balance }) => <div key={account.id} className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-3"><div className="flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Landmark size={17} /></span><div className="min-w-0"><strong className="block truncate text-sm text-gray-950">{account.name}</strong><span className="text-xs text-gray-500">{account.bankName} · {account.active ? 'Ativa' : 'Inativa'}</span></div></div><strong className={balance < 0 ? 'text-red-600' : 'text-gray-950'}>{formatCurrency(balance)}</strong></div>)}
+          </div>
+        </Panel>
+        <Panel title="Despesas únicas e recorrentes">
+          <div className="grid gap-3 sm:grid-cols-2"><SmallStat label="Únicas no período" value={formatCurrency(uniquePeriodExpenses)} /><SmallStat label="Recorrentes no período" value={formatCurrency(recurringPeriodExpenses)} /><SmallStat label="Média recorrente mensal" value={formatCurrency(metrics.recurringMonthlyExpenses)} /><SmallStat label="Recorrências ativas" value={String(recurringExpenses.length)} /></div>
+          <div className="mt-4 space-y-2">{recurringExpenses.slice(0, 5).map((expense) => <div key={expense.id} className="flex items-center justify-between gap-3 border-t border-gray-200 pt-2 text-sm"><span className="min-w-0 truncate text-gray-600">{expense.description} · {expense.recurrenceFrequency || 'Mensal'}</span><strong className="whitespace-nowrap text-gray-950">{formatCurrency(expense.amount)}</strong></div>)}{!recurringExpenses.length ? <p className="text-sm text-gray-500">Nenhuma despesa recorrente ativa.</p> : null}</div>
         </Panel>
       </div>
 
@@ -8236,10 +8519,11 @@ function QuoteDepositForm({
   onCancel: () => void
 }) {
   const existing = state.payments.find((payment) => payment.sourceKey === `quote-deposit:${quote.id}`)
+  const activeAccounts = state.bankAccounts.filter((bankAccount) => bankAccount.active || bankAccount.id === existing?.bankAccountId)
   const [amount, setAmount] = useState(existing?.amount ?? quote.depositValue)
   const [paidAt, setPaidAt] = useState(dateTimeInput(0, 10))
   const [paymentMethod, setPaymentMethod] = useState<Payment['paymentMethod']>(existing?.paymentMethod ?? 'PIX')
-  const [account, setAccount] = useState(existing?.account ?? '')
+  const [bankAccountId, setBankAccountId] = useState(existing?.bankAccountId ?? activeAccounts[0]?.id ?? '')
   const [transactionNumber, setTransactionNumber] = useState(existing?.transactionNumber ?? '')
   const [receiptUrl, setReceiptUrl] = useState(existing?.receiptUrl ?? '')
   const [notes, setNotes] = useState(existing?.notes ?? '')
@@ -8259,7 +8543,8 @@ function QuoteDepositForm({
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault()
-        onSubmit({ amount, paidAt, paymentMethod, account, transactionNumber, receiptUrl, notes, confirmedReceived })
+        const bankAccount = state.bankAccounts.find((item) => item.id === bankAccountId)
+        onSubmit({ amount, paidAt, paymentMethod, bankAccountId, account: bankAccount?.name ?? '', transactionNumber, receiptUrl, notes, confirmedReceived })
       }}
     >
       <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:grid-cols-3">
@@ -8271,7 +8556,12 @@ function QuoteDepositForm({
         <InputField label="Valor recebido"><CurrencyInput value={amount} onChange={setAmount} /></InputField>
         <InputField label="Data do pagamento"><input className="field-input" required type="datetime-local" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} /></InputField>
         <InputField label="Forma de pagamento"><select className="field-input" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as Payment['paymentMethod'])}>{paymentMethods.map((method) => <option key={method}>{method}</option>)}</select></InputField>
-        <InputField label="Conta de destino"><input className="field-input" required value={account} onChange={(event) => setAccount(event.target.value)} placeholder="Ex.: Conta PJ" /></InputField>
+        <InputField label="Conta de destino">
+          <select className="field-input" required value={bankAccountId} onChange={(event) => setBankAccountId(event.target.value)}>
+            <option value="">Selecione a conta</option>
+            {activeAccounts.map((bankAccount) => <option key={bankAccount.id} value={bankAccount.id}>{bankAccount.name} · {bankAccount.bankName}</option>)}
+          </select>
+        </InputField>
         <InputField label="Número da transação"><input className="field-input" value={transactionNumber} onChange={(event) => setTransactionNumber(event.target.value)} /></InputField>
         <InputField label="Comprovante">
           <input className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[#d8a500] file:px-3 file:py-1.5 file:font-bold" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => void attachFile(event.currentTarget.files?.[0])} />
@@ -8375,8 +8665,71 @@ function ReceiptForm({
   )
 }
 
+function BankAccountForm({ account, onSubmit, onCancel }: { account?: BankAccount; onSubmit: (values: BankAccountFormValues) => void; onCancel: () => void }) {
+  const [name, setName] = useState(account?.name ?? '')
+  const [bankName, setBankName] = useState(account?.bankName ?? '')
+  const [accountType, setAccountType] = useState<BankAccount['accountType']>(account?.accountType ?? 'Conta corrente')
+  const [agency, setAgency] = useState(account?.agency ?? '')
+  const [accountNumber, setAccountNumber] = useState(account?.accountNumber ?? '')
+  const [openingBalance, setOpeningBalance] = useState(account?.openingBalance ?? 0)
+  const [active, setActive] = useState(account?.active ?? true)
+  const [notes, setNotes] = useState(account?.notes ?? '')
+
+  return (
+    <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => {
+      event.preventDefault()
+      onSubmit({ name, bankName, accountType, agency, accountNumber, openingBalance, active, notes })
+    }}>
+      <InputField label="Nome da conta"><input className="field-input" required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Conta principal" /></InputField>
+      <InputField label="Banco ou instituição"><input className="field-input" required value={bankName} onChange={(event) => setBankName(event.target.value)} placeholder="Ex.: Nubank" /></InputField>
+      <InputField label="Tipo"><select className="field-input" value={accountType} onChange={(event) => setAccountType(event.target.value as BankAccount['accountType'])}>{bankAccountTypes.map((type) => <option key={type}>{type}</option>)}</select></InputField>
+      <InputField label="Saldo inicial"><CurrencyInput value={openingBalance} onChange={setOpeningBalance} /></InputField>
+      <InputField label="Agência"><input className="field-input" value={agency} onChange={(event) => setAgency(event.target.value)} /></InputField>
+      <InputField label="Conta"><input className="field-input" value={accountNumber} onChange={(event) => setAccountNumber(event.target.value)} /></InputField>
+      <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-800 sm:col-span-2">
+        <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Conta disponível para novas movimentações
+      </label>
+      <div className="sm:col-span-2"><InputField label="Observações"><textarea className="field-input min-h-20" value={notes} onChange={(event) => setNotes(event.target.value)} /></InputField></div>
+      <FormActions onCancel={onCancel} submitLabel={account ? 'Salvar conta' : 'Criar conta'} />
+    </form>
+  )
+}
+
+function BankTransferForm({ state, transfer, onSubmit, onCancel }: { state: AppState; transfer?: BankTransfer; onSubmit: (values: BankTransferFormValues) => void; onCancel: () => void }) {
+  const activeAccounts = state.bankAccounts.filter((account) => account.active || account.id === transfer?.fromAccountId || account.id === transfer?.toAccountId)
+  const [fromAccountId, setFromAccountId] = useState(transfer?.fromAccountId ?? activeAccounts[0]?.id ?? '')
+  const [toAccountId, setToAccountId] = useState(transfer?.toAccountId ?? activeAccounts.find((account) => account.id !== activeAccounts[0]?.id)?.id ?? '')
+  const [amount, setAmount] = useState(transfer?.amount ?? 0)
+  const [transferredAt, setTransferredAt] = useState(transfer?.transferredAt ? dateTimeInputFromDate(new Date(transfer.transferredAt)) : dateTimeInput(0, 10))
+  const [description, setDescription] = useState(transfer?.description ?? '')
+  const source = state.bankAccounts.find((account) => account.id === fromAccountId)
+  const sourceBalance = source ? getBankAccountBalance(state, source) + (transfer?.fromAccountId === source.id ? transfer.amount : 0) - (transfer?.toAccountId === source.id ? transfer.amount : 0) : 0
+
+  return (
+    <form className="space-y-4" onSubmit={(event) => {
+      event.preventDefault()
+      onSubmit({ fromAccountId, toAccountId, amount, transferredAt, description })
+    }}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <InputField label="Conta de origem"><select className="field-input" required value={fromAccountId} onChange={(event) => setFromAccountId(event.target.value)}><option value="">Selecione</option>{activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></InputField>
+        <InputField label="Conta de destino"><select className="field-input" required value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}><option value="">Selecione</option>{activeAccounts.map((account) => <option key={account.id} value={account.id} disabled={account.id === fromAccountId}>{account.name}</option>)}</select></InputField>
+        <InputField label="Valor"><CurrencyInput value={amount} onChange={setAmount} /></InputField>
+        <InputField label="Data da transferência"><input className="field-input" required type="datetime-local" value={transferredAt} onChange={(event) => setTransferredAt(event.target.value)} /></InputField>
+      </div>
+      <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">Saldo disponível em <strong>{source?.name ?? 'origem'}</strong>: <strong>{formatCurrency(sourceBalance)}</strong></p>
+      <InputField label="Descrição"><input className="field-input" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Opcional" /></InputField>
+      <FormActions onCancel={onCancel} submitLabel={transfer ? 'Salvar transferência' : 'Transferir'} />
+    </form>
+  )
+}
+
 function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel }: { state: AppState; initialProjectId?: string; payment?: Payment; onSubmit: (values: PaymentFormValues) => void; onCancel: () => void }) {
   const initialProject = state.projects.find((project) => project.id === (payment?.projectId || initialProjectId))
+  const activeAccounts = state.bankAccounts.filter((bankAccount) => bankAccount.active || bankAccount.id === payment?.bankAccountId)
+  const initialBankAccountId = payment?.bankAccountId
+    || state.bankAccounts.find((bankAccount) => bankAccount.name === payment?.account)?.id
+    || activeAccounts[0]?.id
+    || ''
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<PaymentFormInput, unknown, PaymentFormValues>({
     resolver: zodResolver(paymentFormSchema),
     defaultValues: {
@@ -8391,6 +8744,7 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
       paymentMethod: payment?.paymentMethod || 'PIX',
       status: payment?.status || 'Recebida',
       receiptUrl: payment?.receiptUrl || '',
+      bankAccountId: initialBankAccountId,
       account: payment?.account || '',
       transactionNumber: payment?.transactionNumber || '',
       confirmedReceived: payment?.confirmedReceived ?? true,
@@ -8418,7 +8772,13 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
       <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
       <InputField label="Status" error={getError(errors.status?.message)}><Select options={paymentStatuses} register={register('status')} /></InputField>
       <InputField label="Link do comprovante" error={getError(errors.receiptUrl?.message)}><input className="field-input" placeholder="https://..." {...register('receiptUrl')} /></InputField>
-      <InputField label="Conta de destino" error={getError(errors.account?.message)}><input className="field-input" placeholder="Ex.: Conta PJ" {...register('account')} /></InputField>
+      <input type="hidden" {...register('account')} />
+      <InputField label="Conta de destino" error={getError(errors.bankAccountId?.message)}>
+        <select className="field-input" {...register('bankAccountId')}>
+          <option value="">Selecione quando receber</option>
+          {activeAccounts.map((bankAccount) => <option key={bankAccount.id} value={bankAccount.id}>{bankAccount.name} · {bankAccount.bankName}</option>)}
+        </select>
+      </InputField>
       <InputField label="Número da transação" error={getError(errors.transactionNumber?.message)}><input className="field-input" {...register('transactionNumber')} /></InputField>
       <label className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-900 md:col-span-2">
         <input className="h-5 w-5 accent-emerald-600" type="checkbox" {...register('confirmedReceived')} /> Pagamento recebido e conferido
@@ -8430,6 +8790,11 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
 }
 
 function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; expense?: Expense; onSubmit: (values: ExpenseFormValues) => void; onCancel: () => void }) {
+  const activeAccounts = state.bankAccounts.filter((bankAccount) => bankAccount.active || bankAccount.id === expense?.bankAccountId)
+  const initialBankAccountId = expense?.bankAccountId
+    || state.bankAccounts.find((bankAccount) => bankAccount.name === expense?.account)?.id
+    || activeAccounts[0]?.id
+    || ''
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ExpenseFormInput, unknown, ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
     defaultValues: {
@@ -8444,6 +8809,7 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
       paymentMethod: expense?.paymentMethod || 'PIX',
       status: expense?.status || 'Paga',
       supplier: expense?.supplier || '',
+      bankAccountId: initialBankAccountId,
       account: expense?.account || '',
       transactionNumber: expense?.transactionNumber || '',
       recurring: expense?.recurring ?? false,
@@ -8476,7 +8842,13 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
       <InputField label="Forma" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
       <InputField label="Situação da despesa" error={getError(errors.status?.message)}><Select options={expenseStatuses} register={register('status')} /></InputField>
       <InputField label="Fornecedor" error={getError(errors.supplier?.message)}><input className="field-input" {...register('supplier')} /></InputField>
-      <InputField label="Conta" error={getError(errors.account?.message)}><input className="field-input" {...register('account')} /></InputField>
+      <input type="hidden" {...register('account')} />
+      <InputField label="Conta de saída" error={getError(errors.bankAccountId?.message)}>
+        <select className="field-input" {...register('bankAccountId')}>
+          <option value="">Selecione quando pagar</option>
+          {activeAccounts.map((bankAccount) => <option key={bankAccount.id} value={bankAccount.id}>{bankAccount.name} · {bankAccount.bankName}</option>)}
+        </select>
+      </InputField>
       <InputField label="Número da transação" error={getError(errors.transactionNumber?.message)}><input className="field-input" {...register('transactionNumber')} /></InputField>
       <div className="expense-recurrence md:col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
         <label className="flex cursor-pointer items-start gap-3 text-sm text-gray-700">

@@ -202,6 +202,14 @@ export const paymentMethods = [
   'Outro',
 ] as const
 
+export const bankAccountTypes = [
+  'Conta corrente',
+  'Conta poupança',
+  'Conta digital',
+  'Carteira',
+  'Dinheiro',
+] as const
+
 export const paymentTypes = [
   'Sinal',
   'Parcela',
@@ -288,6 +296,7 @@ export type ExpenseType = (typeof expenseTypes)[number]
 export type ExpenseStatus = (typeof expenseStatuses)[number]
 export type ExpenseRecurrenceFrequency = (typeof expenseRecurrenceFrequencies)[number]
 export type PaymentMethod = (typeof paymentMethods)[number]
+export type BankAccountType = (typeof bankAccountTypes)[number]
 export type PaymentType = (typeof paymentTypes)[number]
 export type PaymentStatus = (typeof paymentStatuses)[number]
 export type QuoteStatus = (typeof quoteStatuses)[number]
@@ -533,6 +542,7 @@ export interface Payment {
   status: PaymentStatus
   notes: string
   receiptUrl?: string
+  bankAccountId?: string
   account?: string
   transactionNumber?: string
   confirmedReceived?: boolean
@@ -564,6 +574,7 @@ export interface Expense {
   recurrenceFrequency?: ExpenseRecurrenceFrequency
   recurrenceEndDate?: string
   receiptUrl?: string
+  bankAccountId?: string
   account?: string
   transactionNumber?: string
   archivedAt?: string
@@ -587,6 +598,31 @@ export interface RecurringExpense {
   endDate?: string
   paymentMethod: PaymentMethod
   active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BankAccount {
+  id: string
+  name: string
+  bankName: string
+  accountType: BankAccountType
+  agency?: string
+  accountNumber?: string
+  openingBalance: number
+  active: boolean
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BankTransfer {
+  id: string
+  fromAccountId: string
+  toAccountId: string
+  amount: number
+  transferredAt: string
+  description: string
   createdAt: string
   updatedAt: string
 }
@@ -683,7 +719,7 @@ export interface TaskItem {
 
 export interface StatusHistoryItem {
   id: string
-  entityType: 'Contato' | 'Proposta' | 'Projeto' | 'Pagamento' | 'Agendamento'
+  entityType: 'Contato' | 'Proposta' | 'Projeto' | 'Pagamento' | 'Agendamento' | 'Conta bancária' | 'Transferência'
   entityId: string
   action: string
   fromStatus?: string
@@ -746,6 +782,8 @@ export interface AppState {
   payments: Payment[]
   expenses: Expense[]
   recurringExpenses: RecurringExpense[]
+  bankAccounts: BankAccount[]
+  bankTransfers: BankTransfer[]
   files: ProjectFile[]
   projectRevisions: ProjectRevision[]
   equipment: Equipment[]

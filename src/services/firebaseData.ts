@@ -25,6 +25,8 @@ const ARRAY_SECTION_KEYS = [
   'payments',
   'expenses',
   'recurringExpenses',
+  'bankAccounts',
+  'bankTransfers',
   'files',
   'projectRevisions',
   'equipment',

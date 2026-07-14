@@ -1,4 +1,4 @@
-import type { AppState, Expense, Payment, Project } from '../types'
+import type { AppState, BankAccount, Expense, Payment, Project } from '../types'
 
 export type PeriodPreset =
   | 'today'
@@ -147,6 +147,26 @@ export const getMonthlyRecurringExpenseAmount = (expense: Expense) => {
   }[expense.recurrenceFrequency || 'Mensal']
   return expense.amount * multiplier
 }
+
+export const getBankAccountBalance = (state: AppState, account: BankAccount) => {
+  const received = state.payments
+    .filter((payment) => payment.bankAccountId === account.id && isReceivedPayment(payment))
+    .reduce((total, payment) => total + payment.amount, 0)
+  const paidExpenses = state.expenses
+    .filter((expense) => expense.bankAccountId === account.id && isPaidExpense(expense))
+    .reduce((total, expense) => total + expense.amount, 0)
+  const incomingTransfers = state.bankTransfers
+    .filter((transfer) => transfer.toAccountId === account.id)
+    .reduce((total, transfer) => total + transfer.amount, 0)
+  const outgoingTransfers = state.bankTransfers
+    .filter((transfer) => transfer.fromAccountId === account.id)
+    .reduce((total, transfer) => total + transfer.amount, 0)
+
+  return account.openingBalance + received - paidExpenses + incomingTransfers - outgoingTransfers
+}
+
+export const getTotalBankBalance = (state: AppState) =>
+  state.bankAccounts.reduce((total, account) => total + getBankAccountBalance(state, account), 0)
 
 export const getProjectPayments = (state: AppState, projectId: string) =>
   state.payments.filter((payment) => payment.projectId === projectId && !isCancelledPayment(payment))

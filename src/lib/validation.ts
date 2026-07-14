@@ -137,10 +137,15 @@ export const paymentFormSchema = z.object({
   paymentMethod: z.enum(paymentMethods),
   status: z.enum(paymentStatuses),
   receiptUrl: optionalText,
+  bankAccountId: optionalText,
   account: optionalText,
   transactionNumber: optionalText,
   confirmedReceived: z.boolean().default(false),
   notes: optionalText,
+}).superRefine((data, context) => {
+  if (data.status === 'Recebida' && !data.bankAccountId) {
+    context.addIssue({ code: 'custom', path: ['bankAccountId'], message: 'Selecione a conta que recebeu o dinheiro' })
+  }
 })
 
 export const expenseFormSchema = z.object({
@@ -155,12 +160,17 @@ export const expenseFormSchema = z.object({
   paymentMethod: z.enum(paymentMethods),
   status: z.enum(expenseStatuses),
   supplier: optionalText,
+  bankAccountId: optionalText,
   account: optionalText,
   transactionNumber: optionalText,
   recurring: z.boolean().default(false),
   recurrenceFrequency: z.enum(expenseRecurrenceFrequencies).default('Mensal'),
   recurrenceEndDate: optionalText,
   notes: optionalText,
+}).superRefine((data, context) => {
+  if (data.status === 'Paga' && !data.bankAccountId) {
+    context.addIssue({ code: 'custom', path: ['bankAccountId'], message: 'Selecione a conta usada no pagamento' })
+  }
 })
 
 export const equipmentFormSchema = z.object({

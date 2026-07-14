@@ -222,7 +222,7 @@ export const InputField = ({
 )
 
 export const Toast = ({ message }: { message: string }) => (
-  <div className="fixed right-4 top-4 z-[60] rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 shadow-lg">
+  <div className="fixed bottom-24 right-4 z-[60] max-w-sm rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 shadow-lg lg:bottom-6 lg:right-6">
     {message}
   </div>
 )

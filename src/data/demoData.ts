@@ -23,6 +23,31 @@ const adminId = 'usr-primary-owner'
 
 const isoNow = () => new Date().toISOString()
 
+const createDefaultBankAccounts = (now: string): AppState['bankAccounts'] => [
+  {
+    id: 'bank-primary',
+    name: 'Conta principal',
+    bankName: 'A definir',
+    accountType: 'Conta corrente',
+    openingBalance: 0,
+    active: true,
+    notes: 'Conta padrão para recebimentos e pagamentos.',
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: 'bank-secondary',
+    name: 'Conta secundária',
+    bankName: 'A definir',
+    accountType: 'Conta corrente',
+    openingBalance: 0,
+    active: true,
+    notes: '',
+    createdAt: now,
+    updatedAt: now,
+  },
+]
+
 const day = (offset: number, hour = 9, minute = 0) => {
   const date = new Date()
   date.setHours(hour, minute, 0, 0)
@@ -866,6 +891,8 @@ export const createDemoState = (): AppState => {
     payments,
     expenses,
     recurringExpenses,
+    bankAccounts: createDefaultBankAccounts(now),
+    bankTransfers: [],
     files: [
       {
         id: 'file-1',
@@ -959,6 +986,8 @@ export const createEmptyState = (): AppState => {
     payments: [],
     expenses: [],
     recurringExpenses: [],
+    bankAccounts: createDefaultBankAccounts(now),
+    bankTransfers: [],
     files: [],
     projectRevisions: [],
     equipment: [],

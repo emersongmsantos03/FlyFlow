@@ -254,6 +254,53 @@ button:disabled {
   border-color: color-mix(in srgb, var(--border) 82%, transparent) !important;
 }
 
+.app-header-controls {
+  align-items: center;
+}
+
+.app-header-controls .field-input,
+.app-header-controls .app-button,
+.app-header-controls button {
+  min-height: 2.75rem;
+}
+
+.app-header-controls .app-header-icon {
+  height: 2.75rem;
+  width: 2.75rem;
+}
+
+.quote-card {
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--border) 88%, transparent);
+}
+
+.quote-card-summary {
+  background: var(--surface);
+}
+
+.quote-card-details {
+  background: color-mix(in srgb, var(--surface-soft) 54%, var(--surface));
+  border-color: color-mix(in srgb, var(--border) 84%, transparent);
+}
+
+.quote-card-section {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.quote-card-primary-actions > *,
+.quote-card-actions > * {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 2.25rem;
+}
+
+.quote-card-actions {
+  border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  padding-top: 0.75rem;
+}
+
 .quick-actions-menu {
   background: color-mix(in srgb, var(--surface) 94%, transparent) !important;
   backdrop-filter: blur(22px) saturate(1.15);
