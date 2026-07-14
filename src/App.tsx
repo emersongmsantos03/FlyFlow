@@ -829,6 +829,28 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file)
   })
 
+const hasWorkspaceData = (candidate: AppState) =>
+  candidate.leads.length > 0 ||
+  candidate.leadInteractions.length > 0 ||
+  candidate.clients.length > 0 ||
+  candidate.projects.length > 0 ||
+  candidate.appointments.length > 0 ||
+  candidate.quotes.length > 0 ||
+  candidate.payments.length > 0 ||
+  candidate.expenses.length > 0 ||
+  candidate.recurringExpenses.length > 0 ||
+  candidate.files.length > 0 ||
+  candidate.tasks.length > 0 ||
+  candidate.users.length > 1
+
+const resolveFirebaseState = (cloudState: AppState | null, localState: AppState) => {
+  const shouldMigrateLocal = Boolean(cloudState && hasWorkspaceData(localState) && !hasWorkspaceData(cloudState))
+  return {
+    state: normalizeAppState(shouldMigrateLocal ? localState : cloudState ?? localState),
+    shouldSave: !cloudState || shouldMigrateLocal,
+  }
+}
+
 function App() {
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [authSession, setAuthSession] = useState(() => getAuthSession())
@@ -901,7 +923,8 @@ function App() {
           await ensureFirebaseWorkspace(firebaseUser)
           const localState = loadAppState()
           const cloudState = await loadFirebaseAppState(localState)
-          const resolvedState = normalizeAppState(cloudState ?? localState)
+          const resolved = resolveFirebaseState(cloudState, localState)
+          const resolvedState = resolved.state
           const internalUser = resolvedState.users.find(
             (user) => user.email.toLowerCase() === firebaseUser.email?.toLowerCase(),
           )
@@ -917,7 +940,7 @@ function App() {
             return
           }
 
-          if (!cloudState) await saveFirebaseAppState(resolvedState)
+          if (resolved.shouldSave) await saveFirebaseAppState(resolvedState)
           if (cancelled) return
 
           setState(resolvedState)
@@ -1307,7 +1330,8 @@ function App() {
         const credential = await signInWithFirebase(values.email, values.password, values.remember)
         await ensureFirebaseWorkspace(credential.user)
         const cloudState = await loadFirebaseAppState(state)
-        const resolvedState = normalizeAppState(cloudState ?? state)
+        const resolved = resolveFirebaseState(cloudState, state)
+        const resolvedState = resolved.state
         const internalUser = resolvedState.users.find(
           (item) => item.email.toLowerCase() === values.email.trim().toLowerCase(),
         )
@@ -1319,8 +1343,8 @@ function App() {
           return
         }
 
-        if (cloudState) setState(resolvedState)
-        else await saveFirebaseAppState(resolvedState)
+        setState(resolvedState)
+        if (resolved.shouldSave) await saveFirebaseAppState(resolvedState)
 
         saveAuthSession({ userId: internalUser.id, email: internalUser.email }, values.remember)
         setAuthSession(getAuthSession())
