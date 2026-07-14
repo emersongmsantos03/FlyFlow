@@ -53,6 +53,12 @@ service cloud.firestore {
         allow create, update, delete: if isActiveMember(workspaceId)
           && (sectionId != 'users' || isWorkspaceOwner(workspaceId));
       }
+
+      match /collections/{sectionId}/items/{itemId} {
+        allow read: if isActiveMember(workspaceId);
+        allow create, update, delete: if isActiveMember(workspaceId)
+          && (sectionId != 'users' || isWorkspaceOwner(workspaceId));
+      }
     }
   }
 }

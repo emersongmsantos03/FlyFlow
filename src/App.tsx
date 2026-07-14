@@ -844,7 +844,13 @@ const hasWorkspaceData = (candidate: AppState) =>
   candidate.users.length > 1
 
 const resolveFirebaseState = (cloudState: AppState | null, localState: AppState) => {
-  const shouldMigrateLocal = Boolean(cloudState && hasWorkspaceData(localState) && !hasWorkspaceData(cloudState))
+  const localUpdatedAt = new Date(localState.updatedAt || 0).getTime()
+  const cloudUpdatedAt = new Date(cloudState?.updatedAt || 0).getTime()
+  const localHasData = hasWorkspaceData(localState)
+  const cloudHasData = Boolean(cloudState && hasWorkspaceData(cloudState))
+  const shouldMigrateLocal = Boolean(
+    cloudState && localHasData && (!cloudHasData || localUpdatedAt > cloudUpdatedAt),
+  )
   return {
     state: normalizeAppState(shouldMigrateLocal ? localState : cloudState ?? localState),
     shouldSave: !cloudState || shouldMigrateLocal,

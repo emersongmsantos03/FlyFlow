@@ -11,7 +11,7 @@ CRM, projetos e gestao financeira para uma empresa de servicos com drones.
 - Firebase Auth + Cloud Firestore preparados como backend principal opcional
 - Firebase Hosting e GitHub Pages preparados para hospedagem estática
 - Supabase preparado via migration SQL
-- Persistência local com sincronização por seções no Firebase ou snapshot no Supabase
+- Persistência local com CRUD granular por registro no Firebase ou snapshot no Supabase
 - Tema escuro por padrao, com opcao claro/escuro
 
 ## Como executar
@@ -92,8 +92,9 @@ Ambientes publicados:
 
 - Cada empresa possui um `workspace`.
 - Cada usuário autenticado possui uma associação ativa ao workspace.
-- Contatos, projetos, agenda, propostas e financeiro são gravados em documentos separados por seção.
-- Apenas seções alteradas são regravadas, reduzindo o consumo da cota de escrita.
+- Contatos, projetos, agenda, propostas, financeiro e demais cadastros são gravados individualmente no Firestore.
+- Criações e alterações escrevem somente os registros modificados; exclusões removem o documento correspondente.
+- O carregamento continua compatível com o formato antigo por seções e o converte automaticamente para o formato granular.
 - Usuários internos criados pelo administrador recebem conta no Firebase Auth e acesso ao mesmo workspace.
 - O navegador mantém uma cópia local para tolerar recarregamentos e falhas temporárias de rede.
 
@@ -196,7 +197,7 @@ src/
   services/auth.ts        # contas locais, senha hash e sessao
   services/storage.ts     # persistencia local dos dados
   services/firebase.ts    # Firebase Auth e inicializacao do Firestore
-  services/firebaseData.ts # workspaces e sincronizacao por secoes
+  services/firebaseData.ts # workspaces, CRUD granular e migracao do formato legado
   services/cloudStorage.ts # sincronizacao do estado com Supabase
   services/supabase.ts    # cliente Supabase opcional
 supabase/migrations/      # schema inicial do banco
@@ -245,5 +246,5 @@ Sem Firebase ou Supabase o sistema continua funcionando localmente no navegador.
 
 - Com a Edge Function `google-calendar` e os segredos OAuth configurados, eventos sao criados e atualizados pelo mesmo `external_event_id`. Sem essa configuracao, o sistema abre o evento preenchido para confirmacao do usuario.
 - Comprovantes em modo local usam data URL e estão sujeitos ao limite do navegador. Para sincronizar arquivos binários entre dispositivos, use Cloud Storage no Blaze, Supabase Storage ou links de um provedor externo.
-- O schema relacional completo esta preparado na migration; a interface sincroniza o agregado transacional em JSON para manter atomicidade durante a transicao do MVP. Uma futura camada de repositorios pode gravar cada entidade tambem nas tabelas normalizadas.
+- No Firebase, cada entidade é persistida em um documento próprio. O fallback Supabase ainda usa `app_state_snapshots`; seu schema relacional completo permanece preparado nas migrations para uma futura adoção integral desse backend.
 - A migration `20260714150000_crm_finance_integrity.sql` precisa ser aplicada no ambiente Supabase antes de usar as novas colunas relacionais de soft delete, auditoria, comprovantes e oportunidades.
