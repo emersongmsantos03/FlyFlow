@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function membershipPath() {
+      return /databases/$(database)/documents/memberships/$(request.auth.uid);
+    }
+
+    function isActiveMember(workspaceId) {
+      return signedIn()
+        && exists(membershipPath())
+        && get(membershipPath()).data.workspaceId == workspaceId
+        && get(membershipPath()).data.active == true;
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/workspaces/$(workspaceId))
+        && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUid == request.auth.uid;
+    }
+
+    match /memberships/{userId} {
+      allow read: if signedIn()
+        && (request.auth.uid == userId || isWorkspaceOwner(resource.data.workspaceId));
+
+      allow create: if signedIn()
+        && (
+          (request.auth.uid == userId && request.resource.data.workspaceId == request.auth.uid)
+          || isWorkspaceOwner(request.resource.data.workspaceId)
+        );
+
+      allow update, delete: if isWorkspaceOwner(resource.data.workspaceId);
+    }
+
+    match /workspaces/{workspaceId} {
+      allow create: if signedIn()
+        && request.auth.uid == workspaceId
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if isActiveMember(workspaceId);
+      allow update: if isWorkspaceOwner(workspaceId)
+        || (
+          isActiveMember(workspaceId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
+        );
+      allow delete: if isWorkspaceOwner(workspaceId);
+
+      match /state/{sectionId} {
+        allow read: if isActiveMember(workspaceId);
+        allow create, update, delete: if isActiveMember(workspaceId)
+          && (sectionId != 'users' || isWorkspaceOwner(workspaceId));
+      }
+    }
+  }
+}

@@ -8,8 +8,10 @@ CRM, projetos e gestao financeira para uma empresa de servicos com drones.
 - Tailwind CSS
 - React Hook Form + Zod
 - Recharts
+- Firebase Auth + Cloud Firestore preparados como backend principal opcional
+- Firebase Hosting e GitHub Pages preparados para hospedagem estática
 - Supabase preparado via migration SQL
-- Persistencia local com sincronizacao transacional em snapshot no Supabase quando configurado
+- Persistência local com sincronização por seções no Firebase ou snapshot no Supabase
 - Tema escuro por padrao, com opcao claro/escuro
 
 ## Como executar
@@ -30,7 +32,74 @@ npm run dev      # ambiente local
 npm run build    # valida TypeScript e gera build de producao
 npm run preview  # pre-visualiza o build
 npm run lint     # roda oxlint
+npm run deploy:firebase # build e publicação no Firebase
 ```
+
+## Firebase (recomendado para começar)
+
+O Firebase é opcional. Sem credenciais, o FlyFlow continua funcionando localmente. Quando as variáveis do Firebase estão preenchidas, o sistema usa Firebase Authentication e Cloud Firestore; o Supabase passa a ser apenas o segundo fallback.
+
+### 1. Criar e configurar o projeto
+
+1. Crie um projeto no [Firebase Console](https://console.firebase.google.com/).
+2. Em `Authentication > Sign-in method`, habilite `E-mail/senha`.
+3. Em `Authentication > Users`, crie a conta principal `herodronecwb@gmail.com` com uma senha segura.
+4. Em `Firestore Database`, crie o banco em modo de produção, preferencialmente em uma região próxima dos usuários.
+5. Em `Project settings > Your apps`, registre um aplicativo Web.
+6. Copie `.env.example` para `.env.local` e preencha os valores entregues pelo Firebase:
+
+```bash
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+```
+
+As chaves `VITE_*` fazem parte da configuração pública do aplicativo Web. A proteção real está no login e nas regras do Firestore, não em esconder esses valores.
+
+### 2. Publicar regras e site
+
+Instale e autentique o Firebase CLI:
+
+```bash
+npm install -g firebase-tools
+firebase login
+Copy-Item .firebaserc.example .firebaserc
+```
+
+Substitua `SEU_FIREBASE_PROJECT_ID` no `.firebaserc` e publique:
+
+```bash
+npm run deploy:firebase
+```
+
+O arquivo `firebase.json` configura o Hosting como SPA, cache de arquivos versionados e publicação das regras e índices do Firestore. As regras em `firestore.rules` isolam cada espaço de trabalho e só permitem acesso a membros autenticados e ativos.
+
+### 3. Continuar usando o GitHub Pages
+
+Também é possível manter o frontend gratuito no GitHub Pages e usar apenas Firebase Auth + Firestore como backend. Cadastre estas variáveis como `Repository secrets` no GitHub para que o workflow atual as injete no build:
+
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+
+No Firebase Authentication, adicione `emersongmsantos03.github.io` aos domínios autorizados caso o frontend continue no GitHub Pages.
+
+### Como os dados são organizados
+
+- Cada empresa possui um `workspace`.
+- Cada usuário autenticado possui uma associação ativa ao workspace.
+- Contatos, projetos, agenda, propostas e financeiro são gravados em documentos separados por seção.
+- Apenas seções alteradas são regravadas, reduzindo o consumo da cota de escrita.
+- Usuários internos criados pelo administrador recebem conta no Firebase Auth e acesso ao mesmo workspace.
+- O navegador mantém uma cópia local para tolerar recarregamentos e falhas temporárias de rede.
+
+Comprovantes enviados diretamente do computador usam `data URL` e permanecem apenas no navegador. Links externos de comprovantes são sincronizados. O Cloud Storage for Firebase exige o plano Blaze; por isso o projeto não tenta colocar arquivos pesados dentro do Firestore, que possui limite de 1 MiB por documento.
 
 ## Supabase
 
@@ -128,6 +197,8 @@ src/
   lib/validation.ts       # schemas Zod dos formularios
   services/auth.ts        # contas locais, senha hash e sessao
   services/storage.ts     # persistencia local dos dados
+  services/firebase.ts    # Firebase Auth e inicializacao do Firestore
+  services/firebaseData.ts # workspaces e sincronizacao por secoes
   services/cloudStorage.ts # sincronizacao do estado com Supabase
   services/supabase.ts    # cliente Supabase opcional
 supabase/migrations/      # schema inicial do banco
@@ -151,6 +222,12 @@ supabase/migrations/      # schema inicial do banco
 ## Variaveis de ambiente
 
 ```bash
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_GOOGLE_MAPS_API_KEY=
@@ -163,11 +240,11 @@ Para usar busca de endereços e mapas, habilite na mesma chave do Google Cloud:
 
 Em produção, restrinja a chave aos domínios do sistema e somente a essas APIs.
 
-Sem Supabase o sistema continua funcionando localmente no navegador. Com Supabase configurado, o login usa Supabase Auth e o estado e sincronizado com `app_state_snapshots` protegido por RLS.
+Sem Firebase ou Supabase o sistema continua funcionando localmente no navegador. Se ambos estiverem configurados, Firebase tem prioridade. Com Firebase, o login usa Firebase Auth e o estado é sincronizado no workspace protegido pelas regras do Firestore. Com apenas Supabase, o comportamento anterior de Auth + `app_state_snapshots` protegido por RLS é mantido.
 
 ## Limitacoes atuais
 
 - Com a Edge Function `google-calendar` e os segredos OAuth configurados, eventos sao criados e atualizados pelo mesmo `external_event_id`. Sem essa configuracao, o sistema abre o evento preenchido para confirmacao do usuario.
-- Comprovantes em modo local usam data URL e estao sujeitos ao limite do armazenamento do navegador. Em producao, use Supabase Storage.
+- Comprovantes em modo local usam data URL e estão sujeitos ao limite do navegador. Para sincronizar arquivos binários entre dispositivos, use Cloud Storage no Blaze, Supabase Storage ou links de um provedor externo.
 - O schema relacional completo esta preparado na migration; a interface sincroniza o agregado transacional em JSON para manter atomicidade durante a transicao do MVP. Uma futura camada de repositorios pode gravar cada entidade tambem nas tabelas normalizadas.
 - A migration `20260714150000_crm_finance_integrity.sql` precisa ser aplicada no ambiente Supabase antes de usar as novas colunas relacionais de soft delete, auditoria, comprovantes e oportunidades.

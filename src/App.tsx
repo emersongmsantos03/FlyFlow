@@ -34,7 +34,7 @@ import {
   Wallet,
   Wand2,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   Bar,
@@ -137,6 +137,21 @@ import {
 } from './services/auth'
 import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState } from './services/storage'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
+import {
+  isFirebaseConfigured,
+  observeFirebaseAuth,
+  requestFirebasePasswordReset,
+  signInWithFirebase,
+  signOutFromFirebase,
+} from './services/firebase'
+import {
+  clearActiveFirebaseWorkspace,
+  createFirebaseWorkspaceUser,
+  ensureFirebaseWorkspace,
+  loadFirebaseAppState,
+  saveFirebaseAppState,
+  setFirebaseWorkspaceUserActive,
+} from './services/firebaseData'
 import { syncGoogleCalendarEvent } from './services/googleCalendar'
 import { isSupabaseConfigured, supabase } from './services/supabase'
 import {
@@ -817,6 +832,8 @@ const readFileAsDataUrl = (file: File) =>
 function App() {
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [authSession, setAuthSession] = useState(() => getAuthSession())
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(!isFirebaseConfigured)
+  const firebaseLoginInProgress = useRef(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light'
     const stored = window.localStorage.getItem('hero-drone-manager:theme:v2')
@@ -859,7 +876,74 @@ function App() {
   const [toast, setToast] = useState('')
 
   useEffect(() => {
-    ensurePrimaryAuthAccount()
+    if (!isFirebaseConfigured && !isSupabaseConfigured) void ensurePrimaryAuthAccount()
+  }, [])
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) return
+
+    let cancelled = false
+    const unsubscribe = observeFirebaseAuth((firebaseUser) => {
+      if (firebaseLoginInProgress.current) return
+
+      void (async () => {
+        if (!firebaseUser) {
+          clearActiveFirebaseWorkspace()
+          clearAuthSession()
+          if (!cancelled) {
+            setAuthSession(null)
+            setFirebaseAuthReady(true)
+          }
+          return
+        }
+
+        try {
+          await ensureFirebaseWorkspace(firebaseUser)
+          const localState = loadAppState()
+          const cloudState = await loadFirebaseAppState(localState)
+          const resolvedState = normalizeAppState(cloudState ?? localState)
+          const internalUser = resolvedState.users.find(
+            (user) => user.email.toLowerCase() === firebaseUser.email?.toLowerCase(),
+          )
+
+          if (!internalUser?.active) {
+            await signOutFromFirebase()
+            clearActiveFirebaseWorkspace()
+            clearAuthSession()
+            if (!cancelled) {
+              setAuthSession(null)
+              setToast('Usuário sem perfil interno ativo.')
+            }
+            return
+          }
+
+          if (!cloudState) await saveFirebaseAppState(resolvedState)
+          if (cancelled) return
+
+          setState(resolvedState)
+          const existingSession = getAuthSession()
+          if (!existingSession || existingSession.email.toLowerCase() !== internalUser.email.toLowerCase()) {
+            saveAuthSession({ userId: internalUser.id, email: internalUser.email }, true)
+          }
+          setAuthSession(getAuthSession())
+        } catch (error) {
+          await signOutFromFirebase().catch(() => undefined)
+          clearActiveFirebaseWorkspace()
+          clearAuthSession()
+          if (!cancelled) {
+            setAuthSession(null)
+            setToast(error instanceof Error ? error.message : 'Não foi possível carregar o Firebase.')
+          }
+        } finally {
+          if (!cancelled) setFirebaseAuthReady(true)
+        }
+      })()
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
@@ -883,7 +967,18 @@ function App() {
 
   useEffect(() => {
     saveAppState(state)
-    if (!isSupabaseConfigured || !authSession) return
+    if (!authSession) return
+
+    if (isFirebaseConfigured) {
+      const timeout = window.setTimeout(() => {
+        void saveFirebaseAppState(state).catch((error) =>
+          setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar as alterações com o Firebase.'),
+        )
+      }, 600)
+      return () => window.clearTimeout(timeout)
+    }
+
+    if (!isSupabaseConfigured) return
     const timeout = window.setTimeout(() => {
       void saveCloudAppState(state).catch(() => setToast('Não foi possível sincronizar as alterações com o Supabase.'))
     }, 600)
@@ -1206,6 +1301,52 @@ function App() {
   }
 
   const handleLogin = async (values: LoginFormValues) => {
+    if (isFirebaseConfigured) {
+      firebaseLoginInProgress.current = true
+      try {
+        const credential = await signInWithFirebase(values.email, values.password, values.remember)
+        await ensureFirebaseWorkspace(credential.user)
+        const cloudState = await loadFirebaseAppState(state)
+        const resolvedState = normalizeAppState(cloudState ?? state)
+        const internalUser = resolvedState.users.find(
+          (item) => item.email.toLowerCase() === values.email.trim().toLowerCase(),
+        )
+
+        if (!internalUser?.active) {
+          await signOutFromFirebase()
+          clearActiveFirebaseWorkspace()
+          setToast('Usuário sem perfil interno ativo.')
+          return
+        }
+
+        if (cloudState) setState(resolvedState)
+        else await saveFirebaseAppState(resolvedState)
+
+        saveAuthSession({ userId: internalUser.id, email: internalUser.email }, values.remember)
+        setAuthSession(getAuthSession())
+        setPage(
+          canOpenPage(internalUser, 'dashboard')
+            ? 'dashboard'
+            : navigation.find((item) => canOpenPage(internalUser, item.page))?.page ?? 'dashboard',
+        )
+        setToast('Login realizado e dados sincronizados com o Firebase.')
+      } catch (error) {
+        await signOutFromFirebase().catch(() => undefined)
+        clearActiveFirebaseWorkspace()
+        const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+        setToast(
+          code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')
+            ? 'E-mail ou senha inválidos.'
+            : error instanceof Error
+              ? error.message
+              : 'Não foi possível entrar com o Firebase.',
+        )
+      } finally {
+        firebaseLoginInProgress.current = false
+      }
+      return
+    }
+
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.auth.signInWithPassword({ email: values.email.trim().toLowerCase(), password: values.password })
       if (error) {
@@ -1252,7 +1393,10 @@ function App() {
   }
 
   const handleLogout = () => {
-    if (isSupabaseConfigured && supabase) void supabase.auth.signOut()
+    if (isFirebaseConfigured) {
+      void signOutFromFirebase()
+      clearActiveFirebaseWorkspace()
+    } else if (isSupabaseConfigured && supabase) void supabase.auth.signOut()
     clearAuthSession()
     setAuthSession(null)
   }
@@ -1261,6 +1405,16 @@ function App() {
     const normalizedEmail = email.trim().toLowerCase()
     if (!normalizedEmail) {
       setToast('Informe o e-mail para recuperar a senha.')
+      return
+    }
+
+    if (isFirebaseConfigured) {
+      try {
+        await requestFirebasePasswordReset(normalizedEmail)
+        setToast('E-mail de recuperação enviado.')
+      } catch {
+        setToast('Não foi possível enviar o e-mail de recuperação.')
+      }
       return
     }
 
@@ -2753,7 +2907,9 @@ function App() {
     }
 
     try {
-      const account = await createUserAuthAccount(normalizedEmail, values.password)
+      const account = isFirebaseConfigured
+        ? await createFirebaseWorkspaceUser(normalizedEmail, values.password)
+        : await createUserAuthAccount(normalizedEmail, values.password)
       const now = new Date().toISOString()
       const user: User = {
         id: account.userId,
@@ -2777,7 +2933,7 @@ function App() {
     }
   }
 
-  const toggleUserActive = (user: User) => {
+  const toggleUserActive = async (user: User) => {
     if (!can(currentUser, 'manageUsers')) {
       setToast('Seu usuário não tem permissão para gerenciar contas.')
       return
@@ -2787,11 +2943,21 @@ function App() {
       return
     }
 
+    const nextActive = !user.active
+    if (isFirebaseConfigured) {
+      try {
+        await setFirebaseWorkspaceUserActive(user.id, nextActive)
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : 'Não foi possível atualizar o acesso no Firebase.')
+        return
+      }
+    }
+
     updateState(
       (current) => ({
         ...current,
         users: current.users.map((item) =>
-          item.id === user.id ? { ...item, active: !item.active, updatedAt: new Date().toISOString() } : item,
+          item.id === user.id ? { ...item, active: nextActive, updatedAt: new Date().toISOString() } : item,
         ),
       }),
       user.active ? 'Usuário desativado.' : 'Usuário ativado.',
@@ -2801,6 +2967,16 @@ function App() {
   const resetUserPassword = async (user: User) => {
     if (!can(currentUser, 'manageUsers')) {
       setToast('Seu usuário não tem permissão para redefinir senhas.')
+      return
+    }
+
+    if (isFirebaseConfigured) {
+      try {
+        await requestFirebasePasswordReset(user.email)
+        setToast(`E-mail de redefinição enviado para ${user.email}.`)
+      } catch {
+        setToast('Não foi possível enviar o e-mail de redefinição.')
+      }
       return
     }
 
@@ -3789,6 +3965,14 @@ function App() {
     })
   }
 
+  if (isFirebaseConfigured && !firebaseAuthReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1012] text-sm font-bold text-white">
+        Carregando FlyFlow...
+      </div>
+    )
+  }
+
   if (!authSession || !currentUser) {
     return <LoginScreen onSubmit={handleLogin} onPasswordReset={handlePasswordReset} />
   }
@@ -3844,7 +4028,7 @@ function App() {
               <p className="mt-1 truncate">{currentUser.email}</p>
               <p className="mt-1">{permissionSummary(currentUser)}</p>
             </div>
-            <p>{isSupabaseConfigured ? 'Supabase configurado' : 'Banco local vazio no navegador'}</p>
+            <p>{isFirebaseConfigured ? 'Firebase sincronizado' : isSupabaseConfigured ? 'Supabase configurado' : 'Banco local vazio no navegador'}</p>
             <Button className="w-full border border-white/10 bg-white/5 text-white hover:bg-white/10" type="button" onClick={restoreDemo}>
               Limpar banco
             </Button>

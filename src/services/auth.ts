@@ -101,6 +101,8 @@ export const saveAuthSession = (account: Pick<AuthAccount, 'userId' | 'email'>, 
     email: account.email,
     createdAt: new Date().toISOString(),
   }
+  window.localStorage.removeItem(AUTH_SESSION_KEY)
+  window.sessionStorage.removeItem(AUTH_SESSION_KEY)
   const target = remember ? window.localStorage : window.sessionStorage
   target.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
   window.localStorage.removeItem(LEGACY_AUTH_KEY)
