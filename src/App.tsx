@@ -773,6 +773,22 @@ const downloadCsv = (filename: string, rows: Array<Record<string, string | numbe
   URL.revokeObjectURL(url)
 }
 
+const openUrlInNewTab = (url: string) => {
+  if (!url) return
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+const downloadUrl = (url: string, filename: string) => {
+  if (!url) return
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename || 'arquivo'
+  link.rel = 'noopener noreferrer'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
 const getQuoteRecipient = (state: AppState, quote: Quote) => {
   const client = quote.clientId ? state.clients.find((item) => item.id === quote.clientId) : undefined
   const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
@@ -6218,7 +6234,52 @@ function QuotesPage({
               {expanded ? <div className="quote-card-details border-t p-3">
                 <div className="grid gap-3 lg:grid-cols-[1fr_0.8fr]">
                   <div className="quote-card-section rounded-lg border p-3"><p className="text-xs font-black uppercase text-gray-500">Itens</p><div className="mt-2 space-y-1.5">{items.map((item) => <div key={item.id} className="flex items-start justify-between gap-3 text-sm"><span>{item.quantity}x {item.description}</span><strong className="whitespace-nowrap">{formatCurrency(item.totalPrice)}</strong></div>)}{!items.length ? <p className="text-sm text-gray-500">Nenhum item.</p> : null}</div></div>
-                  <div className="quote-card-section rounded-lg border p-3"><div className="flex items-center justify-between"><p className="text-xs font-black uppercase text-gray-500">Pagamentos</p><span className="text-xs font-bold text-gray-400">{receipts.length} comprovante(s)</span></div><div className="mt-2 space-y-1.5">{payments.map((payment) => <div key={payment.id} className="flex items-center justify-between gap-3 text-xs"><span>{payment.paymentType} · {formatCurrency(payment.amount)}</span><StatusBadge>{payment.status}</StatusBadge></div>)}{!payments.length ? <p className="text-sm text-gray-500">Sem lançamentos.</p> : null}{receipts.map((file) => <a key={file.id} className="flex items-center gap-1 text-xs font-bold text-emerald-700 underline" href={file.fileUrl} target="_blank" rel="noreferrer"><Paperclip size={13} /> {file.fileName}</a>)}</div></div>
+                  <div className="quote-card-section rounded-lg border p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-black uppercase text-gray-500">Pagamentos</p>
+                      <span className="text-xs font-bold text-gray-400">{receipts.length} comprovante(s)</span>
+                    </div>
+                    <div className="mt-2 space-y-1.5">
+                      {payments.map((payment) => <div key={payment.id} className="flex items-center justify-between gap-3 text-xs"><span>{payment.paymentType} · {formatCurrency(payment.amount)}</span><StatusBadge>{payment.status}</StatusBadge></div>)}
+                      {!payments.length ? <p className="text-sm text-gray-500">Sem lançamentos.</p> : null}
+                      {receipts.map((file) => {
+                        const fileUrl = file.externalLink || file.fileUrl || ''
+                        if (!fileUrl) {
+                          return <div key={file.id} className="flex items-center gap-1 text-xs font-bold text-gray-500"><Paperclip size={13} /> {file.fileName}</div>
+                        }
+                        return (
+                          <div key={file.id} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2 py-1">
+                            <button
+                              className="flex min-w-0 items-center gap-1 text-left text-xs font-bold text-emerald-700 hover:underline"
+                              type="button"
+                              onClick={() => openUrlInNewTab(fileUrl)}
+                            >
+                              <Paperclip size={13} />
+                              <span className="truncate">{file.fileName}</span>
+                            </button>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                aria-label={`Visualizar ${file.fileName}`}
+                                className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                                type="button"
+                                onClick={() => openUrlInNewTab(fileUrl)}
+                              >
+                                <FileText size={12} />
+                              </button>
+                              <button
+                                aria-label={`Baixar ${file.fileName}`}
+                                className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                                type="button"
+                                onClick={() => downloadUrl(fileUrl, file.fileName)}
+                              >
+                                <Download size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
                 <div className="quote-card-actions mt-3 flex flex-wrap items-center gap-1.5">
                   {!quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Arquivada', 'Excluída logicamente'].includes(quote.status) ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEditQuote(quote)}><Pencil size={14} /> Editar</Button> : null}
