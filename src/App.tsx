@@ -6264,21 +6264,40 @@ function QuotesPage({
                           return <div key={file.id} className="flex items-center gap-1 text-xs font-bold text-gray-500"><Paperclip size={13} /> {file.fileName}</div>
                         }
                         return (
-                          <div key={file.id} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2 py-1">
+                          <div
+                            key={file.id}
+                            className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2 py-1 hover:border-emerald-300 hover:bg-emerald-50/40"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })
+                              }
+                            }}
+                          >
                             <button
-                              className="flex min-w-0 items-center gap-1 text-left text-xs font-bold text-emerald-700 hover:underline"
+                              className="flex min-w-0 flex-1 items-center gap-1 text-left text-xs font-bold text-emerald-700 hover:underline"
                               type="button"
-                              onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })
+                              }}
                             >
                               <Paperclip size={13} />
                               <span className="truncate">{file.fileName}</span>
+                              <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[0.65rem] font-black text-emerald-700">Abrir</span>
                             </button>
                             <div className="flex shrink-0 items-center gap-1">
                               <button
                                 aria-label={`Visualizar ${file.fileName}`}
                                 className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
                                 type="button"
-                                onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })
+                                }}
                               >
                                 <FileText size={12} />
                               </button>
@@ -6286,7 +6305,10 @@ function QuotesPage({
                                 aria-label={`Baixar ${file.fileName}`}
                                 className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
                                 type="button"
-                                onClick={() => downloadUrl(fileUrl, file.fileName)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  downloadUrl(fileUrl, file.fileName)
+                                }}
                               >
                                 <Download size={12} />
                               </button>
