@@ -1961,7 +1961,9 @@ function App() {
               deliveryDeadline: addCalendarDays(captureDate, deliveryDaysAfterCapture),
               deliveryDaysAfterCapture,
               address: appointment.address || project.address,
-              projectStatus: 'Agendado' as const,
+              projectStatus: ['Aguardando agendamento', 'Agendado', 'Confirmação pendente', 'Aguardando sinal'].includes(project.projectStatus)
+                ? ('Confirmado' as const)
+                : project.projectStatus,
               updatedAt: now,
             }
           : undefined
@@ -3357,9 +3359,33 @@ function App() {
       }
 
       if (existingProject) {
+        const normalizedExistingStatus: Project['projectStatus'] = ['Aguardando agendamento', 'Agendado', 'Confirmação pendente', 'Aguardando sinal']
+          .includes(existingProject.projectStatus)
+          ? 'Confirmado'
+          : existingProject.projectStatus
         return {
           ...current,
           leads: current.leads.map((item) => item.id === lead.id ? { ...item, pipelineStage: 'Serviço confirmado', probability: 100, updatedAt: now } : item),
+          projects: current.projects.map((project) => project.id === existingProject.id
+            ? { ...project, projectStatus: normalizedExistingStatus, updatedAt: now }
+            : project),
+          ...(normalizedExistingStatus !== existingProject.projectStatus
+            ? {
+                statusHistory: [
+                  createStatusHistory(
+                    'Projeto',
+                    existingProject.id,
+                    'Projeto confirmado',
+                    `${existingProject.projectCode} marcado como confirmado ao entrar em projetos.`,
+                    activeUserId,
+                    existingProject.projectStatus,
+                    normalizedExistingStatus,
+                    now,
+                  ),
+                  ...current.statusHistory,
+                ],
+              }
+            : {}),
         }
       }
 
@@ -3398,7 +3424,7 @@ function App() {
         travelFee: quote?.travelFee ?? 0,
         depositValue: Math.min(received, totalValue),
         remainingValue: Math.max(totalValue - received, 0),
-        projectStatus: 'Aguardando agendamento',
+        projectStatus: 'Confirmado',
         financialStatus: received >= totalValue && totalValue > 0 ? 'Pago' : received > 0 ? 'Parcialmente pago' : 'Não faturado',
         paymentMethod: current.payments.find((payment) => payment.quoteId === quote?.id && payment.status === 'Recebida')?.paymentMethod ?? 'PIX',
         notes: quote?.notes || lead.notes,
@@ -3593,7 +3619,7 @@ function App() {
 
         const hasDeposit = depositValue > 0
         const depositIsPaid = values.depositPaid && hasDeposit
-        const projectStatus: Project['projectStatus'] = depositIsPaid || !hasDeposit ? 'Agendado' : 'Aguardando sinal'
+        const projectStatus: Project['projectStatus'] = 'Confirmado'
         const financialStatus: Project['financialStatus'] = depositIsPaid
           ? remainingValue > 0
             ? 'Parcialmente pago'
@@ -5227,7 +5253,10 @@ function DashboardPage({
     expiringQuotes: state.quotes.filter((quote) => !['Expirada', 'Cancelada', 'Recusada', 'Convertida em projeto'].includes(quote.status) && quote.expirationDate >= today && quote.expirationDate <= addCalendarDays(today, 2)).length,
     expiredQuotes: state.quotes.filter((quote) => quote.status === 'Expirada').length,
     waitingDeposits: state.quotes.filter((quote) => ['Aprovada', 'Aguardando entrada'].includes(quote.status)).length,
-    waitingSchedule: visibleProjects.filter((project) => project.projectStatus === 'Aguardando agendamento').length,
+    waitingSchedule: visibleProjects.filter((project) => {
+      const capture = visibleAppointments.some((appointment) => appointment.projectId === project.id && appointment.appointmentType === 'Captação' && appointment.status !== 'Cancelado')
+      return !capture && ['Aguardando agendamento', 'Confirmado'].includes(project.projectStatus)
+    }).length,
     capturesToday: visibleAppointments.filter((appointment) => appointment.appointmentType === 'Captação' && appointment.startAt.slice(0, 10) === today && appointment.status !== 'Cancelado').length,
     capturesWeek: visibleAppointments.filter((appointment) => appointment.appointmentType === 'Captação' && appointment.startAt.slice(0, 10) >= today && appointment.startAt.slice(0, 10) <= weekEnd && appointment.status !== 'Cancelado').length,
     finalPayments: visibleProjects.filter((project) => project.projectStatus === 'Aguardando pagamento final').length,
@@ -5860,7 +5889,7 @@ function ProjectWorkspace({
   const checklistProgress = checklistCategories.length ? Math.round((completedChecklistCategories / checklistCategories.length) * 100) : 0
   const defaultDeliveryDays = Math.max(Number(state.companySettings.defaultDeliveryDays) || 7, 1)
 
-  const primaryAction = project.projectStatus === 'Aguardando agendamento'
+  const primaryAction = (!project.captureDate || project.projectStatus === 'Aguardando agendamento')
     ? { label: 'Agendar captação', action: onScheduleCapture, icon: <CalendarDays size={16} /> }
     : project.projectStatus === 'Aguardando pagamento final'
       ? { label: 'Registrar pagamento final', action: onRegisterFinalPayment, icon: <Wallet size={16} /> }
@@ -8224,7 +8253,7 @@ function ProjectForm({
       depositValue: project?.depositValue ?? defaultTotal * (settings.defaultDepositPercentage / 100),
       discountValue: project?.discountValue ?? 0,
       travelFee: project?.travelFee ?? 0,
-      projectStatus: project?.projectStatus ?? 'Aguardando agendamento',
+      projectStatus: project?.projectStatus ?? 'Confirmado',
       financialStatus: project?.financialStatus ?? 'Aguardando sinal',
       paymentMethod: project?.paymentMethod ?? 'PIX',
       notes: project?.notes ?? '',
@@ -8381,7 +8410,7 @@ function ProjectForm({
           onChange={(nextValue) => setValue('travelFee', nextValue, { shouldDirty: true, shouldValidate: true })}
         />
       </InputField>
-      <div><input type="hidden" {...register('projectStatus')} /><SmallStat label="Status do projeto" value={project?.projectStatus ?? 'Aguardando agendamento'} /></div>
+      <div><input type="hidden" {...register('projectStatus')} /><SmallStat label="Status do projeto" value={project?.projectStatus ?? 'Confirmado'} /></div>
       <div><input type="hidden" {...register('financialStatus')} /><SmallStat label="Status financeiro" value={project?.financialStatus ?? 'Aguardando sinal'} /></div>
       <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
       <div className="md:col-span-2">

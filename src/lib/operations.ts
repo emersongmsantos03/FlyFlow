@@ -149,10 +149,10 @@ export const buildOperationalTasks = (state: AppState, nowDate = new Date()): Ta
 
   state.projects.forEach((project) => {
     if (project.archivedAt || project.deletedAt) return
-    if (project.projectStatus === 'Aguardando agendamento') {
+    const capture = state.appointments.find((item) => item.projectId === project.id && item.appointmentType === 'Captação' && item.status !== 'Cancelado')
+    if (!capture && ['Aguardando agendamento', 'Confirmado'].includes(project.projectStatus)) {
       generated.push(generatedTask(`project-schedule:${project.id}`, `Agendar captação de ${project.name}`, now, 'Urgente', { leadId: project.leadId, projectId: project.id }, now))
     }
-    const capture = state.appointments.find((item) => item.projectId === project.id && item.appointmentType === 'Captação' && item.status !== 'Cancelado')
     if (capture) {
       const confirmationDue = new Date(new Date(capture.startAt).getTime() - DAY_MS).toISOString()
       if (new Date(capture.startAt) >= nowDate && capture.confirmationStatus !== 'Confirmado') {

@@ -357,7 +357,7 @@ export const createDemoState = (): AppState => {
       travelFee: 0,
       depositValue: 225,
       remainingValue: 225,
-      projectStatus: 'Agendado',
+      projectStatus: 'Confirmado',
       financialStatus: 'Parcialmente pago',
       paymentMethod: 'PIX',
       notes: 'Cliente quer tomadas verticais e horizontais.',
