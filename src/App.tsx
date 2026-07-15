@@ -86,6 +86,11 @@ import {
   slugify,
   whatsappLink,
 } from './lib/format'
+import {
+  downloadUrl,
+  getFilePreviewMode,
+  openUrlInNewTab,
+} from './lib/files'
 import { allPermissions, can, canOpenPage, permissionLabels, permissionSummary, rolePermissionPresets } from './lib/permissions'
 import {
   addCalendarDays,
@@ -771,36 +776,6 @@ const downloadCsv = (filename: string, rows: Array<Record<string, string | numbe
   link.download = filename
   link.click()
   URL.revokeObjectURL(url)
-}
-
-const openUrlInNewTab = (url: string) => {
-  if (!url) return
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-const downloadUrl = (url: string, filename: string) => {
-  if (!url) return
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename || 'arquivo'
-  link.rel = 'noopener noreferrer'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-}
-
-const getFilePreviewMode = (url: string, fileType = ''): 'image' | 'pdf' | 'link' => {
-  const normalizedUrl = url.toLowerCase()
-  const normalizedType = fileType.toLowerCase()
-  if (normalizedType.includes('pdf') || normalizedUrl.includes('application/pdf') || normalizedUrl.endsWith('.pdf')) return 'pdf'
-  if (
-    normalizedType.includes('image') ||
-    normalizedUrl.startsWith('data:image/') ||
-    /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(normalizedUrl)
-  ) {
-    return 'image'
-  }
-  return 'link'
 }
 
 const getQuoteRecipient = (state: AppState, quote: Quote) => {
@@ -6479,12 +6454,34 @@ function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDe
 }) {
   const accounts = [...state.bankAccounts].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name))
   const transfers = [...state.bankTransfers].sort((a, b) => new Date(b.transferredAt).getTime() - new Date(a.transferredAt).getTime())
+  const activeAccounts = accounts.filter((account) => account.active)
+  const transferVolume = transfers.reduce((total, transfer) => total + transfer.amount, 0)
+
+  const getLastMovementAt = (accountId: string) => {
+    const movementDates = [
+      ...state.payments.filter((item) => item.bankAccountId === accountId && item.status === 'Recebida' && !item.deletedAt).map((item) => item.paidAt),
+      ...state.expenses.filter((item) => item.bankAccountId === accountId && isPaidExpense(item) && !item.deletedAt).map((item) => item.paidAt),
+      ...state.bankTransfers.filter((item) => item.fromAccountId === accountId || item.toAccountId === accountId).map((item) => item.transferredAt),
+    ].filter(Boolean) as string[]
+
+    if (!movementDates.length) return ''
+    return [...movementDates].sort((a, b) => b.localeCompare(a))[0]
+  }
+
   return (
     <div className="space-y-4">
       <Panel title="Contas bancárias" action={<div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onTransfer()}><ArrowRightLeft size={16} /> Transferir</Button><Button type="button" onClick={() => onCreate()}><Plus size={16} /> Nova conta</Button></div>}>
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <div><p className="text-xs font-black uppercase tracking-wide text-gray-500">Saldo consolidado</p><p className="mt-1 text-2xl font-black text-gray-950">{formatCurrency(getTotalBankBalance(state))}</p></div>
-          <p className="max-w-lg text-sm text-gray-500">O saldo considera o valor inicial, receitas recebidas, despesas pagas e transferências entre contas.</p>
+        <div className="mb-4 grid gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Saldo consolidado</p>
+            <p className="mt-1 text-3xl font-black tracking-tight text-gray-950">{formatCurrency(getTotalBankBalance(state))}</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500">O saldo consolida valor inicial, receitas recebidas, despesas pagas e transferências entre contas.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[27rem]">
+            <SmallStat label="Contas ativas" value={String(activeAccounts.length)} />
+            <SmallStat label="Transferências registradas" value={String(transfers.length)} />
+            <SmallStat label="Volume transferido" value={formatCurrency(transferVolume)} />
+          </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           {accounts.map((account) => {
@@ -6492,21 +6489,49 @@ function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDe
             const movementCount = state.payments.filter((item) => item.bankAccountId === account.id && item.status === 'Recebida' && !item.deletedAt).length
               + state.expenses.filter((item) => item.bankAccountId === account.id && isPaidExpense(item) && !item.deletedAt).length
               + state.bankTransfers.filter((item) => item.fromAccountId === account.id || item.toAccountId === account.id).length
+            const lastMovementAt = getLastMovementAt(account.id)
             return (
-              <article key={account.id} className="rounded-xl border border-gray-200 bg-white p-4">
+              <article key={account.id} className="finance-bank-card dashboard-list-card rounded-2xl border border-gray-200 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-black text-gray-950">{account.name}</h3><StatusBadge>{account.active ? 'Ativa' : 'Inativa'}</StatusBadge></div><p className="mt-1 text-sm text-gray-500">{account.bankName} · {account.accountType}</p></div>
-                  <Landmark className="shrink-0 text-amber-600" size={20} />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-base font-black tracking-tight text-gray-950">{account.name}</h3>
+                      <StatusBadge>{account.active ? 'Ativa' : 'Inativa'}</StatusBadge>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-500">{account.bankName} · {account.accountType}</p>
+                  </div>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700">
+                    <Landmark size={18} />
+                  </span>
                 </div>
-                <p className={`mt-5 text-2xl font-black ${balance < 0 ? 'text-red-600' : 'text-gray-950'}`}>{formatCurrency(balance)}</p>
-                <p className="mt-1 text-xs text-gray-500">{movementCount} movimentação(ões) · inicial {formatCurrency(account.openingBalance)}</p>
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-200 pt-3"><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEdit(account)}><Pencil size={14} /> Editar</Button><IconActionButton label="Excluir conta" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDelete(account)} /></div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Saldo atual</p>
+                    <p className={`mt-1 text-3xl font-black tracking-tight ${balance < 0 ? 'text-red-600' : 'text-gray-950'}`}>{formatCurrency(balance)}</p>
+                  </div>
+                  <div className="text-sm text-gray-500 sm:text-right">
+                    <p>{movementCount} movimentação(ões)</p>
+                    <p>Inicial {formatCurrency(account.openingBalance)}</p>
+                  </div>
+                </div>
+                {lastMovementAt ? <p className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">Última movimentação: <strong className="text-gray-950">{formatDateTime(lastMovementAt)}</strong></p> : null}
+                {account.notes ? <p className="mt-3 rounded-xl border border-dashed border-gray-200 bg-white/70 px-3 py-2 text-xs leading-5 text-gray-500">{account.notes}</p> : null}
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
+                  <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEdit(account)}><Pencil size={14} /> Editar</Button>
+                  <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onTransfer()}><ArrowRightLeft size={14} /> Transferir</Button>
+                  <IconActionButton label="Excluir conta" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDelete(account)} />
+                </div>
               </article>
             )
           })}
         </div>
       </Panel>
       <Panel title="Transferências entre contas">
+        <div className="mb-3 grid gap-2 sm:grid-cols-3">
+          <SmallStat label="Transferências" value={String(transfers.length)} />
+          <SmallStat label="Volume transferido" value={formatCurrency(transferVolume)} />
+          <SmallStat label="Saldo consolidado" value={formatCurrency(getTotalBankBalance(state))} />
+        </div>
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th>Descrição</th><th>Valor</th><th>Ações</th></tr></thead>
@@ -7200,6 +7225,7 @@ function ReportsPage({
   const uniquePeriodExpenses = reportExpenses.filter((expense) => !expense.recurring).reduce((total, expense) => total + expense.amount, 0)
   const recurringPeriodExpenses = reportExpenses.filter((expense) => expense.recurring).reduce((total, expense) => total + expense.amount, 0)
   const bankPositions = state.bankAccounts.map((account) => ({ account, balance: getBankAccountBalance(state, account) })).sort((a, b) => b.balance - a.balance)
+  const recentTransfers = [...state.bankTransfers].sort((a, b) => b.transferredAt.localeCompare(a.transferredAt)).slice(0, 6)
   const periodLabel = periodOptions.find((option) => option.value === period)?.label || 'Período atual'
   const regimeLabel = regime === 'cash' ? 'Caixa · valores pagos' : 'Competência · valores lançados'
 
@@ -7261,7 +7287,7 @@ function ReportsPage({
         </Panel>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
         <Panel title="Posição por conta bancária">
           <div className="space-y-3">
             {bankPositions.map(({ account, balance }) => <div key={account.id} className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-3"><div className="flex min-w-0 items-center gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Landmark size={17} /></span><div className="min-w-0"><strong className="block truncate text-sm text-gray-950">{account.name}</strong><span className="text-xs text-gray-500">{account.bankName} · {account.active ? 'Ativa' : 'Inativa'}</span></div></div><strong className={balance < 0 ? 'text-red-600' : 'text-gray-950'}>{formatCurrency(balance)}</strong></div>)}
@@ -7270,6 +7296,25 @@ function ReportsPage({
         <Panel title="Despesas únicas e recorrentes">
           <div className="grid gap-3 sm:grid-cols-2"><SmallStat label="Únicas no período" value={formatCurrency(uniquePeriodExpenses)} /><SmallStat label="Recorrentes no período" value={formatCurrency(recurringPeriodExpenses)} /><SmallStat label="Média recorrente mensal" value={formatCurrency(metrics.recurringMonthlyExpenses)} /><SmallStat label="Recorrências ativas" value={String(recurringExpenses.length)} /></div>
           <div className="mt-4 space-y-2">{recurringExpenses.slice(0, 5).map((expense) => <div key={expense.id} className="flex items-center justify-between gap-3 border-t border-gray-200 pt-2 text-sm"><span className="min-w-0 truncate text-gray-600">{expense.description} · {expense.recurrenceFrequency || 'Mensal'}</span><strong className="whitespace-nowrap text-gray-950">{formatCurrency(expense.amount)}</strong></div>)}{!recurringExpenses.length ? <p className="text-sm text-gray-500">Nenhuma despesa recorrente ativa.</p> : null}</div>
+        </Panel>
+        <Panel title="Transferências entre contas">
+          {recentTransfers.length ? (
+            <div className="space-y-3">
+              {recentTransfers.map((transfer) => (
+                <div key={transfer.id} className="finance-transfer-row rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-gray-950">{state.bankAccounts.find((account) => account.id === transfer.fromAccountId)?.name || 'Origem'} → {state.bankAccounts.find((account) => account.id === transfer.toAccountId)?.name || 'Destino'}</p>
+                      <p className="mt-1 text-xs text-gray-500">{transfer.description || 'Transferência entre contas'} · {formatDateTime(transfer.transferredAt)}</p>
+                    </div>
+                    <strong className="whitespace-nowrap text-gray-950">{formatCurrency(transfer.amount)}</strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <DashboardEmptyState icon={<ArrowRightLeft size={20} />} message="Nenhuma transferência registrada." />
+          )}
         </Panel>
       </div>
 

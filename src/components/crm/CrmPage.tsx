@@ -27,6 +27,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
+import { downloadUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
 
@@ -567,6 +568,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
 }) {
   const [tab, setTab] = useState<DrawerTab>('overview')
   const [previewQuoteId, setPreviewQuoteId] = useState('')
+  const [previewFile, setPreviewFile] = useState<{ fileName: string; url: string; mode: FilePreviewMode } | null>(null)
   const quotes = state.quotes.filter((quote) => quote.leadId === lead.id && !quote.deletedAt)
   const projects = state.projects.filter((project) => project.leadId === lead.id && !project.deletedAt)
   const payments = state.payments.filter((payment) => !payment.deletedAt && !payment.archivedAt && (payment.leadId === lead.id || projects.some((project) => project.id === payment.projectId)))
@@ -601,7 +603,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
       <div className="space-y-4 p-4">
         {tab === 'overview' ? <>
           <div className="grid grid-cols-2 gap-2">{[['Valor potencial', formatCurrency(lead.estimatedValue)], ['Próxima ação', lead.nextContactAt ? formatDateTime(lead.nextContactAt) : 'Não definida'], ['Serviço', lead.serviceInterest], ['Origem', lead.source]].map(([label, value]) => <div key={label} className="rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">{label}</p><p className="mt-1 text-sm font-black text-gray-950">{value}</p></div>)}</div>
-          <section><h3 className="text-sm font-black text-gray-950">Ações principais</h3><div className="mt-2 grid gap-2 sm:grid-cols-2"><Button type="button" onClick={() => onRegisterInteraction(lead, 'Contato realizado')}><MessageCircle size={16} /> Registrar atividade</Button><Button variant="secondary" type="button" onClick={() => onCreateTask(lead)}><CheckCircle2 size={16} /> Criar tarefa</Button><Button variant="secondary" type="button" onClick={() => onScheduleReturn(lead)}><CalendarDays size={16} /> Agendar retorno</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal('', lead.id)}><FileText size={16} /> Gerar proposta</Button>{quoteForDeposit ? <Button variant="secondary" type="button" onClick={() => onRegisterDeposit(quoteForDeposit)}><CircleDollarSign size={16} /> Registrar entrada</Button> : null}{receiptTarget ? <Button variant="secondary" type="button" onClick={() => onAttachReceipt(receiptTarget)}><Paperclip size={16} /> {receiptTarget.receiptUrl ? 'Ver comprovante' : 'Anexar comprovante'}</Button> : null}{lead.pipelineStage === 'Serviço confirmado' && !currentProject(state, lead.id) ? <Button className="sm:col-span-2" type="button" onClick={() => onCreateProject(lead)}><Briefcase size={16} /> Criar projeto</Button> : null}</div></section>
+          <section><h3 className="text-sm font-black text-gray-950">Ações principais</h3><div className="mt-2 grid gap-2 sm:grid-cols-2"><Button type="button" onClick={() => onRegisterInteraction(lead, 'Contato realizado')}><MessageCircle size={16} /> Registrar atividade</Button><Button variant="secondary" type="button" onClick={() => onCreateTask(lead)}><CheckCircle2 size={16} /> Criar tarefa</Button><Button variant="secondary" type="button" onClick={() => onScheduleReturn(lead)}><CalendarDays size={16} /> Agendar retorno</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal('', lead.id)}><FileText size={16} /> Gerar proposta</Button>{quoteForDeposit ? <Button variant="secondary" type="button" onClick={() => onRegisterDeposit(quoteForDeposit)}><CircleDollarSign size={16} /> Registrar entrada</Button> : null}{receiptTarget ? <Button variant="secondary" type="button" onClick={() => receiptTarget.receiptUrl ? setPreviewFile({ fileName: `${receiptTarget.paymentType} comprovante`, url: receiptTarget.receiptUrl, mode: getFilePreviewMode(receiptTarget.receiptUrl) }) : onAttachReceipt(receiptTarget)}><Paperclip size={16} /> {receiptTarget.receiptUrl ? 'Ver comprovante' : 'Anexar comprovante'}</Button> : null}{lead.pipelineStage === 'Serviço confirmado' && !currentProject(state, lead.id) ? <Button className="sm:col-span-2" type="button" onClick={() => onCreateProject(lead)}><Briefcase size={16} /> Criar projeto</Button> : null}</div></section>
           <section><h3 className="text-sm font-black text-gray-950">Contato</h3><dl className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-gray-500">Telefone</dt><dd className="font-bold text-gray-950">{lead.whatsapp || lead.phone || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">E-mail</dt><dd className="break-all text-right font-bold text-gray-950">{lead.email || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">Local</dt><dd className="text-right font-bold text-gray-950">{lead.city || 'Não informado'}</dd></div></dl></section>
         </> : null}
         {tab === 'activities' ? <Timeline items={timeline} /> : null}
@@ -627,21 +629,96 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
         })}</DrawerList> : null}
         {tab === 'projects' ? <DrawerList empty="Nenhum projeto vinculado.">{projects.map((project) => <div key={project.id} className="rounded-lg border border-gray-200 p-3"><div className="flex items-center justify-between gap-3"><strong>{project.projectCode}</strong><StatusBadge>{project.projectStatus}</StatusBadge></div><p className="mt-2 text-sm text-gray-500">{project.name} · {formatCurrency(project.totalValue)}</p></div>)}</DrawerList> : null}
         {tab === 'finance' ? <DrawerList empty="Nenhum lançamento vinculado.">{payments.map((payment) => {
-          const hasReceipt = Boolean(payment.receiptUrl || files.some((file) => file.paymentId === payment.id))
+          const receiptFile = files.find((file) => file.paymentId === payment.id && !file.deletedAt)
+          const receiptUrl = payment.receiptUrl || receiptFile?.fileUrl || receiptFile?.externalLink || ''
+          const hasReceipt = Boolean(receiptUrl)
+          const receiptMode = getFilePreviewMode(receiptUrl, receiptFile?.fileType || '')
           const paid = payment.status === 'Recebida'
           const paidLabel = payment.paymentType === 'Sinal' ? 'Marcar sinal pago' : payment.paymentType === 'Pagamento final' ? 'Marcar final pago' : 'Marcar como pago'
           return <article key={payment.id} className="rounded-lg border border-gray-200 p-3">
             <div className="flex items-center justify-between gap-3"><strong>{payment.paymentType} · {formatCurrency(payment.amount)}</strong><StatusBadge>{payment.status}</StatusBadge></div>
             <p className="mt-2 text-sm text-gray-500">{paid && payment.paidAt ? `Recebido em ${formatDate(payment.paidAt)}` : `Vencimento ${formatDate(payment.dueDate)}`} · {hasReceipt ? 'com comprovante' : 'sem comprovante'}</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {hasReceipt ? <Button className="min-h-10 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => setPreviewFile({ fileName: receiptFile?.fileName || `${payment.paymentType} comprovante`, url: receiptUrl, mode: receiptMode })}><Eye size={15} /> Abrir comprovante</Button> : null}
               {paid ? <Button className="min-h-10 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onMarkPaymentPaid(payment)}><X size={15} /> Desmarcar como pago</Button> : <Button className="min-h-10 px-3 py-1 text-xs" type="button" onClick={() => onMarkPaymentPaid(payment)}><Check size={15} /> {paidLabel}</Button>}
-              <Button className="min-h-10 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onAttachReceipt(payment)}><Paperclip size={15} /> {hasReceipt ? 'Abrir comprovante' : 'Anexar comprovante'}</Button>
+              <Button className="min-h-10 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onAttachReceipt(payment)}><Paperclip size={15} /> {hasReceipt ? 'Anexar novo comprovante' : 'Anexar comprovante'}</Button>
             </div>
           </article>
         })}</DrawerList> : null}
-        {tab === 'files' ? <DrawerList empty="Nenhum arquivo vinculado.">{files.map((file) => <a key={file.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3 text-sm font-bold text-gray-950" href={file.fileUrl || file.externalLink} target="_blank" rel="noreferrer"><span className="flex items-center gap-2"><Paperclip size={16} /> {file.fileName}</span><span className="text-xs text-gray-500">{file.receiptStatus || file.fileType}</span></a>)}</DrawerList> : null}
+        {tab === 'files' ? <DrawerList empty="Nenhum arquivo vinculado.">{files.map((file) => {
+          const fileUrl = file.fileUrl || file.externalLink || ''
+          const previewMode = getFilePreviewMode(fileUrl, file.fileType)
+          return (
+            <div key={file.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3 text-sm font-bold text-gray-950">
+              <button
+                className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-emerald-700"
+                type="button"
+                onClick={() => {
+                  if (!fileUrl) return
+                  setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })
+                }}
+              >
+                <Paperclip size={16} />
+                <span className="truncate">{file.fileName}</span>
+              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                {fileUrl ? (
+                  <>
+                    <button
+                      aria-label={`Visualizar ${file.fileName}`}
+                      className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                      type="button"
+                      onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
+                    >
+                      <Eye size={12} />
+                    </button>
+                    <button
+                      aria-label={`Baixar ${file.fileName}`}
+                      className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                      type="button"
+                      onClick={() => downloadUrl(fileUrl, file.fileName)}
+                    >
+                      <Download size={12} />
+                    </button>
+                  </>
+                ) : null}
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[0.65rem] font-black text-gray-500">{file.receiptStatus || file.fileType}</span>
+              </div>
+            </div>
+          )
+        })}</DrawerList> : null}
       </div>
     </aside>
+    {previewFile ? createPortal(
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-3">
+        <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Arquivo</p>
+              <p className="truncate text-base font-black text-gray-950">{previewFile.fileName}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" type="button" onClick={() => openUrlInNewTab(previewFile.url)}><ArrowRight size={15} /> Abrir em nova aba</Button>
+              <Button variant="secondary" type="button" onClick={() => downloadUrl(previewFile.url, previewFile.fileName)}><Download size={15} /> Baixar</Button>
+              <Button variant="ghost" type="button" onClick={() => setPreviewFile(null)}>Fechar</Button>
+            </div>
+          </div>
+          <div className="bg-gray-100 p-3">
+            {previewFile.mode === 'image' ? (
+              <img className="max-h-[75vh] w-full object-contain" src={previewFile.url} alt={previewFile.fileName} />
+            ) : previewFile.mode === 'pdf' ? (
+              <iframe className="h-[75vh] w-full rounded-xl bg-white" src={previewFile.url} title={previewFile.fileName} />
+            ) : (
+              <div className="flex min-h-[35vh] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center">
+                <p className="text-sm text-gray-600">Este arquivo será aberto em uma nova aba. Você também pode baixá-lo.</p>
+                <Button type="button" onClick={() => openUrlInNewTab(previewFile.url)}><ArrowRight size={15} /> Abrir arquivo</Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body,
+    ) : null}
   </>
 }
 

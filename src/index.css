@@ -457,10 +457,27 @@ button:disabled {
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
+.finance-bank-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 98%, transparent), color-mix(in srgb, var(--surface-soft) 60%, var(--surface))) !important;
+}
+
+.finance-transfer-row {
+  background: color-mix(in srgb, var(--surface-soft) 48%, transparent) !important;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
 .dashboard-task:hover,
 .dashboard-list-card:hover {
   background: var(--surface-soft) !important;
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border)) !important;
+  transform: translateY(-1px);
+}
+
+.finance-bank-card:hover,
+.finance-transfer-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border)) !important;
+  background: var(--surface-soft) !important;
   transform: translateY(-1px);
 }
 
@@ -575,7 +592,7 @@ button:disabled {
 }
 
 .field-input.field-input-with-leading-icon {
-  padding-left: 2.75rem;
+  padding-left: 3rem;
 }
 
 .field-input:focus {
