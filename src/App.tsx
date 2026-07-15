@@ -789,6 +789,20 @@ const downloadUrl = (url: string, filename: string) => {
   link.remove()
 }
 
+const getFilePreviewMode = (url: string, fileType = ''): 'image' | 'pdf' | 'link' => {
+  const normalizedUrl = url.toLowerCase()
+  const normalizedType = fileType.toLowerCase()
+  if (normalizedType.includes('pdf') || normalizedUrl.includes('application/pdf') || normalizedUrl.endsWith('.pdf')) return 'pdf'
+  if (
+    normalizedType.includes('image') ||
+    normalizedUrl.startsWith('data:image/') ||
+    /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(normalizedUrl)
+  ) {
+    return 'image'
+  }
+  return 'link'
+}
+
 const getQuoteRecipient = (state: AppState, quote: Quote) => {
   const client = quote.clientId ? state.clients.find((item) => item.id === quote.clientId) : undefined
   const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
@@ -6158,6 +6172,7 @@ function QuotesPage({
   const [scope, setScope] = useState<'active' | 'history'>('active')
   const [search, setSearch] = useState('')
   const [expandedQuoteId, setExpandedQuoteId] = useState('')
+  const [previewFile, setPreviewFile] = useState<{ fileName: string; url: string; mode: 'image' | 'pdf' | 'link' } | null>(null)
   const visibleQuotes = state.quotes
     .filter((quote) => scope === 'history' ? Boolean(quote.archivedAt || quote.deletedAt) : !quote.archivedAt && !quote.deletedAt)
     .filter((quote) => {
@@ -6244,6 +6259,7 @@ function QuotesPage({
                       {!payments.length ? <p className="text-sm text-gray-500">Sem lançamentos.</p> : null}
                       {receipts.map((file) => {
                         const fileUrl = file.externalLink || file.fileUrl || ''
+                        const previewMode = getFilePreviewMode(fileUrl, file.fileType)
                         if (!fileUrl) {
                           return <div key={file.id} className="flex items-center gap-1 text-xs font-bold text-gray-500"><Paperclip size={13} /> {file.fileName}</div>
                         }
@@ -6252,7 +6268,7 @@ function QuotesPage({
                             <button
                               className="flex min-w-0 items-center gap-1 text-left text-xs font-bold text-emerald-700 hover:underline"
                               type="button"
-                              onClick={() => openUrlInNewTab(fileUrl)}
+                              onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
                             >
                               <Paperclip size={13} />
                               <span className="truncate">{file.fileName}</span>
@@ -6262,7 +6278,7 @@ function QuotesPage({
                                 aria-label={`Visualizar ${file.fileName}`}
                                 className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
                                 type="button"
-                                onClick={() => openUrlInNewTab(fileUrl)}
+                                onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
                               >
                                 <FileText size={12} />
                               </button>
@@ -6296,6 +6312,32 @@ function QuotesPage({
         })}
         {!visibleQuotes.length ? <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center"><h3 className="font-black text-gray-900">Nenhuma proposta encontrada</h3><p className="mt-1 text-sm text-gray-500">Ajuste a busca ou crie uma nova proposta.</p></div> : null}
       </div>
+      {previewFile ? (
+        <Modal title={previewFile.fileName} size="xl" onClose={() => setPreviewFile(null)}>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" type="button" onClick={() => openUrlInNewTab(previewFile.url)}>
+                <FileText size={15} /> Abrir em nova aba
+              </Button>
+              <Button variant="secondary" type="button" onClick={() => downloadUrl(previewFile.url, previewFile.fileName)}>
+                <Download size={15} /> Baixar
+              </Button>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+              {previewFile.mode === 'image' ? (
+                <img className="max-h-[75vh] w-full object-contain bg-black/5" src={previewFile.url} alt={previewFile.fileName} />
+              ) : previewFile.mode === 'pdf' ? (
+                <iframe className="h-[75vh] w-full" src={previewFile.url} title={previewFile.fileName} />
+              ) : (
+                <div className="space-y-3 p-6 text-sm text-gray-600">
+                  <p>Esse arquivo não oferece pré-visualização direta aqui.</p>
+                  <p>Use as opções acima para abrir ou baixar.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
