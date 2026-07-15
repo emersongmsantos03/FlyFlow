@@ -38,6 +38,7 @@ Deno.serve(async (request) => {
     const token = await tokenResponse.json() as { access_token: string }
     const input = await request.json() as {
       externalEventId?: string
+      deleteEvent?: boolean
       title: string
       description: string
       startAt: string
@@ -45,6 +46,18 @@ Deno.serve(async (request) => {
       location: string
       timeZone?: string
     }
+    if (input.deleteEvent) {
+      if (!input.externalEventId) return json({ deleted: true })
+      const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
+      const url = `${base}/${encodeURIComponent(input.externalEventId)}`
+      const googleResponse = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token.access_token}` },
+      })
+      if (!googleResponse.ok && googleResponse.status !== 404) return json({ error: 'Falha ao excluir evento.' }, 502)
+      return json({ deleted: true })
+    }
+
     if (!input.title || !input.startAt || !input.endAt) return json({ error: 'Evento incompleto.' }, 400)
 
     const event = {
@@ -69,4 +82,3 @@ Deno.serve(async (request) => {
     return json({ error: error instanceof Error ? error.message : 'Erro interno.' }, 500)
   }
 })
-

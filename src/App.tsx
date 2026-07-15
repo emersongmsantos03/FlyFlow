@@ -1907,14 +1907,6 @@ function App() {
   }
 
   const saveAppointment = async (values: AppointmentFormValues) => {
-    const scheduleChanged = selectedAppointment && (
-      asIsoFromInput(values.startAt) !== selectedAppointment.startAt ||
-      asIsoFromInput(values.endAt) !== selectedAppointment.endAt
-    )
-    if (scheduleChanged && !values.rescheduleReason.trim()) {
-      setToast('Informe o motivo do reagendamento.')
-      return
-    }
     const now = new Date().toISOString()
     const existingBeforeSave = selectedAppointment ?? (values.projectId && values.appointmentType === 'Captação'
       ? state.appointments.find((appointment) => appointment.projectId === values.projectId && appointment.appointmentType === 'Captação' && appointment.status !== 'Cancelado')
@@ -2054,6 +2046,134 @@ function App() {
     setModal(null)
     setAppointmentDefaults({})
     setSelectedAppointmentId('')
+  }
+
+  const deleteAppointment = (appointment: Appointment) => {
+    const storedAppointment = state.appointments.find((item) => item.id === appointment.id)
+    if (!storedAppointment) {
+      setToast('Agendamento não encontrado.')
+      return
+    }
+
+    requestConfirm({
+      title: 'Excluir agendamento?',
+      description: storedAppointment.externalEventId
+        ? 'O agendamento será removido do banco e do Google Calendar.'
+        : 'O agendamento será removido do banco.',
+      confirmLabel: 'Excluir agendamento',
+      cancelLabel: 'Cancelar',
+      tone: 'danger',
+      onConfirm: () => {
+        const now = new Date().toISOString()
+        const shouldResetProject = Boolean(
+          storedAppointment.projectId &&
+          storedAppointment.appointmentType === 'Captação' &&
+          state.projects.some(
+            (project) =>
+              project.id === storedAppointment.projectId &&
+              !project.actualCaptureAt &&
+              !project.editingStartedAt &&
+              !project.reviewSentAt &&
+              !project.finalDeliveryAt &&
+              !project.completedAt,
+          ),
+        )
+
+        updateState(
+          (current) => {
+            const appointmentToDelete = current.appointments.find((item) => item.id === storedAppointment.id)
+            if (!appointmentToDelete) return current
+
+            const project = appointmentToDelete.projectId
+              ? current.projects.find((item) => item.id === appointmentToDelete.projectId)
+              : undefined
+            const resetProject = Boolean(
+              project &&
+              appointmentToDelete.appointmentType === 'Captação' &&
+              !project.actualCaptureAt &&
+              !project.editingStartedAt &&
+              !project.reviewSentAt &&
+              !project.finalDeliveryAt &&
+              !project.completedAt,
+            )
+
+            const appointments = current.appointments
+              .filter((item) => item.id !== appointmentToDelete.id)
+              .filter((item) => !(resetProject && item.projectId === project?.id && item.appointmentType === 'Prazo de entrega'))
+
+            const projectUpdate = resetProject && project
+              ? {
+                  ...project,
+                  captureDate: '',
+                  captureStartTime: '',
+                  captureEndTime: '',
+                  deliveryDeadline: '',
+                  originalDeliveryDeadline: undefined,
+                  deliveryDeadlineNegotiated: false,
+                  deliveryDaysAfterCapture: Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1),
+                  projectStatus: 'Aguardando agendamento' as const,
+                  updatedAt: now,
+                }
+              : undefined
+
+            return {
+              ...current,
+              appointments,
+              tasks: current.tasks.map((task) =>
+                task.appointmentId === appointmentToDelete.id
+                  ? { ...task, appointmentId: undefined, updatedAt: now }
+                  : task,
+              ),
+              leads: appointmentToDelete.leadId
+                ? current.leads.map((lead) =>
+                    lead.id === appointmentToDelete.leadId && lead.nextContactAt === appointmentToDelete.startAt
+                      ? { ...lead, nextContactAt: undefined, updatedAt: now }
+                      : lead,
+                  )
+                : current.leads,
+              projects: projectUpdate
+                ? current.projects.map((item) => item.id === projectUpdate.id ? projectUpdate : item)
+                : current.projects,
+              statusHistory: [
+                createStatusHistory(
+                  'Agendamento',
+                  appointmentToDelete.id,
+                  'Agendamento excluído',
+                  shouldResetProject
+                    ? 'Captação removida e projeto voltou para aguardar novo agendamento.'
+                    : 'Agendamento removido do calendário e do banco.',
+                  activeUserId,
+                  appointmentToDelete.status,
+                  'Excluído',
+                  now,
+                ),
+                ...current.statusHistory,
+              ],
+            }
+          },
+          'Agendamento excluído.',
+        )
+
+        setModal(null)
+        setAppointmentDefaults({})
+        setSelectedAppointmentId('')
+
+        if (storedAppointment.externalEventId) {
+          void syncGoogleCalendarEvent({
+            externalEventId: storedAppointment.externalEventId,
+            deleteEvent: true,
+            title: storedAppointment.title,
+            description: storedAppointment.notes,
+            startAt: storedAppointment.startAt,
+            endAt: storedAppointment.endAt,
+            location: storedAppointment.address,
+            timeZone: state.companySettings.timezone,
+          }).catch(() => {
+            setToast('Agendamento excluído internamente, mas não foi possível remover o evento no Google Calendar.')
+          })
+        }
+      },
+    })
   }
 
   const resizeAppointment = async (appointment: Appointment, endAt: string) => {
@@ -4652,6 +4772,7 @@ function App() {
       {modal === 'appointment' ? (
         <Modal
           title={selectedAppointment ? 'Editar agendamento' : 'Novo agendamento'}
+          size={selectedAppointment ? 'md' : 'lg'}
           onClose={() => {
             setModal(null)
             setAppointmentDefaults({})
@@ -4667,6 +4788,7 @@ function App() {
               setAppointmentDefaults({})
               setSelectedAppointmentId('')
             }}
+            onDelete={selectedAppointment ? () => deleteAppointment(selectedAppointment) : undefined}
             onSubmit={saveAppointment}
           />
         </Modal>
@@ -8346,12 +8468,14 @@ function AppointmentForm({
   initialValues,
   onSubmit,
   onCancel,
+  onDelete,
 }: {
   state: AppState
   appointment?: Appointment
   initialValues?: AppointmentFormDefaults
   onSubmit: (values: AppointmentFormValues) => void
   onCancel: () => void
+  onDelete?: () => void
 }) {
   const { register, handleSubmit, watch, setValue, getValues, formState: { errors } } = useForm<AppointmentFormInput, unknown, AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
@@ -8371,9 +8495,12 @@ function AppointmentForm({
       rescheduleReason: '',
     },
   })
+  const isEditing = Boolean(appointment)
   const watchedProjectId = watch('projectId')
   const watchedClientId = watch('clientId')
   const watchedLeadId = watch('leadId')
+  const watchedStatus = watch('status')
+  const watchedAppointmentType = watch('appointmentType')
   const watchedColor = watch('color')
   const watchedStartAt = watch('startAt')
   const watchedEndAt = watch('endAt')
@@ -8393,6 +8520,13 @@ function AppointmentForm({
       detail: client.city || 'Sem cidade',
     })),
   ]
+  const selectedProject = watchedProjectId ? state.projects.find((project) => project.id === watchedProjectId) : undefined
+  const selectedContactLabel = contactOptions.find((contact) => contact.key === selectedContactKey)?.label ?? 'Sem contato vinculado'
+  const selectedProjectLabel = selectedProject
+    ? `${selectedProject.projectCode} - ${selectedProject.name}`
+    : watchedProjectId
+      ? 'Projeto não localizado'
+      : 'Sem projeto vinculado'
 
   const chooseContact = (key: string) => {
     const [type, id] = key.split(':')
@@ -8417,7 +8551,7 @@ function AppointmentForm({
     setValue('clientId', project.clientId)
     setValue('leadId', project.leadId ?? '')
     if (!getValues('address')) setValue('address', [project.address, project.city].filter(Boolean).join(' - '))
-    if (!getValues('title') || getValues('title') === 'Tarefa') setValue('title', `Hero Drone — Captação — ${project.contactName || project.name}`)
+    if (!getValues('title') || getValues('title') === 'Tarefa') setValue('title', `Hero Drone - Captação - ${project.contactName || project.name}`)
   }, [getValues, setValue, state.projects, watchedProjectId])
 
   useEffect(() => {
@@ -8442,19 +8576,38 @@ function AppointmentForm({
       <input type="hidden" {...register('leadId')} />
       <input type="hidden" {...register('color')} />
       <input type="hidden" {...register('address')} />
-      <InputField label="Título da tarefa" error={getError(errors.title?.message)}><input className="field-input" {...register('title')} /></InputField>
-      <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><Select options={appointmentTypes} register={register('appointmentType')} /></InputField>
-      <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
-        <select className="field-input" value={selectedContactKey} onChange={(event) => chooseContact(event.target.value)}>
-          <option value="">Nenhum</option>
-          {contactOptions.map((contact) => (
-            <option key={contact.key} value={contact.key}>
-              {contact.label} | {contact.detail}
-            </option>
-          ))}
-        </select>
-      </InputField>
-      <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Nenhum</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{project.projectCode} - {project.name}</option>)}</select></InputField>
+      {isEditing ? (
+        <div className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-gray-500">Agendamento vinculado</p>
+              <h3 className="mt-1 text-base font-black text-gray-950">{appointment?.title}</h3>
+              <p className="mt-1 text-sm text-gray-600">{selectedContactLabel}</p>
+              <p className="text-sm text-gray-500">{selectedProjectLabel}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Tag>{watchedAppointmentType}</Tag>
+              <StatusBadge>{watchedStatus}</StatusBadge>
+            </div>
+          </div>
+          <p className="mt-3 text-sm text-gray-600">Edite só o que muda de fato: nome, horário, endereço, status e observações.</p>
+        </div>
+      ) : null}
+      <InputField label={isEditing ? 'Título' : 'Título da tarefa'} error={getError(errors.title?.message)}><input className="field-input" {...register('title')} /></InputField>
+      {!isEditing ? <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><Select options={appointmentTypes} register={register('appointmentType')} /></InputField> : null}
+      {!isEditing ? (
+        <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
+          <select className="field-input" value={selectedContactKey} onChange={(event) => chooseContact(event.target.value)}>
+            <option value="">Nenhum</option>
+            {contactOptions.map((contact) => (
+              <option key={contact.key} value={contact.key}>
+                {contact.label} | {contact.detail}
+              </option>
+            ))}
+          </select>
+        </InputField>
+      ) : null}
+      {!isEditing ? <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Nenhum</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{project.projectCode} - {project.name}</option>)}</select></InputField> : null}
       <InputField label="Status" error={getError(errors.status?.message)}><Select options={appointmentStatuses} register={register('status')} /></InputField>
       <InputField label="Início" error={getError(errors.startAt?.message)}><input className="field-input" type="datetime-local" {...register('startAt')} /></InputField>
       <InputField label="Fim" error={getError(errors.endAt?.message)}><input className="field-input" type="datetime-local" {...register('endAt')} /></InputField>
@@ -8469,44 +8622,45 @@ function AppointmentForm({
           onChange={(nextValue) => setValue('address', nextValue, { shouldDirty: true, shouldValidate: true })}
         />
       </div>
-      <div className="md:col-span-2">
-        <InputField label="Cor" error={getError(errors.color?.message)}>
-          <div className="flex flex-wrap gap-1.5">
-            {appointmentColorOptions.map((option) => (
-              <button
-                key={option.value}
-                aria-label={option.label}
-                aria-pressed={watchedColor === option.value}
-                className={`focus-ring h-5 w-5 rounded-full border transition ${watchedColor === option.value ? 'border-gray-950 ring-2 ring-[#d8a500]/35' : 'border-gray-200'}`}
-                style={{ backgroundColor: option.value }}
-                type="button"
-                onClick={() => setValue('color', option.value)}
-                title={option.label}
-              />
-            ))}
-          </div>
-        </InputField>
-      </div>
-      <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24" {...register('notes')} /></InputField></div>
-      {appointment ? (
+      {!isEditing ? (
         <div className="md:col-span-2">
-          <InputField label="Motivo do reagendamento" error={getError(errors.rescheduleReason?.message)}>
-            <select className="field-input" required {...register('rescheduleReason')}>
-              <option value="">Selecione quando alterar data ou horário</option>
-              {['Clima desfavorável', 'Chuva', 'Vento forte', 'Baixa visibilidade', 'Indisponibilidade do cliente', 'Indisponibilidade da equipe', 'Problema no local', 'Outro'].map((reason) => <option key={reason}>{reason}</option>)}
-            </select>
+          <InputField label="Cor" error={getError(errors.color?.message)}>
+            <div className="flex flex-wrap gap-1.5">
+              {appointmentColorOptions.map((option) => (
+                <button
+                  key={option.value}
+                  aria-label={option.label}
+                  aria-pressed={watchedColor === option.value}
+                  className={`focus-ring h-5 w-5 rounded-full border transition ${watchedColor === option.value ? 'border-gray-950 ring-2 ring-[#d8a500]/35' : 'border-gray-200'}`}
+                  style={{ backgroundColor: option.value }}
+                  type="button"
+                  onClick={() => setValue('color', option.value)}
+                  title={option.label}
+                />
+              ))}
+            </div>
           </InputField>
         </div>
       ) : null}
-      <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-700 md:col-span-2">
-        <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" {...register('createGoogleCalendar')} />
-        Abrir evento no Google Calendar ao salvar {watchedCreateGoogleCalendar ? '(ativado)' : '(desativado)'}
-      </label>
-      <FormActions onCancel={onCancel} />
+      <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24" {...register('notes')} /></InputField></div>
+      {!isEditing ? (
+        <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-700 md:col-span-2">
+          <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" {...register('createGoogleCalendar')} />
+          Abrir evento no Google Calendar ao salvar {watchedCreateGoogleCalendar ? '(ativado)' : '(desativado)'}
+        </label>
+      ) : null}
+      <FormActions
+        onCancel={onCancel}
+        leftAction={appointment && onDelete ? (
+          <Button variant="danger" type="button" onClick={onDelete}>
+            <Trash2 size={16} /> Excluir agendamento
+          </Button>
+        ) : undefined}
+        submitLabel={appointment ? 'Salvar agendamento' : 'Criar agendamento'}
+      />
     </form>
   )
 }
-
 function QuoteDepositForm({
   quote,
   state,
@@ -9072,11 +9226,22 @@ function PhoneInput({
   )
 }
 
-function FormActions({ onCancel, submitLabel = 'Salvar' }: { onCancel: () => void; submitLabel?: string }) {
+function FormActions({
+  onCancel,
+  submitLabel = 'Salvar',
+  leftAction,
+}: {
+  onCancel: () => void
+  submitLabel?: string
+  leftAction?: React.ReactNode
+}) {
   return (
-    <div className="flex flex-wrap justify-end gap-2 md:col-span-2">
-      <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-      <Button type="submit">{submitLabel}</Button>
+    <div className="flex flex-wrap items-center justify-between gap-2 md:col-span-2">
+      <div className="flex flex-wrap gap-2">{leftAction}</div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+        <Button type="submit">{submitLabel}</Button>
+      </div>
     </div>
   )
 }

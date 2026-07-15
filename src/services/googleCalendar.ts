@@ -2,6 +2,7 @@ import { isSupabaseConfigured, supabase } from './supabase'
 
 export interface GoogleCalendarEventInput {
   externalEventId?: string
+  deleteEvent?: boolean
   title: string
   description: string
   startAt: string
@@ -16,4 +17,3 @@ export const syncGoogleCalendarEvent = async (event: GoogleCalendarEventInput) =
   if (error) throw error
   return data as { externalEventId: string; calendarUrl: string }
 }
-
