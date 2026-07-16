@@ -26,9 +26,16 @@ export const formatNumber = (value: number) => numberFormatter.format(value || 0
 
 export const formatPercent = (value: number) => `${percentFormatter.format(value || 0)}%`
 
+const parseDateValue = (value: string) => {
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!dateOnlyMatch) return new Date(value)
+  const [, year, month, day] = dateOnlyMatch
+  return new Date(Number(year), Number(month) - 1, Number(day))
+}
+
 export const formatDate = (value?: string) => {
   if (!value) return '-'
-  return dateFormatter.format(new Date(value))
+  return dateFormatter.format(parseDateValue(value))
 }
 
 export const formatDateTime = (value?: string) => {
@@ -38,7 +45,7 @@ export const formatDateTime = (value?: string) => {
 
 export const daysUntil = (value?: string) => {
   if (!value) return 0
-  const target = new Date(value)
+  const target = parseDateValue(value)
   const today = new Date()
   target.setHours(0, 0, 0, 0)
   today.setHours(0, 0, 0, 0)
