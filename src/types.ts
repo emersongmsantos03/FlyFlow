@@ -419,6 +419,8 @@ export interface Project {
   contactName: string
   contactPhone: string
   totalValue: number
+  estimatedHours?: number
+  workedHours?: number
   discountValue: number
   travelFee: number
   depositValue: number
@@ -548,6 +550,11 @@ export interface Payment {
   confirmedReceived?: boolean
   confirmedAt?: string
   sourceKey?: string
+  reversalOfPaymentId?: string
+  reversedByPaymentId?: string
+  installmentGroupId?: string
+  installmentNumber?: number
+  installmentCount?: number
   archivedAt?: string
   archivedBy?: string
   deletedAt?: string
@@ -571,6 +578,11 @@ export interface Expense {
   status: ExpenseStatus
   supplier: string
   recurring: boolean
+  recurrenceParentId?: string
+  recurrenceNumber?: number
+  installmentGroupId?: string
+  installmentNumber?: number
+  installmentCount?: number
   recurrenceFrequency?: ExpenseRecurrenceFrequency
   recurrenceEndDate?: string
   receiptUrl?: string

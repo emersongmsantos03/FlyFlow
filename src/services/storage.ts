@@ -43,6 +43,42 @@ const normalizeExpenseStatus = (status?: string): Expense['status'] => {
 
 const canUseStorage = () => typeof window !== 'undefined' && Boolean(window.localStorage)
 
+const addExpenseRecurrence = (date: Date, frequency: Expense['recurrenceFrequency']) => {
+  const next = new Date(date)
+  if (frequency === 'Semanal') next.setDate(next.getDate() + 7)
+  else if (frequency === 'Quinzenal') next.setDate(next.getDate() + 15)
+  else if (frequency === 'Bimestral') next.setMonth(next.getMonth() + 2)
+  else if (frequency === 'Trimestral') next.setMonth(next.getMonth() + 3)
+  else if (frequency === 'Semestral') next.setMonth(next.getMonth() + 6)
+  else if (frequency === 'Anual') next.setFullYear(next.getFullYear() + 1)
+  else next.setMonth(next.getMonth() + 1)
+  return next
+}
+
+const materializeRecurringExpenses = (expenses: Expense[], createdAt: string) => {
+  const result = [...expenses]
+  const horizon = new Date()
+  horizon.setDate(horizon.getDate() + 90)
+  const existingIds = new Set(expenses.map((expense) => expense.id))
+  expenses.filter((expense) => expense.recurring && !expense.recurrenceParentId && !expense.deletedAt && !expense.archivedAt && !['Cancelada', 'Reembolsada'].includes(expense.status)).forEach((template) => {
+    const baseValue = template.dueDate || template.expenseDate
+    let occurrence = addExpenseRecurrence(new Date(`${baseValue}T12:00:00`), template.recurrenceFrequency)
+    const recurrenceEnd = template.recurrenceEndDate ? new Date(`${template.recurrenceEndDate}T23:59:59`) : undefined
+    let number = 1
+    while (occurrence <= horizon && (!recurrenceEnd || occurrence <= recurrenceEnd) && number <= 100) {
+      const date = occurrence.toISOString().slice(0, 10)
+      const id = `${template.id}-occ-${date}`
+      if (!existingIds.has(id)) {
+        result.push({ ...template, id, expenseDate: date, dueDate: date, paidAt: undefined, status: 'Prevista', recurring: false, recurrenceParentId: template.id, recurrenceNumber: number, receiptUrl: undefined, transactionNumber: undefined, createdAt, updatedAt: createdAt })
+        existingIds.add(id)
+      }
+      occurrence = addExpenseRecurrence(occurrence, template.recurrenceFrequency)
+      number += 1
+    }
+  })
+  return result
+}
+
 export const createId = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -117,7 +153,7 @@ export const normalizeAppState = (state: AppState): AppState => {
       ...payment,
       bankAccountId: payment.bankAccountId || resolveLegacyAccountId(payment.account) || (payment.status === 'Recebida' ? primaryAccount?.id : undefined),
     })),
-    expenses: (state.expenses || []).map((expense) => ({
+    expenses: materializeRecurringExpenses(state.expenses || [], createdAt).map((expense) => ({
       ...expense,
       status: normalizeExpenseStatus(expense.status),
       recurring: expense.recurring ?? false,

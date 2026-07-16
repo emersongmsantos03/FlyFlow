@@ -378,6 +378,7 @@ export const getFinancialForecast = (state: AppState, horizonDays = 90) => {
   const today = startOfDay(new Date())
   const horizon = endOfDay(addDays(today, horizonDays))
   const entries: Array<{ id: string; date: Date; type: 'Entrada' | 'Saída'; amount: number; description: string }> = []
+  const materializedRecurrenceParents = new Set(state.expenses.map((expense) => expense.recurrenceParentId).filter(Boolean))
 
   state.payments
     .filter((payment) => !isReceivedPayment(payment) && !isCancelledPayment(payment))
@@ -391,7 +392,7 @@ export const getFinancialForecast = (state: AppState, horizonDays = 90) => {
     .forEach((expense) => {
       const dueDate = parseDate(expense.dueDate || expense.expenseDate)
       if (!isPaidExpense(expense) && dueDate && dueDate <= horizon) entries.push({ id: expense.id, date: dueDate, type: 'Saída', amount: expense.amount, description: expense.description })
-      if (!expense.recurring) return
+      if (!expense.recurring || materializedRecurrenceParents.has(expense.id)) return
       let occurrence = addRecurrence(dueDate || today, expense.recurrenceFrequency)
       const recurrenceEnd = parseDate(expense.recurrenceEndDate)
       let index = 1

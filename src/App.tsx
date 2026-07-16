@@ -2276,6 +2276,10 @@ function App() {
       setToast('Confirme que o pagamento foi recebido e informe a data.')
       return
     }
+    if (values.installmentCount > 1 && values.status === 'Recebida') {
+      setToast('Para parcelar, salve como prevista ou pendente e confirme cada parcela quando ela for recebida.')
+      return
+    }
     const existingPayment = selectedFinancePaymentId ? state.payments.find((payment) => payment.id === selectedFinancePaymentId) : undefined
     if (values.status === 'Recebida' && !state.bankAccounts.some((account) => account.id === values.bankAccountId && (account.active || account.id === existingPayment?.bankAccountId))) {
       setToast('Selecione uma conta bancária ativa para o recebimento.')
@@ -2333,7 +2337,13 @@ function App() {
           createdAt: existingSourcePayment?.createdAt ?? now,
           updatedAt: now,
         }
-        const payments = [payment, ...current.payments.filter((item) => item.id !== existingSourcePayment?.id)]
+        const installmentGroupId = !existing && values.installmentCount > 1 ? createId('installments') : undefined
+        const installmentPayments = installmentGroupId ? Array.from({ length: values.installmentCount }, (_, index) => {
+          const regularAmount = Math.floor((values.amount / values.installmentCount) * 100) / 100
+          const installmentAmount = index === values.installmentCount - 1 ? values.amount - regularAmount * (values.installmentCount - 1) : regularAmount
+          return { ...payment, id: createId('pay'), paymentType: 'Parcela' as const, amount: installmentAmount, dueDate: addCalendarDays(values.dueDate, index * values.installmentIntervalDays), paidAt: undefined, status: 'Pendente' as const, confirmedReceived: false, confirmedAt: undefined, installmentGroupId, installmentNumber: index + 1, installmentCount: values.installmentCount, transactionNumber: undefined, receiptUrl: undefined, notes: `${values.notes || 'Pagamento parcelado'} · parcela ${index + 1}/${values.installmentCount}.`, createdAt: now, updatedAt: now }
+        }) : [payment]
+        const payments = [...installmentPayments, ...current.payments.filter((item) => item.id !== existingSourcePayment?.id)]
         const receivedTotal = currentProject ? payments.filter((item) => item.projectId === currentProject.id).reduce((total, item) => total + getPaymentCashEffect(item), 0) : 0
         const existingReceiptFile = current.files.find((file) => file.paymentId === payment.id)
         return {
@@ -2475,6 +2485,8 @@ function App() {
       return
     }
     const existingExpense = selectedFinanceExpenseId ? state.expenses.find((expense) => expense.id === selectedFinanceExpenseId) : undefined
+    if (!existingExpense && values.installmentCount > 1 && values.status === 'Paga') { setToast('Para parcelar uma despesa, salve como prevista ou a pagar e confirme cada parcela separadamente.'); return }
+    if (!existingExpense && values.installmentCount > 1 && values.recurring) { setToast('Escolha parcelamento ou recorrência; os dois não podem ser usados no mesmo lançamento.'); return }
     if (values.status === 'Paga' && !state.bankAccounts.some((account) => account.id === values.bankAccountId && (account.active || account.id === existingExpense?.bankAccountId))) {
       setToast('Selecione a conta bancária usada no pagamento.')
       return
@@ -2500,9 +2512,16 @@ function App() {
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         }
+        const installmentGroupId = !existing && values.installmentCount > 1 ? createId('expense-installments') : undefined
+        const installmentExpenses = installmentGroupId ? Array.from({ length: values.installmentCount }, (_, index) => {
+          const regularAmount = Math.floor((values.amount / values.installmentCount) * 100) / 100
+          const installmentAmount = index === values.installmentCount - 1 ? values.amount - regularAmount * (values.installmentCount - 1) : regularAmount
+          const dueDate = addCalendarDays(values.dueDate || values.expenseDate, index * values.installmentIntervalDays)
+          return { ...expense, id: createId('exp'), amount: installmentAmount, expenseDate: dueDate, dueDate, status: 'A pagar' as const, paidAt: undefined, bankAccountId: undefined, account: undefined, transactionNumber: undefined, installmentGroupId, installmentNumber: index + 1, installmentCount: values.installmentCount, notes: `${values.notes || 'Despesa parcelada'} · parcela ${index + 1}/${values.installmentCount}.`, createdAt: now, updatedAt: now }
+        }) : [expense]
         return {
           ...current,
-          expenses: [expense, ...current.expenses.filter((item) => item.id !== expense.id)],
+          expenses: [...installmentExpenses, ...current.expenses.filter((item) => item.id !== expense.id)],
         }
       },
       selectedFinanceExpenseId ? 'Despesa atualizada.' : 'Despesa registrada.',
@@ -2704,6 +2723,31 @@ function App() {
       payments: current.payments.map((item) => item.id === payment.id ? { ...item, status, paidAt: undefined, confirmedReceived: false, updatedAt: now } : item),
       statusHistory: [createStatusHistory('Pagamento', payment.id, 'Status financeiro alterado', `${payment.status} → ${status}.`, activeUserId, payment.status, status, now), ...current.statusHistory],
     }), `Lançamento marcado como ${status.toLowerCase()}.`)
+  }
+
+  const reversePayment = (payment: Payment) => {
+    if (payment.status !== 'Recebida' || payment.paymentType === 'Reembolso' || payment.reversedByPaymentId) return
+    requestConfirm({
+      title: 'Registrar estorno?',
+      description: `${formatCurrency(payment.amount)} será registrado como saída na mesma conta. O recebimento original será preservado para auditoria.`,
+      confirmLabel: 'Registrar estorno',
+      cancelLabel: 'Cancelar',
+      tone: 'warning',
+      onConfirm: () => {
+        const now = new Date().toISOString()
+        updateState((current) => {
+          const reversalId = createId('refund')
+          const reversal: Payment = { ...payment, id: reversalId, paymentType: 'Reembolso', status: 'Recebida', dueDate: dateInput(), paidAt: now, confirmedReceived: true, confirmedAt: now, receiptUrl: undefined, transactionNumber: undefined, sourceKey: undefined, reversalOfPaymentId: payment.id, reversedByPaymentId: undefined, notes: `Estorno vinculado ao recebimento ${payment.id}.`, createdAt: now, updatedAt: now }
+          const payments = [reversal, ...current.payments.map((item) => item.id === payment.id ? { ...item, reversedByPaymentId: reversalId, updatedAt: now } : item)]
+          return {
+            ...current,
+            payments,
+            projects: payment.projectId ? current.projects.map((project) => project.id === payment.projectId ? { ...recalculateProjectFinancials(project, payments), projectStatus: project.projectStatus === 'Pago' ? 'Aguardando pagamento final' : project.projectStatus } : project) : current.projects,
+            statusHistory: [createStatusHistory('Pagamento', payment.id, 'Estorno registrado', `${formatCurrency(payment.amount)} estornado com vínculo ${reversalId}.`, activeUserId, payment.status, payment.status, now), ...current.statusHistory],
+          }
+        }, 'Estorno registrado e vinculado ao recebimento original.')
+      },
+    })
   }
 
   const markPaymentPaid = (payment: Payment) => {
@@ -4605,6 +4649,7 @@ function App() {
               onArchiveRecord={archiveFinancialRecord}
               onDeleteRecord={deleteFinancialRecord}
               onUpdatePaymentStatus={updatePaymentStatus}
+              onReversePayment={reversePayment}
               onOpenBankAccount={openBankAccountEditor}
               onDeleteBankAccount={deleteBankAccount}
               onOpenBankTransfer={openBankTransferEditor}
@@ -6382,6 +6427,7 @@ function FinancePage({
   onArchiveRecord,
   onDeleteRecord,
   onUpdatePaymentStatus,
+  onReversePayment,
   onOpenBankAccount,
   onDeleteBankAccount,
   onOpenBankTransfer,
@@ -6397,6 +6443,7 @@ function FinancePage({
   onArchiveRecord: (kind: 'payment' | 'expense', id: string, archived: boolean) => void
   onDeleteRecord: (kind: 'payment' | 'expense', record: Payment | Expense) => void
   onUpdatePaymentStatus: (payment: Payment, status: Payment['status']) => void
+  onReversePayment: (payment: Payment) => void
   onOpenBankAccount: (account?: BankAccount) => void
   onDeleteBankAccount: (account: BankAccount) => void
   onOpenBankTransfer: (transfer?: BankTransfer) => void
@@ -6500,7 +6547,7 @@ function FinancePage({
       ) : financeTab === 'contas' ? (
         <BankAccountsPanel state={state} onCreate={onOpenBankAccount} onEdit={onOpenBankAccount} onDelete={onDeleteBankAccount} onTransfer={onOpenBankTransfer} onDeleteTransfer={onDeleteBankTransfer} />
       ) : (
-        <FinancialTable tab={financeTab} state={state} onOpenReceipt={onOpenReceipt} onOpenPayment={onOpenPayment} onOpenExpense={onOpenExpense} onArchiveRecord={onArchiveRecord} onDeleteRecord={onDeleteRecord} onUpdatePaymentStatus={onUpdatePaymentStatus} />
+        <FinancialTable tab={financeTab} state={state} onOpenReceipt={onOpenReceipt} onOpenPayment={onOpenPayment} onOpenExpense={onOpenExpense} onArchiveRecord={onArchiveRecord} onDeleteRecord={onDeleteRecord} onUpdatePaymentStatus={onUpdatePaymentStatus} onReversePayment={onReversePayment} />
       )}
     </div>
   )
@@ -6524,6 +6571,7 @@ function FinancialDashboard({ state }: { state: AppState }) {
   const [reportPeriod, setReportPeriod] = useState<PeriodPreset>('month')
   const [comparisonPeriod, setComparisonPeriod] = useState<PeriodPreset>('last30')
   const [reportRegime, setReportRegime] = useState<AccountingRegime>('cash')
+  const [drilldown, setDrilldown] = useState<'all' | 'received' | 'pending' | 'expenses'>('all')
 
   const snapshotFor = (preset: PeriodPreset): FinancialPeriodSnapshot => {
     const metrics = calculateDashboardMetrics(state, preset, reportRegime)
@@ -6574,11 +6622,12 @@ function FinancialDashboard({ state }: { state: AppState }) {
     return groups
   }, new Map<string, number>())).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total).slice(0, 6)
   const reportRows = [
-    ...current.payments.map((payment) => ({ id: `payment-${payment.id}`, date: payment.paidAt || payment.dueDate, type: payment.paymentType === 'Reembolso' ? 'Estorno' : 'Receita', description: payment.paymentType, status: payment.status, value: payment.paymentType === 'Reembolso' ? -payment.amount : payment.amount })),
+    ...current.payments.map((payment) => ({ id: `payment-${payment.id}`, date: payment.paidAt || payment.dueDate, type: payment.paymentType === 'Reembolso' ? 'Estorno' : payment.status === 'Recebida' ? 'Receita recebida' : 'A receber', description: payment.paymentType, status: payment.status, value: payment.paymentType === 'Reembolso' ? -payment.amount : payment.amount })),
     ...current.expenseItems.map((expense) => ({ id: `expense-${expense.id}`, date: expense.paidAt || expense.expenseDate, type: 'Despesa', description: expense.description, status: expense.status, value: -expense.amount })),
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  const visibleReportRows = reportRows.filter((row) => drilldown === 'all' || (drilldown === 'received' ? ['Receita recebida', 'Estorno'].includes(row.type) : drilldown === 'pending' ? row.type === 'A receber' : row.type === 'Despesa'))
 
-  const exportReport = () => downloadCsv(`relatorio-financeiro-${reportPeriod}-${dateInput()}.csv`, reportRows.map((row) => ({ Data: formatDate(row.date), Tipo: row.type, Descricao: row.description, Status: row.status, Valor: row.value })))
+  const exportReport = () => downloadCsv(`relatorio-financeiro-${reportPeriod}-${dateInput()}.csv`, visibleReportRows.map((row) => ({ Data: formatDate(row.date), Tipo: row.type, Descricao: row.description, Status: row.status, Valor: row.value })))
   const Delta = ({ value, previous, inverse = false }: { value: number; previous: number; inverse?: boolean }) => {
     const delta = variation(value, previous)
     const positive = inverse ? delta <= 0 : delta >= 0
@@ -6620,8 +6669,9 @@ function FinancialDashboard({ state }: { state: AppState }) {
           <p className="mt-3 text-xs text-gray-500">Inclui contas em aberto e ocorrências futuras calculadas a partir das despesas recorrentes.</p>
         </Panel>
       </div>
-      <Panel title={`Relatório detalhado · ${periodLabel}`} action={<span className="text-xs font-bold text-gray-500">{reportRows.length} lançamento(s)</span>}>
-        <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Status</th><th>Valor</th></tr></thead><tbody>{reportRows.map((row) => <tr key={row.id}><td data-label="Data">{formatDate(row.date)}</td><td data-label="Tipo"><StatusBadge>{row.type}</StatusBadge></td><td data-label="Descrição">{row.description}</td><td data-label="Status">{row.status}</td><td data-label="Valor"><strong className={row.value >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(row.value)}</strong></td></tr>)}</tbody></table>{!reportRows.length ? <p className="rounded-xl bg-gray-50 p-8 text-center text-sm text-gray-500">Nenhum lançamento encontrado neste período.</p> : null}</div>
+      <Panel title={`Relatório detalhado · ${periodLabel}`} action={<span className="text-xs font-bold text-gray-500">{visibleReportRows.length} lançamento(s)</span>}>
+        <div className="mb-3 flex flex-wrap gap-2">{([['all', 'Todos'], ['received', 'Recebidos'], ['pending', 'A receber'], ['expenses', 'Despesas']] as const).map(([value, label]) => <Button className="min-h-9 px-3 py-1 text-xs" key={value} variant={drilldown === value ? 'primary' : 'secondary'} type="button" onClick={() => setDrilldown(value)}>{label}</Button>)}</div>
+        <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Status</th><th>Valor</th></tr></thead><tbody>{visibleReportRows.map((row) => <tr key={row.id}><td data-label="Data">{formatDate(row.date)}</td><td data-label="Tipo"><StatusBadge>{row.type}</StatusBadge></td><td data-label="Descrição">{row.description}</td><td data-label="Status">{row.status}</td><td data-label="Valor"><strong className={row.value >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(row.value)}</strong></td></tr>)}</tbody></table>{!visibleReportRows.length ? <p className="rounded-xl bg-gray-50 p-8 text-center text-sm text-gray-500">Nenhum lançamento encontrado neste filtro.</p> : null}</div>
       </Panel>
     </div>
   )
@@ -6742,6 +6792,7 @@ function FinancialTable({
   onArchiveRecord,
   onDeleteRecord,
   onUpdatePaymentStatus,
+  onReversePayment,
 }: {
   tab: 'receitas' | 'despesas' | 'receber' | 'arquivados'
   state: AppState
@@ -6751,6 +6802,7 @@ function FinancialTable({
   onArchiveRecord: (kind: 'payment' | 'expense', id: string, archived: boolean) => void
   onDeleteRecord: (kind: 'payment' | 'expense', record: Payment | Expense) => void
   onUpdatePaymentStatus: (payment: Payment, status: Payment['status']) => void
+  onReversePayment: (payment: Payment) => void
 }) {
   const [search, setSearch] = useState('')
   const [expenseScope, setExpenseScope] = useState<'all' | 'single' | 'recurring'>('all')
@@ -6848,7 +6900,7 @@ function FinancialTable({
                       </Button>
                     </div>
                   </td>
-                  <td data-label="Ações"><div className="flex flex-wrap gap-1"><IconActionButton label="Editar lançamento" icon={<Pencil size={15} />} onClick={() => onOpenPayment(payment)} />{payment.status !== 'Recebida' ? <Button className="min-h-9 px-2 text-xs" variant="ghost" type="button" onClick={() => onUpdatePaymentStatus(payment, 'Recebida')}>Marcar pago</Button> : <Button className="min-h-9 px-2 text-xs" variant="ghost" type="button" onClick={() => onUpdatePaymentStatus(payment, 'Pendente')}>Marcar pendente</Button>}<Button className="min-h-9 px-2 text-xs" variant="ghost" type="button" onClick={() => onArchiveRecord('payment', payment.id, true)}>Arquivar</Button><IconActionButton label="Excluir lançamento" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDeleteRecord('payment', payment)} /></div></td>
+                  <td data-label="Ações"><div className="flex flex-wrap gap-1">{tab === 'receber' && (client?.whatsapp || client?.phone) ? <a className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs font-bold text-gray-700" href={`${whatsappLink(client.whatsapp || client.phone)}?text=${encodeURIComponent(`Olá! Passando para lembrar do pagamento de ${formatCurrency(payment.amount)}, previsto para ${formatDate(payment.dueDate)}.`)}`} target="_blank" rel="noreferrer"><MessageCircle size={14} /> Cobrar</a> : null}<IconActionButton label="Editar lançamento" icon={<Pencil size={15} />} onClick={() => onOpenPayment(payment)} />{payment.status !== 'Recebida' ? <Button className="min-h-9 px-2 text-xs" variant="ghost" type="button" onClick={() => onUpdatePaymentStatus(payment, 'Recebida')}>Marcar pago</Button> : <><Button className="min-h-9 px-2 text-xs" variant="ghost" type="button" onClick={() => onUpdatePaymentStatus(payment, 'Pendente')}>Marcar pendente</Button>{payment.paymentType !== 'Reembolso' && !payment.reversedByPaymentId ? <Button className="min-h-9 px-2 text-xs text-red-600" variant="ghost" type="button" onClick={() => onReversePayment(payment)}>Estornar</Button> : null}</>}<Button className="min-h-9 px-2 text-xs" variant="ghost" type="button" onClick={() => onArchiveRecord('payment', payment.id, true)}>Arquivar</Button><IconActionButton label="Excluir lançamento" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDeleteRecord('payment', payment)} /></div></td>
                 </tr>
               )
             })}
@@ -7464,6 +7516,20 @@ function ReportsPage({
   const recentTransfers = [...state.bankTransfers].sort((a, b) => b.transferredAt.localeCompare(a.transferredAt)).slice(0, 6)
   const periodLabel = periodOptions.find((option) => option.value === period)?.label || 'Período atual'
   const regimeLabel = regime === 'cash' ? 'Caixa · valores pagos' : 'Competência · valores lançados'
+  const monthSnapshot = (monthOffset: number, yearOffset = 0) => {
+    const now = new Date()
+    const start = new Date(now.getFullYear() + yearOffset, now.getMonth() + monthOffset, 1)
+    const end = new Date(now.getFullYear() + yearOffset, now.getMonth() + monthOffset + 1, 0, 23, 59, 59, 999)
+    const inRange = (value?: string) => { if (!value) return false; const date = new Date(value.length === 10 ? `${value}T12:00:00` : value); return date >= start && date <= end }
+    const revenue = regime === 'cash'
+      ? state.payments.filter((payment) => payment.status === 'Recebida' && !payment.deletedAt && !payment.archivedAt && inRange(payment.paidAt)).reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
+      : state.projects.filter((project) => isVisibleProject(project) && inRange(project.deliveryDeadline || project.captureDate || project.createdAt)).reduce((total, project) => total + project.totalValue, 0)
+    const expenses = state.expenses.filter((expense) => isOfficialExpense(expense) && inRange(regime === 'cash' ? expense.paidAt : expense.expenseDate)).reduce((total, expense) => total + expense.amount, 0)
+    return { revenue, expenses, result: revenue - expenses }
+  }
+  const currentMonthSnapshot = monthSnapshot(0)
+  const previousMonthSnapshot = monthSnapshot(-1)
+  const previousYearSnapshot = monthSnapshot(0, -1)
   const funnel = [
     { label: 'Contatos', value: state.leads.filter((lead) => !lead.deletedAt && !lead.archived && isInReportPeriod(lead.entryDate)).length },
     { label: 'Propostas', value: state.quotes.filter((quote) => !quote.deletedAt && isInReportPeriod(quote.issueDate)).length },
@@ -7495,6 +7561,8 @@ function ReportsPage({
         </div>
         <p className="max-w-xl text-xs leading-5 text-gray-500">Altere período e regime no cabeçalho. Em Caixa entram somente receitas recebidas e despesas pagas; em Competência entram os lançamentos do período.</p>
       </section>
+
+      <div className="grid gap-3 md:grid-cols-3"><SmallStat label="Resultado deste mês" value={formatCurrency(currentMonthSnapshot.result)} /><SmallStat label="Resultado mês anterior" value={`${formatCurrency(previousMonthSnapshot.result)} · ${previousMonthSnapshot.result ? (((currentMonthSnapshot.result - previousMonthSnapshot.result) / Math.abs(previousMonthSnapshot.result)) * 100).toFixed(1) : '0.0'}%`} /><SmallStat label="Mesmo mês do ano anterior" value={`${formatCurrency(previousYearSnapshot.result)} · ${previousYearSnapshot.result ? (((currentMonthSnapshot.result - previousYearSnapshot.result) / Math.abs(previousYearSnapshot.result)) * 100).toFixed(1) : '0.0'}%`} /></div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard icon={<Wallet size={20} />} label="Faturamento" value={formatCurrency(metrics.revenue)} />
@@ -7594,7 +7662,7 @@ function ReportsPage({
       <div className="grid gap-4 xl:grid-cols-2">{[['Rentabilidade por serviço', profitabilityByService], ['Rentabilidade por cliente', profitabilityByClient]].map(([title, items]) => <Panel key={String(title)} title={String(title)}><div className="space-y-2">{(items as typeof profitabilityByService).slice(0, 6).map((item) => <div key={item.label} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm"><strong className="truncate text-gray-950">{item.label}</strong><span className={item.result < 0 ? 'text-red-600' : 'text-emerald-600'}>{formatCurrency(item.result)}</span><StatusBadge>{item.margin.toFixed(1)}%</StatusBadge></div>)}</div></Panel>)}</div>
 
       <Panel title="Rentabilidade dos projetos">
-        {profitableProjects.length ? <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Projeto</th><th>Cliente</th><th>Contratado</th><th>Recebido</th><th>Custos diretos</th><th>Resultado contratado</th><th>Resultado realizado</th><th>Margem contratada</th></tr></thead><tbody>{profitableProjects.map(({ project, profit }) => <tr key={project.id}><td data-label="Projeto"><strong>{project.projectCode}</strong><span className="mt-0.5 block text-xs text-gray-500">{project.name}</span></td><td data-label="Cliente">{projectClient(state, project)?.companyName || 'Sem cliente'}</td><td data-label="Contratado">{formatCurrency(profit.contractedRevenue)}</td><td data-label="Recebido">{formatCurrency(profit.paid)}</td><td data-label="Custos diretos">{formatCurrency(profit.directCosts)}</td><td data-label="Resultado contratado"><strong className={profit.contractedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.contractedProfit)}</strong></td><td data-label="Resultado realizado"><strong className={profit.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.profit)}</strong></td><td data-label="Margem contratada"><StatusBadge>{`${profit.contractedMargin.toFixed(1)}%`}</StatusBadge></td></tr>)}</tbody></table></div> : <DashboardEmptyState icon={<Briefcase size={20} />} message="Nenhum projeto disponível para análise." />}
+        {profitableProjects.length ? <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Projeto</th><th>Cliente</th><th>Contratado</th><th>Recebido</th><th>Custos diretos</th><th>Resultado contratado</th><th>Resultado realizado</th><th>Margem contratada</th><th>Horas</th><th>Receita/hora</th></tr></thead><tbody>{profitableProjects.map(({ project, profit }) => <tr key={project.id}><td data-label="Projeto"><strong>{project.projectCode}</strong><span className="mt-0.5 block text-xs text-gray-500">{project.name}</span></td><td data-label="Cliente">{projectClient(state, project)?.companyName || 'Sem cliente'}</td><td data-label="Contratado">{formatCurrency(profit.contractedRevenue)}</td><td data-label="Recebido">{formatCurrency(profit.paid)}</td><td data-label="Custos diretos">{formatCurrency(profit.directCosts)}</td><td data-label="Resultado contratado"><strong className={profit.contractedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.contractedProfit)}</strong></td><td data-label="Resultado realizado"><strong className={profit.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.profit)}</strong></td><td data-label="Margem contratada"><StatusBadge>{`${profit.contractedMargin.toFixed(1)}%`}</StatusBadge></td><td data-label="Horas">{project.workedHours || project.estimatedHours || 0}h</td><td data-label="Receita/hora">{project.workedHours ? formatCurrency(project.totalValue / project.workedHours) : '-'}</td></tr>)}</tbody></table></div> : <DashboardEmptyState icon={<Briefcase size={20} />} message="Nenhum projeto disponível para análise." />}
       </Panel>
 
       <section className="report-insights grid gap-3 md:grid-cols-3">
@@ -8677,6 +8745,8 @@ function ProjectForm({
       contactName: project?.contactName ?? '',
       contactPhone: project?.contactPhone ?? '',
       totalValue: project?.totalValue ?? defaultTotal,
+      estimatedHours: project?.estimatedHours ?? 0,
+      workedHours: project?.workedHours ?? 0,
       depositValue: project?.depositValue ?? defaultTotal * (settings.defaultDepositPercentage / 100),
       discountValue: project?.discountValue ?? 0,
       travelFee: project?.travelFee ?? 0,
@@ -8837,6 +8907,8 @@ function ProjectForm({
           onChange={(nextValue) => setValue('travelFee', nextValue, { shouldDirty: true, shouldValidate: true })}
         />
       </InputField>
+      <InputField label="Horas estimadas" error={getError(errors.estimatedHours?.message)}><input className="field-input" min="0" step="0.5" type="number" {...register('estimatedHours')} /></InputField>
+      <InputField label="Horas trabalhadas" error={getError(errors.workedHours?.message)}><input className="field-input" min="0" step="0.5" type="number" {...register('workedHours')} /></InputField>
       <div><input type="hidden" {...register('projectStatus')} /><SmallStat label="Status do projeto" value={project?.projectStatus ?? 'Confirmado'} /></div>
       <div><input type="hidden" {...register('financialStatus')} /><SmallStat label="Status financeiro" value={project?.financialStatus ?? 'Aguardando sinal'} /></div>
       <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
@@ -9286,6 +9358,7 @@ function BankAccountForm({ account, onSubmit, onCancel }: { account?: BankAccoun
   const [openingBalance, setOpeningBalance] = useState(account?.openingBalance ?? 0)
   const [statementBalance, setStatementBalance] = useState(account?.statementBalance ?? account?.openingBalance ?? 0)
   const [reconciledAt, setReconciledAt] = useState(account?.reconciledAt ? dateInputFromDate(new Date(account.reconciledAt)) : '')
+  const [statementFileName, setStatementFileName] = useState('')
   const [active, setActive] = useState(account?.active ?? true)
   const [notes, setNotes] = useState(account?.notes ?? '')
 
@@ -9312,6 +9385,7 @@ function BankAccountForm({ account, onSubmit, onCancel }: { account?: BankAccoun
       <section className="rounded-2xl border border-gray-200 p-4">
         <div className="mb-4"><h3 className="font-black text-gray-950">Conciliação bancária</h3><p className="text-sm text-gray-500">Informe o saldo exibido pelo banco para identificar diferenças no cadastro.</p></div>
         <div className="grid gap-4 sm:grid-cols-2"><InputField label="Saldo no extrato"><CurrencyInput value={statementBalance} onChange={setStatementBalance} /></InputField><InputField label="Conferido em"><input className="field-input" type="date" value={reconciledAt} onChange={(event) => setReconciledAt(event.target.value)} /></InputField></div>
+        <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-3 text-sm font-bold text-gray-700"><span>{statementFileName || 'Importar extrato CSV para preencher o saldo'}</span><input className="sr-only" accept=".csv,text/csv" type="file" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; const text = await file.text(); const lines = text.split(/\r?\n/).filter(Boolean); const delimiter = (lines[0]?.match(/;/g)?.length || 0) >= (lines[0]?.match(/,/g)?.length || 0) ? ';' : ','; const headers = (lines[0] || '').split(delimiter).map((value) => value.trim().toLowerCase()); const balanceIndex = headers.findIndex((header) => header.includes('saldo') || header.includes('balance')); const lastColumns = (lines.at(-1) || '').split(delimiter); const rawValue = balanceIndex >= 0 ? lastColumns[balanceIndex] : lastColumns.at(-1); const normalized = String(rawValue || '').replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.'); const parsed = Number(normalized); if (Number.isFinite(parsed)) { setStatementBalance(parsed); setReconciledAt(dateInput()); setStatementFileName(file.name) } else setStatementFileName('Não foi possível identificar o saldo no CSV') }} /></label>
       </section>
       <section className="rounded-2xl border border-gray-200 p-4">
         <div className="mb-4"><h3 className="font-black text-gray-950">Dados bancários</h3><p className="text-sm text-gray-500">Informações opcionais para facilitar a identificação.</p></div>
@@ -9370,6 +9444,8 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
       quoteId: payment?.quoteId || initialProject?.quoteId || '',
       paymentType: payment?.paymentType || (initialProject?.projectStatus === 'Aguardando pagamento final' ? 'Pagamento final' : 'Sinal'),
       amount: payment?.amount ?? (initialProject ? Math.max(initialProject.totalValue - getProjectPaidAmount(state, initialProject.id), 0) : 0),
+      installmentCount: payment?.installmentCount ?? 1,
+      installmentIntervalDays: 30,
       dueDate: payment?.dueDate || initialProject?.deliveryDeadline || dateInput(),
       paidAt: payment?.paidAt ? dateTimeInputFromDate(new Date(payment.paidAt)) : dateTimeInput(0, 10),
       paymentMethod: payment?.paymentMethod || 'PIX',
@@ -9398,6 +9474,7 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
           onChange={(nextValue) => setValue('amount', nextValue, { shouldDirty: true, shouldValidate: true })}
         />
       </InputField>
+      {!payment ? <><InputField label="Quantidade de parcelas" error={getError(errors.installmentCount?.message)}><input className="field-input" min="1" max="48" type="number" {...register('installmentCount')} /></InputField><InputField label="Intervalo entre parcelas (dias)" error={getError(errors.installmentIntervalDays?.message)}><input className="field-input" min="1" max="365" type="number" {...register('installmentIntervalDays')} /></InputField></> : null}
       <InputField label="Previsão de recebimento" error={getError(errors.dueDate?.message)}>
         <input className="field-input" type="date" {...register('dueDate')} />
         <span className="mt-1 block text-xs text-gray-500">No pagamento final, informe a data combinada para receber após a entrega. Esta data não controla o alerta vermelho do projeto.</span>
@@ -9437,6 +9514,8 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
       category: expense?.category || 'Combustível',
       expenseType: expense?.expenseType || 'Custo direto do projeto',
       amount: expense?.amount ?? 0,
+      installmentCount: expense?.installmentCount ?? 1,
+      installmentIntervalDays: 30,
       expenseDate: expense?.expenseDate || dateInput(),
       dueDate: expense?.dueDate || dateInput(),
       paidAt: expense?.paidAt ? dateTimeInputFromDate(new Date(expense.paidAt)) : dateTimeInput(0, 10),
@@ -9470,6 +9549,7 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
           onChange={(nextValue) => setValue('amount', nextValue, { shouldDirty: true, shouldValidate: true })}
         />
       </InputField>
+      {!expense ? <><InputField label="Quantidade de parcelas" error={getError(errors.installmentCount?.message)}><input className="field-input" min="1" max="48" type="number" {...register('installmentCount')} /></InputField><InputField label="Intervalo entre parcelas (dias)" error={getError(errors.installmentIntervalDays?.message)}><input className="field-input" min="1" max="365" type="number" {...register('installmentIntervalDays')} /></InputField></> : null}
       <InputField label="Data" error={getError(errors.expenseDate?.message)}><input className="field-input" type="date" {...register('expenseDate')} /></InputField>
       <InputField label="Vencimento" error={getError(errors.dueDate?.message)}><input className="field-input" type="date" {...register('dueDate')} /></InputField>
       <InputField label="Data do pagamento" error={getError(errors.paidAt?.message)}><input className="field-input" disabled={!paymentDateEnabled} type="datetime-local" {...register('paidAt')} /></InputField>
