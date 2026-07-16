@@ -5725,16 +5725,22 @@ function ProjectsPage({
   const [scope, setScope] = useState<'active' | 'completed'>('active')
   const [openedProjectId, setOpenedProjectId] = useState('')
   const completedStatuses: Project['projectStatus'][] = ['Concluído', 'Finalizado', 'Cancelado']
-  const activeProjects = projects.filter((project) => !completedStatuses.includes(project.projectStatus))
-  const completedProjects = projects.filter((project) => completedStatuses.includes(project.projectStatus))
+  const isCompletedProject = (project: Project) => {
+    if (completedStatuses.includes(project.projectStatus)) return true
+    const checklist = state.projectChecklistItems.filter((item) => item.projectId === project.id)
+    const isFullyPaid = project.totalValue > 0 && getProjectPaidAmount(state, project.id) >= project.totalValue
+    return isFullyPaid && checklist.length > 0 && checklist.every((item) => item.completed)
+  }
+  const activeProjects = projects.filter((project) => !isCompletedProject(project))
+  const completedProjects = projects.filter(isCompletedProject)
   const waitingPayment = projects.filter((project) => project.financialStatus === 'Aguardando sinal' || project.projectStatus === 'Aguardando pagamento final')
   const criticalProjects = activeProjects
     .filter((project) => getProjectDeadlineInfo(project.deliveryDeadline).level === 'danger')
     .sort((a, b) => new Date(a.deliveryDeadline).getTime() - new Date(b.deliveryDeadline).getTime())
   const scheduledProjects = activeProjects.filter((project) => state.appointments.some((appointment) => appointment.projectId === project.id && appointment.appointmentType === 'Captação' && appointment.status !== 'Cancelado'))
   const shownProjects = projects.filter((project) => {
-    if (scope === 'active' && completedStatuses.includes(project.projectStatus)) return false
-    if (scope === 'completed' && !completedStatuses.includes(project.projectStatus)) return false
+    if (scope === 'active' && isCompletedProject(project)) return false
+    if (scope === 'completed' && !isCompletedProject(project)) return false
     if (!search.trim()) return true
     const client = projectClient(state, project)
     return matches(`${project.projectCode} ${project.name} ${project.serviceName} ${client ? contactDisplayName(client) : ''} ${project.city}`, search)
