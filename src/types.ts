@@ -610,6 +610,8 @@ export interface BankAccount {
   agency?: string
   accountNumber?: string
   openingBalance: number
+  statementBalance?: number
+  reconciledAt?: string
   active: boolean
   notes: string
   createdAt: string

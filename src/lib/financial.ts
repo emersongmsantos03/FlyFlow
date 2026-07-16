@@ -116,10 +116,17 @@ const billableProjectStatuses = new Set([
   'Ajustes solicitados',
   'Pronto para entrega',
   'Entregue',
+  'Aguardando pagamento final',
+  'Pago',
+  'Concluído',
   'Finalizado',
 ])
 
+const projectAccrualDate = (project: Project) => project.deliveryDeadline || project.captureDate || project.createdAt
+
 export const isReceivedPayment = (payment: Payment) => payment.status === 'Recebida' && !payment.archivedAt && !payment.deletedAt
+
+export const getPaymentCashEffect = (payment: Payment) => isReceivedPayment(payment) ? (payment.paymentType === 'Reembolso' ? -payment.amount : payment.amount) : 0
 
 export const isCancelledPayment = (payment: Payment) =>
   payment.status === 'Cancelada' || payment.status === 'Reembolsada' || Boolean(payment.archivedAt || payment.deletedAt)
@@ -151,7 +158,7 @@ export const getMonthlyRecurringExpenseAmount = (expense: Expense) => {
 export const getBankAccountBalance = (state: AppState, account: BankAccount) => {
   const received = state.payments
     .filter((payment) => payment.bankAccountId === account.id && isReceivedPayment(payment))
-    .reduce((total, payment) => total + payment.amount, 0)
+    .reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
   const paidExpenses = state.expenses
     .filter((expense) => expense.bankAccountId === account.id && isPaidExpense(expense))
     .reduce((total, expense) => total + expense.amount, 0)
@@ -174,7 +181,7 @@ export const getProjectPayments = (state: AppState, projectId: string) =>
 export const getProjectPaidAmount = (state: AppState, projectId: string) =>
   getProjectPayments(state, projectId)
     .filter(isReceivedPayment)
-    .reduce((total, payment) => total + payment.amount, 0)
+    .reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
 
 export const getProjectPendingAmount = (state: AppState, project: Project) =>
   Math.max(project.totalValue - getProjectPaidAmount(state, project.id), 0)
@@ -197,12 +204,17 @@ export const getProjectProfit = (state: AppState, project: Project) => {
   const directCosts = getProjectDirectCosts(state, project.id)
   const profit = paid - directCosts
   const margin = paid > 0 ? (profit / paid) * 100 : 0
+  const contractedProfit = project.totalValue - directCosts
+  const contractedMargin = project.totalValue > 0 ? (contractedProfit / project.totalValue) * 100 : 0
 
   return {
     paid,
     directCosts,
     profit,
     margin,
+    contractedRevenue: project.totalValue,
+    contractedProfit,
+    contractedMargin,
     pending: Math.max(project.totalValue - paid, 0),
   }
 }
@@ -226,7 +238,7 @@ export const calculateDashboardMetrics = (
   )
 
   const periodProjects = billableProjects.filter((project) =>
-    isInRange(project.captureDate || project.createdAt, start, end),
+    isInRange(projectAccrualDate(project), start, end),
   )
 
   const receivedPayments = state.payments.filter(
@@ -234,11 +246,13 @@ export const calculateDashboardMetrics = (
   )
 
   const revenueByAccrual = periodProjects.reduce((total, project) => total + project.totalValue, 0)
-  const revenueByCash = receivedPayments.reduce((total, payment) => total + payment.amount, 0)
+  const revenueByCash = receivedPayments.reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
   const revenue = regime === 'cash' ? revenueByCash : revenueByAccrual
 
-  const pendingReceivable = state.payments
-    .filter((payment) => !isReceivedPayment(payment) && !isCancelledPayment(payment))
+  const allPendingPayments = state.payments.filter((payment) => !isReceivedPayment(payment) && !isCancelledPayment(payment))
+  const pendingReceivableTotal = allPendingPayments.reduce((total, payment) => total + payment.amount, 0)
+  const pendingReceivable = allPendingPayments
+    .filter((payment) => isInRange(payment.dueDate, start, end))
     .reduce((total, payment) => total + payment.amount, 0)
 
   const officialPeriodExpenses = state.expenses.filter(
@@ -282,12 +296,14 @@ export const calculateDashboardMetrics = (
     0,
   )
 
-  const completedProjects = billableProjects.filter((project) =>
-    ['Captação realizada', 'Em edição', 'Entregue', 'Finalizado'].includes(project.projectStatus),
+  const completedProjects = periodProjects.filter((project) =>
+    ['Entregue', 'Pago', 'Concluído', 'Finalizado'].includes(project.projectStatus),
   )
 
-  const pendingExpenses = state.expenses
-    .filter((expense) => !isPaidExpense(expense) && !isCancelledExpense(expense))
+  const allPendingExpenses = state.expenses.filter((expense) => !isPaidExpense(expense) && !isCancelledExpense(expense))
+  const pendingExpensesTotal = allPendingExpenses.reduce((total, expense) => total + expense.amount, 0)
+  const pendingExpenses = allPendingExpenses
+    .filter((expense) => isInRange(expense.dueDate || expense.expenseDate, start, end))
     .reduce((total, expense) => total + expense.amount, 0)
   const recurringMonthlyExpenses = state.expenses.reduce((total, expense) => total + getMonthlyRecurringExpenseAmount(expense), 0)
 
@@ -297,13 +313,16 @@ export const calculateDashboardMetrics = (
     revenueByAccrual,
     received: revenueByCash,
     pendingReceivable,
+    pendingReceivableTotal,
     expenses: totalExpenses,
     directCosts,
     operatingExpenses,
     taxes,
     pendingExpenses,
+    pendingExpensesTotal,
     recurringMonthlyExpenses,
-    overdueExpenses: state.expenses.filter(isExpenseOverdue).length,
+    overdueExpenses: state.expenses.filter((expense) => isExpenseOverdue(expense) && isInRange(expense.dueDate, start, end)).length,
+    overdueExpensesTotal: state.expenses.filter(isExpenseOverdue).length,
     grossProfit,
     netProfit,
     margin,
@@ -315,7 +334,8 @@ export const calculateDashboardMetrics = (
       const days = getDaysUntil(project.deliveryDeadline)
       return days >= 0 && days <= 7 && project.projectStatus !== 'Entregue'
     }).length,
-    overduePayments: state.payments.filter((payment) => isPaymentOverdue(payment)).length,
+    overduePayments: state.payments.filter((payment) => isPaymentOverdue(payment) && isInRange(payment.dueDate, start, end)).length,
+    overduePaymentsTotal: state.payments.filter(isPaymentOverdue).length,
     averageTicket:
       periodProjects.length > 0
         ? periodProjects.reduce((total, project) => total + project.totalValue, 0) /
@@ -342,11 +362,70 @@ export const isPaymentOverdue = (payment: Payment) => {
   return getDaysUntil(payment.dueDate) < 0
 }
 
+const addRecurrence = (date: Date, frequency: Expense['recurrenceFrequency']) => {
+  const next = new Date(date)
+  if (frequency === 'Semanal') next.setDate(next.getDate() + 7)
+  else if (frequency === 'Quinzenal') next.setDate(next.getDate() + 15)
+  else if (frequency === 'Bimestral') next.setMonth(next.getMonth() + 2)
+  else if (frequency === 'Trimestral') next.setMonth(next.getMonth() + 3)
+  else if (frequency === 'Semestral') next.setMonth(next.getMonth() + 6)
+  else if (frequency === 'Anual') next.setFullYear(next.getFullYear() + 1)
+  else next.setMonth(next.getMonth() + 1)
+  return next
+}
+
+export const getFinancialForecast = (state: AppState, horizonDays = 90) => {
+  const today = startOfDay(new Date())
+  const horizon = endOfDay(addDays(today, horizonDays))
+  const entries: Array<{ id: string; date: Date; type: 'Entrada' | 'Saída'; amount: number; description: string }> = []
+
+  state.payments
+    .filter((payment) => !isReceivedPayment(payment) && !isCancelledPayment(payment))
+    .forEach((payment) => {
+      const date = parseDate(payment.dueDate)
+      if (date && date <= horizon) entries.push({ id: payment.id, date, type: 'Entrada', amount: payment.amount, description: payment.paymentType })
+    })
+
+  state.expenses
+    .filter((expense) => !isCancelledExpense(expense))
+    .forEach((expense) => {
+      const dueDate = parseDate(expense.dueDate || expense.expenseDate)
+      if (!isPaidExpense(expense) && dueDate && dueDate <= horizon) entries.push({ id: expense.id, date: dueDate, type: 'Saída', amount: expense.amount, description: expense.description })
+      if (!expense.recurring) return
+      let occurrence = addRecurrence(dueDate || today, expense.recurrenceFrequency)
+      const recurrenceEnd = parseDate(expense.recurrenceEndDate)
+      let index = 1
+      while (occurrence <= horizon && (!recurrenceEnd || occurrence <= recurrenceEnd) && index <= 100) {
+        if (occurrence >= today) entries.push({ id: `${expense.id}-recurrence-${index}`, date: occurrence, type: 'Saída', amount: expense.amount, description: `${expense.description} (recorrente)` })
+        occurrence = addRecurrence(occurrence, expense.recurrenceFrequency)
+        index += 1
+      }
+    })
+
+  const bucketDefinitions = [
+    { label: 'Vencidos', from: -36500, to: -1 },
+    { label: 'Próximos 7 dias', from: 0, to: 7 },
+    { label: '8 a 30 dias', from: 8, to: 30 },
+    { label: '31 a 60 dias', from: 31, to: 60 },
+    { label: '61 a 90 dias', from: 61, to: 90 },
+  ]
+  const buckets = bucketDefinitions.map((bucket) => {
+    const items = entries.filter((entry) => {
+      const days = Math.floor((startOfDay(entry.date).getTime() - today.getTime()) / 86_400_000)
+      return days >= bucket.from && days <= bucket.to
+    })
+    const inflow = items.filter((item) => item.type === 'Entrada').reduce((total, item) => total + item.amount, 0)
+    const outflow = items.filter((item) => item.type === 'Saída').reduce((total, item) => total + item.amount, 0)
+    return { ...bucket, inflow, outflow, net: inflow - outflow, items }
+  })
+  return { entries, buckets, projectedBalance: getTotalBankBalance(state) + entries.reduce((total, item) => total + (item.type === 'Entrada' ? item.amount : -item.amount), 0) }
+}
+
 export const recalculateProjectFinancials = (project: Project, payments: Payment[]): Project => {
   const projectPayments = payments.filter(
     (payment) => payment.projectId === project.id && !isCancelledPayment(payment),
   )
-  const paid = projectPayments.filter(isReceivedPayment).reduce((total, payment) => total + payment.amount, 0)
+  const paid = projectPayments.filter(isReceivedPayment).reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
   const remaining = Math.max(project.totalValue - paid, 0)
   const overdue = projectPayments.some((payment) => isPaymentOverdue(payment))
   const hasDeposit = projectPayments.some(
@@ -386,9 +465,9 @@ export const buildMonthlySeries = (state: AppState, regime: AccountingRegime = '
     const revenue = regime === 'cash'
       ? state.payments
         .filter((payment) => isReceivedPayment(payment) && isInRange(payment.paidAt, start, end))
-        .reduce((total, payment) => total + payment.amount, 0)
+        .reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
       : state.projects
-        .filter((project) => !project.archivedAt && !project.deletedAt && billableProjectStatuses.has(project.projectStatus) && isInRange(project.captureDate || project.createdAt, start, end))
+        .filter((project) => !project.archivedAt && !project.deletedAt && billableProjectStatuses.has(project.projectStatus) && isInRange(projectAccrualDate(project), start, end))
         .reduce((total, project) => total + project.totalValue, 0)
 
     const expenses = state.expenses

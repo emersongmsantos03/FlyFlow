@@ -67,7 +67,9 @@ import {
   getProjectProfit,
   getPeriodRange,
   getBankAccountBalance,
+  getFinancialForecast,
   getMonthlyRecurringExpenseAmount,
+  getPaymentCashEffect,
   getTotalBankBalance,
   isExpenseOverdue,
   isOfficialExpense,
@@ -371,6 +373,8 @@ interface BankAccountFormValues {
   agency: string
   accountNumber: string
   openingBalance: number
+  statementBalance?: number
+  reconciledAt?: string
   active: boolean
   notes: string
 }
@@ -2279,9 +2283,9 @@ function App() {
     }
 
     const currentPaid = project
-      ? state.payments.filter((payment) => payment.projectId === project.id && payment.id !== selectedFinancePaymentId && payment.status === 'Recebida' && payment.paymentType !== 'Reembolso').reduce((total, payment) => total + payment.amount, 0)
+      ? state.payments.filter((payment) => payment.projectId === project.id && payment.id !== selectedFinancePaymentId).reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
       : 0
-    const receivedNow = values.status === 'Recebida' && values.paymentType !== 'Adicional' ? values.amount : 0
+    const receivedNow = values.status === 'Recebida' ? (values.paymentType === 'Reembolso' ? -values.amount : values.amount) : 0
     if (project && currentPaid + receivedNow > project.totalValue) {
       showNotice({ title: 'Valor acima do projeto', description: 'O valor recebido não pode ultrapassar o valor total do projeto, exceto quando o lançamento for do tipo adicional.', tone: 'warning' })
       return
@@ -2330,7 +2334,7 @@ function App() {
           updatedAt: now,
         }
         const payments = [payment, ...current.payments.filter((item) => item.id !== existingSourcePayment?.id)]
-        const receivedTotal = currentProject ? payments.filter((item) => item.projectId === currentProject.id && item.status === 'Recebida' && item.paymentType !== 'Reembolso').reduce((total, item) => total + item.amount, 0) : 0
+        const receivedTotal = currentProject ? payments.filter((item) => item.projectId === currentProject.id).reduce((total, item) => total + getPaymentCashEffect(item), 0) : 0
         const existingReceiptFile = current.files.find((file) => file.paymentId === payment.id)
         return {
           ...current,
@@ -2340,7 +2344,11 @@ function App() {
             item.id === currentProject.id
               ? {
                   ...recalculateProjectFinancials(item, payments),
-                  projectStatus: receivedTotal >= currentProject.totalValue && values.paymentType === 'Pagamento final' ? 'Pago' : item.projectStatus,
+                  projectStatus: receivedTotal >= currentProject.totalValue && values.paymentType === 'Pagamento final'
+                    ? 'Pago'
+                    : receivedTotal < currentProject.totalValue && item.projectStatus === 'Pago'
+                      ? 'Aguardando pagamento final'
+                      : item.projectStatus,
                 }
               : item,
           ) : current.projects,
@@ -6395,7 +6403,7 @@ function FinancePage({
   onDeleteBankTransfer: (transfer: BankTransfer) => void
 }) {
   const validPayments = state.payments.filter((payment) => !payment.archivedAt && !payment.deletedAt && !['Cancelada', 'Reembolsada'].includes(payment.status))
-  const receivedTotal = validPayments.filter((payment) => payment.status === 'Recebida').reduce((total, payment) => total + payment.amount, 0)
+  const receivedTotal = validPayments.filter((payment) => payment.status === 'Recebida').reduce((total, payment) => total + getPaymentCashEffect(payment), 0)
   const pendingTotal = validPayments.filter((payment) => payment.status !== 'Recebida').reduce((total, payment) => total + payment.amount, 0)
   const overdueTotal = validPayments.filter(isPaymentOverdue).reduce((total, payment) => total + payment.amount, 0)
   const pendingExpenseTotal = state.expenses
@@ -6408,7 +6416,7 @@ function FinancePage({
   const exportFinancialCsv = () => {
     const rows = [
       ['Tipo', 'Descrição', 'Valor', 'Data', 'Status', 'Projeto', 'Conta', 'Recorrência'],
-      ...state.payments.filter((item) => !item.deletedAt).map((payment) => ['Receita', payment.paymentType, payment.amount, payment.paidAt || payment.dueDate, payment.status, payment.projectId || '', state.bankAccounts.find((account) => account.id === payment.bankAccountId)?.name || payment.account || '', '']),
+      ...state.payments.filter((item) => !item.deletedAt).map((payment) => [payment.paymentType === 'Reembolso' ? 'Estorno' : 'Receita', payment.paymentType, payment.paymentType === 'Reembolso' ? -payment.amount : payment.amount, payment.paidAt || payment.dueDate, payment.status, payment.projectId || '', state.bankAccounts.find((account) => account.id === payment.bankAccountId)?.name || payment.account || '', '']),
       ...state.expenses.filter((item) => !item.deletedAt).map((expense) => ['Despesa', expense.description, expense.amount, expense.paidAt || expense.expenseDate, expense.status, expense.projectId || '', state.bankAccounts.find((account) => account.id === expense.bankAccountId)?.name || expense.account || '', expense.recurring ? expense.recurrenceFrequency || 'Mensal' : 'Única']),
       ...state.bankTransfers.map((transfer) => ['Transferência', transfer.description, transfer.amount, transfer.transferredAt, 'Concluída', '', `${state.bankAccounts.find((account) => account.id === transfer.fromAccountId)?.name || ''} → ${state.bankAccounts.find((account) => account.id === transfer.toAccountId)?.name || ''}`, '']),
     ]
@@ -6439,7 +6447,7 @@ function FinancePage({
       />
       <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
-          <div><h2 className="flex items-center gap-2 text-sm font-black text-gray-950"><Wallet className="text-amber-600" size={17} /> Resumo financeiro</h2><p className="mt-0.5 text-xs text-gray-500">Posição atual e valores previstos</p></div>
+          <div><h2 className="flex items-center gap-2 text-sm font-black text-gray-950"><Wallet className="text-amber-600" size={17} /> Posição financeira acumulada</h2><p className="mt-0.5 text-xs text-gray-500">Saldos atuais e todos os compromissos em aberto; use o Dashboard abaixo para analisar períodos.</p></div>
           <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">{receivableProgress.toFixed(0)}% recebido</span>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
@@ -6452,7 +6460,7 @@ function FinancePage({
             <p className="mt-2 text-xs text-gray-500">Inclui {formatCurrency(pendingTotal)} pendentes.</p>
           </article>
           <article className="rounded-xl border border-gray-200 p-4 xl:col-span-2">
-            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Já recebido</p><p className="mt-2 text-xl font-black text-emerald-600">{formatCurrency(receivedTotal)}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(receivableProgress, 100)}%` }} /></div>
+            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Recebido acumulado</p><p className="mt-2 text-xl font-black text-emerald-600">{formatCurrency(receivedTotal)}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(receivableProgress, 100)}%` }} /></div>
           </article>
           <article className="rounded-xl border border-gray-200 p-4 xl:col-span-3">
             <p className="text-xs font-black uppercase tracking-wide text-gray-500">Ainda falta receber</p><p className="mt-2 text-xl font-black text-amber-600">{formatCurrency(pendingTotal)}</p><p className={`mt-2 text-xs font-bold ${overdueTotal > 0 ? 'text-red-600' : 'text-gray-500'}`}>{overdueTotal > 0 ? `${formatCurrency(overdueTotal)} já vencidos` : 'Nenhum valor vencido'}</p>
@@ -6506,6 +6514,10 @@ type FinancialPeriodSnapshot = {
   overdue: number
   payments: Payment[]
   expenseItems: Expense[]
+  directCosts: number
+  operatingExpenses: number
+  taxes: number
+  grossProfit: number
 }
 
 function FinancialDashboard({ state }: { state: AppState }) {
@@ -6514,6 +6526,7 @@ function FinancialDashboard({ state }: { state: AppState }) {
   const [reportRegime, setReportRegime] = useState<AccountingRegime>('cash')
 
   const snapshotFor = (preset: PeriodPreset): FinancialPeriodSnapshot => {
+    const metrics = calculateDashboardMetrics(state, preset, reportRegime)
     const { start, end } = getPeriodRange(preset)
     const inRange = (value?: string) => {
       if (!value) return false
@@ -6526,9 +6539,9 @@ function FinancialDashboard({ state }: { state: AppState }) {
     const expenseItems = state.expenses.filter((expense) =>
       isOfficialExpense(expense) && (reportRegime === 'cash' ? isPaidExpense(expense) && inRange(expense.paidAt) : inRange(expense.expenseDate)),
     )
-    const received = receivedItems.reduce((total, payment) => total + payment.amount, 0)
+    const received = metrics.revenue
     const pending = pendingItems.reduce((total, payment) => total + payment.amount, 0)
-    const expenses = expenseItems.reduce((total, expense) => total + expense.amount, 0)
+    const expenses = metrics.expenses
     return {
       received,
       pending,
@@ -6537,11 +6550,16 @@ function FinancialDashboard({ state }: { state: AppState }) {
       overdue: pendingItems.filter(isPaymentOverdue).reduce((total, payment) => total + payment.amount, 0),
       payments: [...receivedItems, ...pendingItems],
       expenseItems,
+      directCosts: metrics.directCosts,
+      operatingExpenses: metrics.operatingExpenses,
+      taxes: metrics.taxes,
+      grossProfit: metrics.grossProfit,
     }
   }
 
   const current = snapshotFor(reportPeriod)
   const comparison = snapshotFor(comparisonPeriod)
+  const forecast = getFinancialForecast(state)
   const periodLabel = periodOptions.find((option) => option.value === reportPeriod)?.label || reportPeriod
   const comparisonLabel = periodOptions.find((option) => option.value === comparisonPeriod)?.label || comparisonPeriod
   const variation = (value: number, previous: number) => previous === 0 ? value === 0 ? 0 : 100 : ((value - previous) / Math.abs(previous)) * 100
@@ -6556,7 +6574,7 @@ function FinancialDashboard({ state }: { state: AppState }) {
     return groups
   }, new Map<string, number>())).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total).slice(0, 6)
   const reportRows = [
-    ...current.payments.map((payment) => ({ id: `payment-${payment.id}`, date: payment.paidAt || payment.dueDate, type: 'Receita', description: payment.paymentType, status: payment.status, value: payment.amount })),
+    ...current.payments.map((payment) => ({ id: `payment-${payment.id}`, date: payment.paidAt || payment.dueDate, type: payment.paymentType === 'Reembolso' ? 'Estorno' : 'Receita', description: payment.paymentType, status: payment.status, value: payment.paymentType === 'Reembolso' ? -payment.amount : payment.amount })),
     ...current.expenseItems.map((expense) => ({ id: `expense-${expense.id}`, date: expense.paidAt || expense.expenseDate, type: 'Despesa', description: expense.description, status: expense.status, value: -expense.amount })),
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
@@ -6589,6 +6607,17 @@ function FinancialDashboard({ state }: { state: AppState }) {
         </Panel>
         <Panel title="Despesas por categoria">
           <div className="space-y-3">{expenseBreakdown.map((item) => { const share = current.expenses > 0 ? item.total / current.expenses * 100 : 0; return <div key={item.category}><div className="flex items-center justify-between gap-3 text-sm"><span className="truncate font-bold text-gray-700">{item.category}</span><strong className="whitespace-nowrap text-gray-950">{formatCurrency(item.total)}</strong></div><div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-red-400" style={{ width: `${share}%` }} /></div></div> })}{!expenseBreakdown.length ? <p className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">Sem despesas no período selecionado.</p> : null}</div>
+        </Panel>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        <Panel title={`DRE simplificada · ${periodLabel}`}>
+          <div className="space-y-2 text-sm">
+            {[['Receita bruta', current.received], ['(-) Custos diretos', -current.directCosts], ['Lucro bruto', current.grossProfit], ['(-) Despesas operacionais', -current.operatingExpenses], ['(-) Impostos', -current.taxes], ['Resultado líquido', current.result]].map(([label, value], index) => <div key={String(label)} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 ${index === 2 || index === 5 ? 'bg-gray-100 font-black' : 'border-b border-gray-100'}`}><span>{label}</span><strong className={Number(value) < 0 ? 'text-red-600' : 'text-gray-950'}>{formatCurrency(Number(value))}</strong></div>)}
+          </div>
+        </Panel>
+        <Panel title="Fluxo de caixa previsto · 90 dias" action={<span className={`text-xs font-black ${forecast.projectedBalance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>Saldo projetado {formatCurrency(forecast.projectedBalance)}</span>}>
+          <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Faixa</th><th>Entradas</th><th>Saídas</th><th>Saldo</th></tr></thead><tbody>{forecast.buckets.map((bucket) => <tr key={bucket.label}><td><strong>{bucket.label}</strong><span className="ml-2 text-xs text-gray-400">{bucket.items.length} lançamento(s)</span></td><td className="text-emerald-600">{formatCurrency(bucket.inflow)}</td><td className="text-red-600">{formatCurrency(bucket.outflow)}</td><td><strong className={bucket.net < 0 ? 'text-red-600' : 'text-emerald-600'}>{formatCurrency(bucket.net)}</strong></td></tr>)}</tbody></table></div>
+          <p className="mt-3 text-xs text-gray-500">Inclui contas em aberto e ocorrências futuras calculadas a partir das despesas recorrentes.</p>
         </Panel>
       </div>
       <Panel title={`Relatório detalhado · ${periodLabel}`} action={<span className="text-xs font-bold text-gray-500">{reportRows.length} lançamento(s)</span>}>
@@ -6647,6 +6676,7 @@ function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDe
               + state.expenses.filter((item) => item.bankAccountId === account.id && isPaidExpense(item) && !item.deletedAt).length
               + state.bankTransfers.filter((item) => item.fromAccountId === account.id || item.toAccountId === account.id).length
             const lastMovementAt = getLastMovementAt(account.id)
+            const reconciliationDifference = account.statementBalance === undefined ? undefined : account.statementBalance - balance
             return (
               <article key={account.id} className="finance-bank-card dashboard-list-card rounded-2xl border border-gray-200 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -6672,6 +6702,7 @@ function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDe
                   </div>
                 </div>
                 {lastMovementAt ? <p className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">Última movimentação: <strong className="text-gray-950">{formatDateTime(lastMovementAt)}</strong></p> : null}
+                {reconciliationDifference !== undefined ? <div className={`mt-3 rounded-xl border px-3 py-2 text-xs ${Math.abs(reconciliationDifference) < 0.01 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}><strong>{Math.abs(reconciliationDifference) < 0.01 ? 'Conta conciliada' : `Diferença de ${formatCurrency(reconciliationDifference)}`}</strong><span className="ml-1">· extrato {formatCurrency(account.statementBalance || 0)}{account.reconciledAt ? ` em ${formatDate(account.reconciledAt)}` : ''}</span></div> : null}
                 {account.notes ? <p className="mt-3 rounded-xl border border-dashed border-gray-200 bg-white/70 px-3 py-2 text-xs leading-5 text-gray-500">{account.notes}</p> : null}
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
                   <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEdit(account)}><Pencil size={14} /> Editar</Button>
@@ -6723,6 +6754,8 @@ function FinancialTable({
 }) {
   const [search, setSearch] = useState('')
   const [expenseScope, setExpenseScope] = useState<'all' | 'single' | 'recurring'>('all')
+  const [expenseDueScope, setExpenseDueScope] = useState<'all' | 'overdue' | 'next7'>('all')
+  const [paymentScope, setPaymentScope] = useState<'all' | 'overdue' | 'today' | 'next7'>('all')
   const [receiptPreview, setReceiptPreview] = useState<{ url: string; fileName: string } | null>(null)
   const matchesFinancial = (text: string) => !search.trim() || text.toLowerCase().includes(search.trim().toLowerCase())
   if (tab === 'arquivados') {
@@ -6731,7 +6764,13 @@ function FinancialTable({
     return <Panel title="Arquivados e excluídos logicamente"><div className="space-y-3">{[...archivedPayments.map((record) => ({ kind: 'payment' as const, record, title: record.paymentType, value: record.amount })), ...archivedExpenses.map((record) => ({ kind: 'expense' as const, record, title: record.description, value: record.amount }))].map(({ kind, record, title, value }) => <article key={`${kind}-${record.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 p-3"><div><strong>{title}</strong><p className="text-sm text-gray-500">{formatCurrency(value)} · {record.deletedAt ? `Excluído: ${record.deletionReason || 'sem motivo'}` : 'Arquivado'}</p></div><Button variant="secondary" type="button" onClick={() => onArchiveRecord(kind, record.id, false)}>Restaurar</Button></article>)}{!archivedPayments.length && !archivedExpenses.length ? <p className="rounded-lg bg-gray-50 p-5 text-center text-sm text-gray-500">Nenhum lançamento arquivado.</p> : null}</div></Panel>
   }
   if (tab === 'despesas') {
-    const expenses = state.expenses.filter((expense) => !expense.archivedAt && !expense.deletedAt && (expenseScope === 'all' || (expenseScope === 'recurring' ? expense.recurring : !expense.recurring)) && matchesFinancial(`${expense.description} ${expense.category} ${expense.supplier} ${expense.recurrenceFrequency || ''}`))
+    const expenses = state.expenses.filter((expense) => {
+      if (expense.archivedAt || expense.deletedAt || (expenseScope !== 'all' && (expenseScope === 'recurring' ? !expense.recurring : expense.recurring))) return false
+      if (!matchesFinancial(`${expense.description} ${expense.category} ${expense.supplier} ${expense.recurrenceFrequency || ''}`)) return false
+      if (expenseDueScope === 'overdue') return isExpenseOverdue(expense)
+      if (expenseDueScope === 'next7') { const days = daysUntil(expense.dueDate); return !isPaidExpense(expense) && days >= 0 && days <= 7 }
+      return true
+    }).sort((a, b) => (a.dueDate || a.expenseDate).localeCompare(b.dueDate || b.expenseDate))
     const visibleExpenses = state.expenses.filter((expense) => !expense.archivedAt && !expense.deletedAt)
     const uniqueTotal = visibleExpenses.filter((expense) => !expense.recurring && isOfficialExpense(expense)).reduce((total, expense) => total + expense.amount, 0)
     const recurringMonthly = visibleExpenses.reduce((total, expense) => total + getMonthlyRecurringExpenseAmount(expense), 0)
@@ -6741,6 +6780,7 @@ function FinancialTable({
           <input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar despesas…" />
           <div className="flex flex-wrap gap-2">{([['all', 'Todas'], ['single', 'Únicas'], ['recurring', 'Recorrentes']] as const).map(([value, label]) => <Button className="min-h-10 px-3 py-1 text-xs" key={value} variant={expenseScope === value ? 'primary' : 'secondary'} type="button" onClick={() => setExpenseScope(value)}>{label}</Button>)}</div>
         </div>
+        <div className="mb-3 flex flex-wrap gap-2">{([['all', 'Todos os vencimentos'], ['overdue', 'Vencidas'], ['next7', 'Próximos 7 dias']] as const).map(([value, label]) => <Button className="min-h-9 px-3 py-1 text-xs" key={value} variant={expenseDueScope === value ? 'primary' : 'secondary'} type="button" onClick={() => setExpenseDueScope(value)}>{label}</Button>)}</div>
         <div className="mb-4 grid gap-3 sm:grid-cols-2"><SmallStat label="Despesas únicas registradas" value={formatCurrency(uniqueTotal)} /><SmallStat label="Compromisso recorrente mensal" value={formatCurrency(recurringMonthly)} /></div>
         <div className="overflow-x-auto">
           <table className="data-table">
@@ -6766,11 +6806,19 @@ function FinancialTable({
     )
   }
 
-  const payments = state.payments.filter((payment) => !payment.archivedAt && !payment.deletedAt && (tab !== 'receber' || payment.status !== 'Recebida') && matchesFinancial(`${payment.paymentType} ${payment.transactionNumber || ''} ${state.clients.find((client) => client.id === payment.clientId)?.companyName || ''}`))
+  const payments = state.payments.filter((payment) => {
+    if (payment.archivedAt || payment.deletedAt || (tab === 'receber' && payment.status === 'Recebida')) return false
+    if (!matchesFinancial(`${payment.paymentType} ${payment.transactionNumber || ''} ${state.clients.find((client) => client.id === payment.clientId)?.companyName || ''}`)) return false
+    if (tab !== 'receber' || paymentScope === 'all') return true
+    const days = daysUntil(payment.dueDate)
+    if (paymentScope === 'overdue') return isPaymentOverdue(payment)
+    if (paymentScope === 'today') return days === 0
+    return days >= 1 && days <= 7
+  }).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   return (
     <>
     <Panel title={tab === 'receber' ? 'Contas a receber' : 'Receitas e pagamentos'}>
-      <input className="field-input mb-3" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar cliente, tipo ou transação…" />
+      <div className="mb-3 grid gap-3 lg:grid-cols-[1fr_auto]"><input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar cliente, tipo ou transação…" />{tab === 'receber' ? <div className="flex flex-wrap gap-2">{([['all', 'Todas'], ['overdue', 'Vencidas'], ['today', 'Hoje'], ['next7', 'Próximos 7 dias']] as const).map(([value, label]) => <Button className="min-h-10 px-3 py-1 text-xs" key={value} variant={paymentScope === value ? 'primary' : 'secondary'} type="button" onClick={() => setPaymentScope(value)}>{label}</Button>)}</div> : null}</div>
       <div className="overflow-x-auto">
         <table className="data-table">
           <thead><tr><th>Cliente</th><th>Projeto</th><th>Tipo</th><th>Valor</th><th>Vencimento</th><th>Recebimento</th><th>Conta</th><th>Status</th><th>Comprovante</th><th>Ações</th></tr></thead>
@@ -7329,10 +7377,16 @@ function ReportsPage({
   period: PeriodPreset
   regime: AccountingRegime
 }) {
+  const { start: reportStart, end: reportEnd } = getPeriodRange(period)
+  const isInReportPeriod = (value?: string) => {
+    if (!value) return false
+    const date = new Date(value.length === 10 ? `${value}T12:00:00` : value)
+    return date >= reportStart && date <= reportEnd
+  }
   const exportRows = () =>
     downloadCsv(
       'hero-drone-relatorio.csv',
-      state.projects.filter(isVisibleProject).map((project) => ({
+      state.projects.filter((project) => isVisibleProject(project) && isInReportPeriod(project.deliveryDeadline || project.captureDate || project.createdAt)).map((project) => ({
         codigo: project.projectCode,
         projeto: project.name,
         cliente: projectClient(state, project)?.companyName ?? '',
@@ -7346,17 +7400,17 @@ function ReportsPage({
 
   const exportFinancialRows = () => {
     const rows: Array<Record<string, string | number>> = [
-      ...state.payments.filter((item) => !item.deletedAt).map((payment) => ({
-        tipo: 'Receita',
+      ...state.payments.filter((payment) => !payment.deletedAt && !payment.archivedAt && !['Cancelada', 'Reembolsada'].includes(payment.status) && isInReportPeriod(regime === 'cash' ? payment.paidAt : payment.dueDate)).map((payment) => ({
+        tipo: payment.paymentType === 'Reembolso' ? 'Estorno' : 'Receita',
         descricao: payment.paymentType,
         categoria: '',
-        valor: payment.amount,
+        valor: payment.paymentType === 'Reembolso' ? -payment.amount : payment.amount,
         data: payment.paidAt || payment.dueDate,
         situacao: payment.status,
         recorrencia: '',
         conta: state.bankAccounts.find((account) => account.id === payment.bankAccountId)?.name || payment.account || '',
       })),
-      ...state.expenses.filter((item) => !item.deletedAt).map((expense) => ({
+      ...state.expenses.filter((expense) => isOfficialExpense(expense) && isInReportPeriod(regime === 'cash' ? expense.paidAt : expense.expenseDate)).map((expense) => ({
         tipo: 'Despesa',
         descricao: expense.description,
         categoria: expense.category,
@@ -7366,7 +7420,7 @@ function ReportsPage({
         recorrencia: expense.recurring ? expense.recurrenceFrequency || 'Mensal' : '',
         conta: state.bankAccounts.find((account) => account.id === expense.bankAccountId)?.name || expense.account || '',
       })),
-      ...state.bankTransfers.map((transfer) => ({
+      ...state.bankTransfers.filter((transfer) => isInReportPeriod(transfer.transferredAt)).map((transfer) => ({
         tipo: 'Transferência',
         descricao: transfer.description,
         categoria: '',
@@ -7380,12 +7434,6 @@ function ReportsPage({
     downloadCsv(`hero-drone-financeiro-${dateInput()}.csv`, rows)
   }
 
-  const { start: reportStart, end: reportEnd } = getPeriodRange(period)
-  const isInReportPeriod = (value?: string) => {
-    if (!value) return false
-    const date = new Date(value.length === 10 ? `${value}T12:00:00` : value)
-    return date >= reportStart && date <= reportEnd
-  }
   const reportExpenses = state.expenses.filter((expense) =>
     isOfficialExpense(expense) && (
       regime === 'cash'
@@ -7401,7 +7449,7 @@ function ReportsPage({
     ([category, total]) => ({ category, total }),
   ).sort((a, b) => b.total - a.total)
   const profitableProjects = state.projects
-    .filter(isVisibleProject)
+    .filter((project) => isVisibleProject(project) && isInReportPeriod(project.deliveryDeadline || project.captureDate || project.createdAt))
     .map((project) => ({ project, profit: getProjectProfit(state, project) }))
     .sort((a, b) => b.profit.profit - a.profit.profit)
     .slice(0, 8)
@@ -7416,6 +7464,21 @@ function ReportsPage({
   const recentTransfers = [...state.bankTransfers].sort((a, b) => b.transferredAt.localeCompare(a.transferredAt)).slice(0, 6)
   const periodLabel = periodOptions.find((option) => option.value === period)?.label || 'Período atual'
   const regimeLabel = regime === 'cash' ? 'Caixa · valores pagos' : 'Competência · valores lançados'
+  const funnel = [
+    { label: 'Contatos', value: state.leads.filter((lead) => !lead.deletedAt && !lead.archived && isInReportPeriod(lead.entryDate)).length },
+    { label: 'Propostas', value: state.quotes.filter((quote) => !quote.deletedAt && isInReportPeriod(quote.issueDate)).length },
+    { label: 'Aprovadas', value: state.quotes.filter((quote) => !quote.deletedAt && ['Aprovada', 'Aguardando entrada', 'Entrada recebida', 'Convertida em projeto'].includes(quote.status) && isInReportPeriod(quote.approvedAt || quote.issueDate)).length },
+    { label: 'Projetos', value: metrics.projectCount },
+    { label: 'Pagamentos', value: state.payments.filter((payment) => payment.status === 'Recebida' && !payment.deletedAt && isInReportPeriod(payment.paidAt)).length },
+  ]
+  const profitabilityBy = (keyFor: (project: Project) => string) => Array.from(profitableProjects.reduce((groups, { project, profit }) => {
+    const key = keyFor(project) || 'Não informado'
+    const current = groups.get(key) || { revenue: 0, costs: 0 }
+    groups.set(key, { revenue: current.revenue + profit.contractedRevenue, costs: current.costs + profit.directCosts })
+    return groups
+  }, new Map<string, { revenue: number; costs: number }>()), ([label, values]) => ({ label, ...values, result: values.revenue - values.costs, margin: values.revenue > 0 ? (values.revenue - values.costs) / values.revenue * 100 : 0 })).sort((a, b) => b.result - a.result)
+  const profitabilityByService = profitabilityBy((project) => project.serviceName)
+  const profitabilityByClient = profitabilityBy((project) => projectClient(state, project)?.companyName || 'Sem cliente')
 
   return (
     <div className="reports-page space-y-4">
@@ -7524,8 +7587,14 @@ function ReportsPage({
         </Panel>
       </div>
 
+      <Panel title="Funil comercial até o caixa">
+        <div className="grid gap-3 sm:grid-cols-5">{funnel.map((stage, index) => { const previous = index ? funnel[index - 1].value : stage.value; const conversion = previous > 0 ? stage.value / previous * 100 : 0; return <div key={stage.label} className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-center"><p className="text-xs font-black uppercase text-gray-500">{stage.label}</p><strong className="mt-1 block text-2xl text-gray-950">{stage.value}</strong>{index ? <span className="text-xs font-bold text-amber-700">{conversion.toFixed(1)}% da etapa anterior</span> : <span className="text-xs text-gray-400">Entrada do funil</span>}</div> })}</div>
+      </Panel>
+
+      <div className="grid gap-4 xl:grid-cols-2">{[['Rentabilidade por serviço', profitabilityByService], ['Rentabilidade por cliente', profitabilityByClient]].map(([title, items]) => <Panel key={String(title)} title={String(title)}><div className="space-y-2">{(items as typeof profitabilityByService).slice(0, 6).map((item) => <div key={item.label} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm"><strong className="truncate text-gray-950">{item.label}</strong><span className={item.result < 0 ? 'text-red-600' : 'text-emerald-600'}>{formatCurrency(item.result)}</span><StatusBadge>{item.margin.toFixed(1)}%</StatusBadge></div>)}</div></Panel>)}</div>
+
       <Panel title="Rentabilidade dos projetos">
-        {profitableProjects.length ? <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Projeto</th><th>Cliente</th><th>Recebido</th><th>Custos diretos</th><th>Resultado</th><th>Margem</th></tr></thead><tbody>{profitableProjects.map(({ project, profit }) => <tr key={project.id}><td data-label="Projeto"><strong>{project.projectCode}</strong><span className="mt-0.5 block text-xs text-gray-500">{project.name}</span></td><td data-label="Cliente">{projectClient(state, project)?.companyName || 'Sem cliente'}</td><td data-label="Recebido">{formatCurrency(profit.paid)}</td><td data-label="Custos diretos">{formatCurrency(profit.directCosts)}</td><td data-label="Resultado"><strong className={profit.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.profit)}</strong></td><td data-label="Margem"><StatusBadge>{`${profit.margin.toFixed(1)}%`}</StatusBadge></td></tr>)}</tbody></table></div> : <DashboardEmptyState icon={<Briefcase size={20} />} message="Nenhum projeto disponível para análise." />}
+        {profitableProjects.length ? <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Projeto</th><th>Cliente</th><th>Contratado</th><th>Recebido</th><th>Custos diretos</th><th>Resultado contratado</th><th>Resultado realizado</th><th>Margem contratada</th></tr></thead><tbody>{profitableProjects.map(({ project, profit }) => <tr key={project.id}><td data-label="Projeto"><strong>{project.projectCode}</strong><span className="mt-0.5 block text-xs text-gray-500">{project.name}</span></td><td data-label="Cliente">{projectClient(state, project)?.companyName || 'Sem cliente'}</td><td data-label="Contratado">{formatCurrency(profit.contractedRevenue)}</td><td data-label="Recebido">{formatCurrency(profit.paid)}</td><td data-label="Custos diretos">{formatCurrency(profit.directCosts)}</td><td data-label="Resultado contratado"><strong className={profit.contractedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.contractedProfit)}</strong></td><td data-label="Resultado realizado"><strong className={profit.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.profit)}</strong></td><td data-label="Margem contratada"><StatusBadge>{`${profit.contractedMargin.toFixed(1)}%`}</StatusBadge></td></tr>)}</tbody></table></div> : <DashboardEmptyState icon={<Briefcase size={20} />} message="Nenhum projeto disponível para análise." />}
       </Panel>
 
       <section className="report-insights grid gap-3 md:grid-cols-3">
@@ -9215,13 +9284,15 @@ function BankAccountForm({ account, onSubmit, onCancel }: { account?: BankAccoun
   const [agency, setAgency] = useState(account?.agency ?? '')
   const [accountNumber, setAccountNumber] = useState(account?.accountNumber ?? '')
   const [openingBalance, setOpeningBalance] = useState(account?.openingBalance ?? 0)
+  const [statementBalance, setStatementBalance] = useState(account?.statementBalance ?? account?.openingBalance ?? 0)
+  const [reconciledAt, setReconciledAt] = useState(account?.reconciledAt ? dateInputFromDate(new Date(account.reconciledAt)) : '')
   const [active, setActive] = useState(account?.active ?? true)
   const [notes, setNotes] = useState(account?.notes ?? '')
 
   return (
     <form className="space-y-5" onSubmit={(event) => {
       event.preventDefault()
-      onSubmit({ name, bankName, accountType, agency, accountNumber, openingBalance, active, notes })
+      onSubmit({ name, bankName, accountType, agency, accountNumber, openingBalance, statementBalance, reconciledAt: reconciledAt ? asIsoFromInput(`${reconciledAt}T12:00`) : undefined, active, notes })
     }}>
       <div className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-200 text-amber-900"><Landmark size={22} /></span>
@@ -9237,6 +9308,10 @@ function BankAccountForm({ account, onSubmit, onCancel }: { account?: BankAccoun
           <InputField label="Saldo inicial"><CurrencyInput value={openingBalance} onChange={setOpeningBalance} /></InputField>
         </div>
         <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-500"><strong className="text-gray-700">Sobre o saldo inicial:</strong> informe quanto já existia na conta antes de começar a registrar movimentações no FlyFlow.</p>
+      </section>
+      <section className="rounded-2xl border border-gray-200 p-4">
+        <div className="mb-4"><h3 className="font-black text-gray-950">Conciliação bancária</h3><p className="text-sm text-gray-500">Informe o saldo exibido pelo banco para identificar diferenças no cadastro.</p></div>
+        <div className="grid gap-4 sm:grid-cols-2"><InputField label="Saldo no extrato"><CurrencyInput value={statementBalance} onChange={setStatementBalance} /></InputField><InputField label="Conferido em"><input className="field-input" type="date" value={reconciledAt} onChange={(event) => setReconciledAt(event.target.value)} /></InputField></div>
       </section>
       <section className="rounded-2xl border border-gray-200 p-4">
         <div className="mb-4"><h3 className="font-black text-gray-950">Dados bancários</h3><p className="text-sm text-gray-500">Informações opcionais para facilitar a identificação.</p></div>
