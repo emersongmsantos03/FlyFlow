@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowRightLeft,
   BarChart3,
   Bell,
@@ -12,6 +13,7 @@ import {
   Copy,
   DollarSign,
   Download,
+  Eye,
   FileText,
   LayoutDashboard,
   Landmark,
@@ -88,6 +90,7 @@ import {
 } from './lib/format'
 import {
   downloadUrl,
+  getBrowserSafeFileUrl,
   getFilePreviewMode,
   openUrlInNewTab,
 } from './lib/files'
@@ -213,7 +216,7 @@ type Page =
   | 'settings'
   | 'users'
 
-type FinanceTab = 'receitas' | 'despesas' | 'receber' | 'fluxo' | 'contas' | 'arquivados'
+type FinanceTab = 'dashboard' | 'receitas' | 'despesas' | 'receber' | 'fluxo' | 'contas' | 'arquivados'
 
 type ModalType =
   | 'lead'
@@ -847,6 +850,8 @@ const getQuotePdfFilename = (quote: Quote, recipientCompany = '') => {
   return `Proposta Comercial - ${company} - ${quote.quoteNumber}.pdf`
 }
 
+const SARPAS_URL = 'https://servicos.decea.mil.br/sarpas/'
+
 const loadImageDataUrl = async (src: string) => {
   const response = await fetch(src)
   const blob = await response.blob()
@@ -914,7 +919,7 @@ function App() {
     const stored = window.localStorage.getItem('flyflow:crm-view')
     return stored === 'table' || stored === 'tasks' ? stored : 'kanban'
   })
-  const [financeTab, setFinanceTab] = useState<FinanceTab>('receitas')
+  const [financeTab, setFinanceTab] = useState<FinanceTab>('dashboard')
   const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>('diaria')
   const [quickActionsOpen, setQuickActionsOpen] = useState(false)
   const [selectedProposalClientId, setSelectedProposalClientId] = useState<string>('')
@@ -4564,6 +4569,7 @@ function App() {
               onCreateRevision={(quote) => cloneProposal(quote, true)}
               onEditQuote={(quote) => openProposalGenerator(quote.clientId ?? '', quote.leadId ?? '', quote.id)}
               onGenerateProposal={openProposalGenerator}
+              onOpenReceipt={openReceiptModal}
               onScheduleQuote={(quote) => {
                 if (quote.projectId) {
                   const project = state.projects.find((item) => item.id === quote.projectId)
@@ -4582,7 +4588,6 @@ function App() {
           {page === 'finance' ? (
             <FinancePage
               state={state}
-              metrics={metrics}
               monthlySeries={cashMonthlySeries}
               financeTab={financeTab}
               onFinanceTabChange={setFinanceTab}
@@ -5812,7 +5817,7 @@ function ProjectsPage({
           </div>
           <label className="relative block flex-1 lg:max-w-md"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input className="field-input field-input-with-leading-icon min-h-9 py-1.5 text-sm" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar projeto ou cliente…" /></label>
         </div>
-        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs font-bold text-gray-500"><span>{scheduledProjects.length} agendado(s)</span><span>{waitingPayment.length} aguardando pagamento</span>{criticalProjects.length ? <span className="text-red-600">{criticalProjects.length} prazo(s) crítico(s)</span> : null}</div>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs font-bold text-gray-500"><span>{scheduledProjects.length} agendado(s)</span><span>{waitingPayment.length} aguardando pagamento</span>{criticalProjects.length ? <span className="text-red-600">{criticalProjects.length} entrega(s) atrasada(s)</span> : null}</div>
       </section>
 
       {shownProjects.length === 0 ? (
@@ -5918,7 +5923,7 @@ function ProjectWorkspace({
 
         {tab === 'summary' ? <div className="space-y-3">
           <div className="grid grid-cols-3 divide-x divide-gray-100 rounded-lg border border-gray-200 bg-white py-3 text-center"><div><p className="text-[0.65rem] font-bold uppercase text-gray-400">Total</p><p className="mt-1 text-sm font-black text-gray-950">{formatCurrency(project.totalValue)}</p></div><div><p className="text-[0.65rem] font-bold uppercase text-gray-400">Recebido</p><p className="mt-1 text-sm font-black text-emerald-700">{formatCurrency(profit.paid)}</p></div><div><p className="text-[0.65rem] font-bold uppercase text-gray-400">Pendente</p><p className="mt-1 text-sm font-black text-gray-950">{formatCurrency(pending)}</p></div></div>
-          <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-gray-200 p-3"><p className="text-[0.65rem] font-black uppercase text-gray-400">Captação</p><p className="mt-1 text-sm font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p>{!project.captureDate ? <button className="mt-1 text-xs font-black text-[#8a6a00]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}</div><div className={`rounded-lg border p-3 ${deadline.boxClass}`}><p className="text-[0.65rem] font-black uppercase text-gray-400">Entrega</p><p className={`mt-1 text-sm font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-1 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[#8a6a00]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
+          <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-gray-200 p-3"><p className="text-[0.65rem] font-black uppercase text-gray-400">Captação</p><p className="mt-1 text-sm font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-2 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[#8a6a00]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`rounded-lg border p-3 ${deadline.boxClass}`}><p className="text-[0.65rem] font-black uppercase text-gray-400">Entrega</p><p className={`mt-1 text-sm font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-1 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[#8a6a00]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
           <div className="flex flex-wrap gap-2">{location ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={mapsLink(location)} target="_blank" rel="noreferrer"><MapPin size={15} /> Abrir mapa</a> : null}{project.links[0] ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={project.links[0]} target="_blank" rel="noreferrer"><FileText size={15} /> Arquivos</a> : null}{project.projectStatus === 'Aguardando aprovação do cliente' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onAddAdjustment}>Registrar ajuste</Button> : null}{project.projectStatus === 'Aguardando pagamento final' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onExceptionalDelivery}>Liberar entrega</Button> : null}</div>
         </div> : null}
 
@@ -5936,7 +5941,7 @@ function ProjectWorkspace({
             const categoryDone = categoryItems.length > 0 && categoryCompleted === categoryItems.length
             return <article key={category} className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${categoryDone ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'}`}>
               <div className="flex min-w-0 items-center gap-3"><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${categoryDone ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}`}>{categoryDone ? <CheckCircle2 size={16} /> : <Clock size={16} />}</div><div className="min-w-0"><h3 className="truncate text-sm font-black text-gray-950">{category}</h3><p className="mt-0.5 text-xs text-gray-500">{categoryDone ? 'Etapa concluída' : 'Etapa pendente'}</p></div></div>
-              <Button className="min-h-9 shrink-0 px-3 py-1 text-xs" variant={categoryDone ? 'secondary' : 'primary'} type="button" onClick={() => onToggleChecklistCategory(project.id, category, !categoryDone)}>{categoryDone ? 'Reabrir etapa' : 'Concluir etapa'}</Button>
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">{category === 'Antes da captação' ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> SARPAS</a> : null}<Button className="min-h-9 shrink-0 px-3 py-1 text-xs" variant={categoryDone ? 'secondary' : 'primary'} type="button" onClick={() => onToggleChecklistCategory(project.id, category, !categoryDone)}>{categoryDone ? 'Reabrir etapa' : 'Concluir etapa'}</Button></div>
             </article>
           })}{!checklistCategories.length ? <p className="rounded-lg bg-gray-50 p-5 text-center text-sm text-gray-500">Nenhuma etapa configurada.</p> : null}</div>
         </div> : null}
@@ -6126,6 +6131,7 @@ function QuotesPage({
   onCreateRevision,
   onEditQuote,
   onGenerateProposal,
+  onOpenReceipt,
   onScheduleQuote,
 }: {
   state: AppState
@@ -6142,6 +6148,7 @@ function QuotesPage({
   onCreateRevision: (quote: Quote) => void
   onEditQuote: (quote: Quote) => void
   onGenerateProposal: (clientId?: string) => void
+  onOpenReceipt: (payment: Payment) => void
   onScheduleQuote: (quote: Quote) => void
 }) {
   const [scope, setScope] = useState<'active' | 'history'>('active')
@@ -6233,15 +6240,27 @@ function QuotesPage({
                       {payments.map((payment) => <div key={payment.id} className="flex items-center justify-between gap-3 text-xs"><span>{payment.paymentType} · {formatCurrency(payment.amount)}</span><StatusBadge>{payment.status}</StatusBadge></div>)}
                       {!payments.length ? <p className="text-sm text-gray-500">Sem lançamentos.</p> : null}
                       {receipts.map((file) => {
-                        const fileUrl = file.externalLink || file.fileUrl || ''
-                        const previewMode = getFilePreviewMode(fileUrl, file.fileType)
+                        const linkedPayment = payments.find((payment) => payment.id === file.paymentId)
+                        const fileUrl = file.externalLink || file.fileUrl || linkedPayment?.receiptUrl || ''
+                        const previewMode = getFilePreviewMode(fileUrl, `${file.fileType} ${file.fileName}`)
                         if (!fileUrl) {
-                          return <div key={file.id} className="flex items-center gap-1 text-xs font-bold text-gray-500"><Paperclip size={13} /> {file.fileName}</div>
+                          return (
+                            <button
+                              key={file.id}
+                              className="focus-ring flex w-full items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-2 text-left text-xs font-bold text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 hover:underline"
+                              type="button"
+                              onClick={() => linkedPayment && onOpenReceipt(linkedPayment)}
+                            >
+                              <Paperclip size={13} />
+                              <span className="min-w-0 flex-1 truncate">{file.fileName}</span>
+                              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[0.65rem] font-black">Abrir</span>
+                            </button>
+                          )
                         }
                         return (
                           <div
                             key={file.id}
-                            className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2 py-1 hover:border-emerald-300 hover:bg-emerald-50/40"
+                            className="cursor-pointer rounded-md border border-gray-200 bg-white px-2 py-2 hover:border-emerald-300 hover:bg-emerald-50/40"
                             role="button"
                             tabIndex={0}
                             onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
@@ -6253,7 +6272,7 @@ function QuotesPage({
                             }}
                           >
                             <button
-                              className="flex min-w-0 flex-1 items-center gap-1 text-left text-xs font-bold text-emerald-700 hover:underline"
+                              className="flex w-full min-w-0 items-center gap-1 text-left text-xs font-bold text-emerald-700 hover:underline"
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation()
@@ -6262,30 +6281,29 @@ function QuotesPage({
                             >
                               <Paperclip size={13} />
                               <span className="truncate">{file.fileName}</span>
-                              <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[0.65rem] font-black text-emerald-700">Abrir</span>
                             </button>
-                            <div className="flex shrink-0 items-center gap-1">
+                            <div className="mt-2 grid grid-cols-2 gap-2">
                               <button
                                 aria-label={`Visualizar ${file.fileName}`}
-                                className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                                className="inline-flex min-h-8 items-center justify-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-[0.7rem] font-bold text-gray-700 hover:bg-gray-50"
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })
                                 }}
                               >
-                                <FileText size={12} />
+                                <Eye size={12} /> Visualizar
                               </button>
                               <button
                                 aria-label={`Baixar ${file.fileName}`}
-                                className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                                className="inline-flex min-h-8 items-center justify-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-[0.7rem] font-bold text-gray-700 hover:bg-gray-50"
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   downloadUrl(fileUrl, file.fileName)
                                 }}
                               >
-                                <Download size={12} />
+                                <Download size={12} /> Baixar
                               </button>
                             </div>
                           </div>
@@ -6324,7 +6342,7 @@ function QuotesPage({
               {previewFile.mode === 'image' ? (
                 <img className="max-h-[75vh] w-full object-contain bg-black/5" src={previewFile.url} alt={previewFile.fileName} />
               ) : previewFile.mode === 'pdf' ? (
-                <iframe className="h-[75vh] w-full" src={previewFile.url} title={previewFile.fileName} />
+                <iframe className="h-[75vh] w-full" src={getBrowserSafeFileUrl(previewFile.url)} title={previewFile.fileName} />
               ) : (
                 <div className="space-y-3 p-6 text-sm text-gray-600">
                   <p>Esse arquivo não oferece pré-visualização direta aqui.</p>
@@ -6341,7 +6359,6 @@ function QuotesPage({
 
 function FinancePage({
   state,
-  metrics,
   monthlySeries,
   financeTab,
   onFinanceTabChange,
@@ -6357,7 +6374,6 @@ function FinancePage({
   onDeleteBankTransfer,
 }: {
   state: AppState
-  metrics: ReturnType<typeof calculateDashboardMetrics>
   monthlySeries: ReturnType<typeof buildMonthlySeries>
   financeTab: FinanceTab
   onFinanceTabChange: (tab: FinanceTab) => void
@@ -6372,6 +6388,17 @@ function FinancePage({
   onOpenBankTransfer: (transfer?: BankTransfer) => void
   onDeleteBankTransfer: (transfer: BankTransfer) => void
 }) {
+  const validPayments = state.payments.filter((payment) => !payment.archivedAt && !payment.deletedAt && !['Cancelada', 'Reembolsada'].includes(payment.status))
+  const receivedTotal = validPayments.filter((payment) => payment.status === 'Recebida').reduce((total, payment) => total + payment.amount, 0)
+  const pendingTotal = validPayments.filter((payment) => payment.status !== 'Recebida').reduce((total, payment) => total + payment.amount, 0)
+  const overdueTotal = validPayments.filter(isPaymentOverdue).reduce((total, payment) => total + payment.amount, 0)
+  const pendingExpenseTotal = state.expenses
+    .filter((expense) => isOfficialExpense(expense) && !isPaidExpense(expense))
+    .reduce((total, expense) => total + expense.amount, 0)
+  const currentBalance = getTotalBankBalance(state)
+  const projectedBalance = currentBalance + pendingTotal
+  const projectedNetBalance = projectedBalance - pendingExpenseTotal
+  const receivableProgress = receivedTotal + pendingTotal > 0 ? (receivedTotal / (receivedTotal + pendingTotal)) * 100 : 0
   const exportFinancialCsv = () => {
     const rows = [
       ['Tipo', 'Descrição', 'Valor', 'Data', 'Status', 'Projeto', 'Conta', 'Recorrência'],
@@ -6404,22 +6431,43 @@ function FinancePage({
           </div>
         }
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard icon={<DollarSign size={20} />} label="Recebido" value={formatCurrency(metrics.received)} tone="positive" />
-        <MetricCard icon={<Clock size={20} />} label="Pendente" value={formatCurrency(metrics.pendingReceivable)} tone="warning" />
-        <MetricCard icon={<AlertTriangle size={20} />} label="Despesas oficiais" value={formatCurrency(metrics.expenses)} tone="danger" />
-        <MetricCard icon={<TrendingUp size={20} />} label="Lucro líquido" value={formatCurrency(metrics.netProfit)} tone={metrics.netProfit >= 0 ? 'positive' : 'danger'} />
-        <MetricCard icon={<Landmark size={20} />} label="Saldo nas contas" value={formatCurrency(getTotalBankBalance(state))} tone={getTotalBankBalance(state) >= 0 ? 'positive' : 'danger'} />
-      </div>
+      <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
+          <div><h2 className="flex items-center gap-2 text-sm font-black text-gray-950"><Wallet className="text-amber-600" size={17} /> Resumo financeiro</h2><p className="mt-0.5 text-xs text-gray-500">Posição atual e valores previstos</p></div>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">{receivableProgress.toFixed(0)}% recebido</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
+          <article className="relative overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-4 xl:col-span-4">
+            <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-amber-200/50" />
+            <div className="relative"><p className="text-xs font-black uppercase tracking-wide text-amber-800">Disponível hoje</p><p className="mt-2 text-3xl font-black tracking-tight text-gray-950">{formatCurrency(currentBalance)}</p><p className="mt-2 text-xs text-gray-600">Saldo consolidado das suas contas bancárias.</p></div>
+          </article>
+          <article className="rounded-xl border border-gray-200 bg-gray-50 p-4 xl:col-span-3">
+            <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-gray-500">Depois de receber</p><p className="mt-2 text-2xl font-black text-gray-950">{formatCurrency(projectedBalance)}</p></div><TrendingUp className="text-amber-600" size={20} /></div>
+            <p className="mt-2 text-xs text-gray-500">Inclui {formatCurrency(pendingTotal)} pendentes.</p>
+          </article>
+          <article className="rounded-xl border border-gray-200 p-4 xl:col-span-2">
+            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Já recebido</p><p className="mt-2 text-xl font-black text-emerald-600">{formatCurrency(receivedTotal)}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(receivableProgress, 100)}%` }} /></div>
+          </article>
+          <article className="rounded-xl border border-gray-200 p-4 xl:col-span-3">
+            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Ainda falta receber</p><p className="mt-2 text-xl font-black text-amber-600">{formatCurrency(pendingTotal)}</p><p className={`mt-2 text-xs font-bold ${overdueTotal > 0 ? 'text-red-600' : 'text-gray-500'}`}>{overdueTotal > 0 ? `${formatCurrency(overdueTotal)} já vencidos` : 'Nenhum valor vencido'}</p>
+          </article>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm">
+          <span className="text-gray-600">Contas a pagar: <strong className="text-gray-950">{formatCurrency(pendingExpenseTotal)}</strong></span>
+          <span className="text-gray-600">Projeção líquida: <strong className={projectedNetBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(projectedNetBalance)}</strong></span>
+        </div>
+      </section>
       {pendingReceipts ? <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-bold text-amber-800" type="button" onClick={() => receiptShortcut && onOpenReceipt(receiptShortcut)}><span>{pendingReceipts} comprovante(s) pendente(s) de anexação ou conferência.</span><span className="whitespace-nowrap underline">Anexar agora</span></button> : null}
       <div className="flex flex-wrap gap-2">
-        {(['receitas', 'despesas', 'receber', 'fluxo', 'contas', 'arquivados'] as const).map((tab) => (
+        {(['dashboard', 'receitas', 'despesas', 'receber', 'fluxo', 'contas', 'arquivados'] as const).map((tab) => (
           <Button key={tab} variant={financeTab === tab ? 'primary' : 'secondary'} type="button" onClick={() => onFinanceTabChange(tab)}>
-            {tab === 'receber' ? 'contas a receber' : tab === 'contas' ? 'contas bancárias' : tab}
+            {tab === 'dashboard' ? 'Dashboard' : tab === 'receber' ? 'contas a receber' : tab === 'contas' ? 'contas bancárias' : tab}
           </Button>
         ))}
       </div>
-      {financeTab === 'fluxo' ? (
+      {financeTab === 'dashboard' ? (
+        <FinancialDashboard state={state} />
+      ) : financeTab === 'fluxo' ? (
         <Panel title="Fluxo de caixa">
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -6444,6 +6492,106 @@ function FinancePage({
   )
 }
 
+type FinancialPeriodSnapshot = {
+  received: number
+  pending: number
+  expenses: number
+  result: number
+  overdue: number
+  payments: Payment[]
+  expenseItems: Expense[]
+}
+
+function FinancialDashboard({ state }: { state: AppState }) {
+  const [reportPeriod, setReportPeriod] = useState<PeriodPreset>('month')
+  const [comparisonPeriod, setComparisonPeriod] = useState<PeriodPreset>('last30')
+  const [reportRegime, setReportRegime] = useState<AccountingRegime>('cash')
+
+  const snapshotFor = (preset: PeriodPreset): FinancialPeriodSnapshot => {
+    const { start, end } = getPeriodRange(preset)
+    const inRange = (value?: string) => {
+      if (!value) return false
+      const date = new Date(value.length === 10 ? `${value}T12:00:00` : value)
+      return date >= start && date <= end
+    }
+    const payments = state.payments.filter((payment) => !payment.archivedAt && !payment.deletedAt && !['Cancelada', 'Reembolsada'].includes(payment.status))
+    const receivedItems = payments.filter((payment) => payment.status === 'Recebida' && inRange(payment.paidAt))
+    const pendingItems = payments.filter((payment) => payment.status !== 'Recebida' && inRange(payment.dueDate))
+    const expenseItems = state.expenses.filter((expense) =>
+      isOfficialExpense(expense) && (reportRegime === 'cash' ? isPaidExpense(expense) && inRange(expense.paidAt) : inRange(expense.expenseDate)),
+    )
+    const received = receivedItems.reduce((total, payment) => total + payment.amount, 0)
+    const pending = pendingItems.reduce((total, payment) => total + payment.amount, 0)
+    const expenses = expenseItems.reduce((total, expense) => total + expense.amount, 0)
+    return {
+      received,
+      pending,
+      expenses,
+      result: received - expenses,
+      overdue: pendingItems.filter(isPaymentOverdue).reduce((total, payment) => total + payment.amount, 0),
+      payments: [...receivedItems, ...pendingItems],
+      expenseItems,
+    }
+  }
+
+  const current = snapshotFor(reportPeriod)
+  const comparison = snapshotFor(comparisonPeriod)
+  const periodLabel = periodOptions.find((option) => option.value === reportPeriod)?.label || reportPeriod
+  const comparisonLabel = periodOptions.find((option) => option.value === comparisonPeriod)?.label || comparisonPeriod
+  const variation = (value: number, previous: number) => previous === 0 ? value === 0 ? 0 : 100 : ((value - previous) / Math.abs(previous)) * 100
+  const comparisonData = [
+    { metric: 'Recebido', atual: current.received, comparacao: comparison.received },
+    { metric: 'Despesas', atual: current.expenses, comparacao: comparison.expenses },
+    { metric: 'Resultado', atual: current.result, comparacao: comparison.result },
+    { metric: 'Pendente', atual: current.pending, comparacao: comparison.pending },
+  ]
+  const expenseBreakdown = Array.from(current.expenseItems.reduce((groups, expense) => {
+    groups.set(expense.category || expense.expenseType, (groups.get(expense.category || expense.expenseType) || 0) + expense.amount)
+    return groups
+  }, new Map<string, number>())).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total).slice(0, 6)
+  const reportRows = [
+    ...current.payments.map((payment) => ({ id: `payment-${payment.id}`, date: payment.paidAt || payment.dueDate, type: 'Receita', description: payment.paymentType, status: payment.status, value: payment.amount })),
+    ...current.expenseItems.map((expense) => ({ id: `expense-${expense.id}`, date: expense.paidAt || expense.expenseDate, type: 'Despesa', description: expense.description, status: expense.status, value: -expense.amount })),
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  const exportReport = () => downloadCsv(`relatorio-financeiro-${reportPeriod}-${dateInput()}.csv`, reportRows.map((row) => ({ Data: formatDate(row.date), Tipo: row.type, Descricao: row.description, Status: row.status, Valor: row.value })))
+  const Delta = ({ value, previous, inverse = false }: { value: number; previous: number; inverse?: boolean }) => {
+    const delta = variation(value, previous)
+    const positive = inverse ? delta <= 0 : delta >= 0
+    return <span className={`text-xs font-black ${positive ? 'text-emerald-600' : 'text-red-600'}`}>{delta >= 0 ? '+' : ''}{delta.toFixed(1)}%</span>
+  }
+
+  return (
+    <div className="space-y-4">
+      <Panel title="Dashboard por período" action={<Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={exportReport}><Download size={14} /> Exportar relatório</Button>}>
+        <div className="grid gap-3 md:grid-cols-3">
+          <InputField label="Período principal"><select className="field-input" value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></InputField>
+          <InputField label="Comparar com"><select className="field-input" value={comparisonPeriod} onChange={(event) => setComparisonPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></InputField>
+          <InputField label="Regime"><select className="field-input" value={reportRegime} onChange={(event) => setReportRegime(event.target.value as AccountingRegime)}><option value="cash">Caixa (quando pagou/recebeu)</option><option value="accrual">Competência (quando ocorreu)</option></select></InputField>
+        </div>
+        <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">Comparando <strong className="text-gray-800">{periodLabel}</strong> com <strong className="text-gray-800">{comparisonLabel}</strong>.</p>
+      </Panel>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={<DollarSign size={19} />} label="Recebido no período" value={formatCurrency(current.received)} tone="positive" detail={<span className="flex items-center justify-between gap-2">Comparativo <Delta value={current.received} previous={comparison.received} /></span>} />
+        <MetricCard icon={<AlertTriangle size={19} />} label="Despesas no período" value={formatCurrency(current.expenses)} tone="danger" detail={<span className="flex items-center justify-between gap-2">Comparativo <Delta inverse value={current.expenses} previous={comparison.expenses} /></span>} />
+        <MetricCard icon={<TrendingUp size={19} />} label="Resultado do período" value={formatCurrency(current.result)} tone={current.result >= 0 ? 'positive' : 'danger'} detail={<span className="flex items-center justify-between gap-2">Comparativo <Delta value={current.result} previous={comparison.result} /></span>} />
+        <MetricCard icon={<Clock size={19} />} label="A receber no período" value={formatCurrency(current.pending)} tone="warning" detail={`${formatCurrency(current.overdue)} vencidos`} />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+        <Panel title="Comparação dos períodos">
+          <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={comparisonData}><CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" /><XAxis dataKey="metric" /><YAxis /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Legend /><Bar dataKey="atual" name={periodLabel} fill="#d8a500" radius={[5, 5, 0, 0]} /><Bar dataKey="comparacao" name={comparisonLabel} fill="#64748b" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div>
+        </Panel>
+        <Panel title="Despesas por categoria">
+          <div className="space-y-3">{expenseBreakdown.map((item) => { const share = current.expenses > 0 ? item.total / current.expenses * 100 : 0; return <div key={item.category}><div className="flex items-center justify-between gap-3 text-sm"><span className="truncate font-bold text-gray-700">{item.category}</span><strong className="whitespace-nowrap text-gray-950">{formatCurrency(item.total)}</strong></div><div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-red-400" style={{ width: `${share}%` }} /></div></div> })}{!expenseBreakdown.length ? <p className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">Sem despesas no período selecionado.</p> : null}</div>
+        </Panel>
+      </div>
+      <Panel title={`Relatório detalhado · ${periodLabel}`} action={<span className="text-xs font-bold text-gray-500">{reportRows.length} lançamento(s)</span>}>
+        <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Status</th><th>Valor</th></tr></thead><tbody>{reportRows.map((row) => <tr key={row.id}><td data-label="Data">{formatDate(row.date)}</td><td data-label="Tipo"><StatusBadge>{row.type}</StatusBadge></td><td data-label="Descrição">{row.description}</td><td data-label="Status">{row.status}</td><td data-label="Valor"><strong className={row.value >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(row.value)}</strong></td></tr>)}</tbody></table>{!reportRows.length ? <p className="rounded-xl bg-gray-50 p-8 text-center text-sm text-gray-500">Nenhum lançamento encontrado neste período.</p> : null}</div>
+      </Panel>
+    </div>
+  )
+}
+
 function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDeleteTransfer }: {
   state: AppState
   onCreate: (account?: BankAccount) => void
@@ -6456,6 +6604,8 @@ function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDe
   const transfers = [...state.bankTransfers].sort((a, b) => new Date(b.transferredAt).getTime() - new Date(a.transferredAt).getTime())
   const activeAccounts = accounts.filter((account) => account.active)
   const transferVolume = transfers.reduce((total, transfer) => total + transfer.amount, 0)
+  const pendingReceivables = state.payments.filter((payment) => !payment.archivedAt && !payment.deletedAt && !['Recebida', 'Cancelada', 'Reembolsada'].includes(payment.status)).reduce((total, payment) => total + payment.amount, 0)
+  const consolidatedBalance = getTotalBankBalance(state)
 
   const getLastMovementAt = (accountId: string) => {
     const movementDates = [
@@ -6471,16 +6621,17 @@ function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDe
   return (
     <div className="space-y-4">
       <Panel title="Contas bancárias" action={<div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onTransfer()}><ArrowRightLeft size={16} /> Transferir</Button><Button type="button" onClick={() => onCreate()}><Plus size={16} /> Nova conta</Button></div>}>
-        <div className="mb-4 grid gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div className="mb-4 grid gap-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
             <p className="text-xs font-black uppercase tracking-wide text-gray-500">Saldo consolidado</p>
-            <p className="mt-1 text-3xl font-black tracking-tight text-gray-950">{formatCurrency(getTotalBankBalance(state))}</p>
+            <p className="mt-1 text-3xl font-black tracking-tight text-gray-950">{formatCurrency(consolidatedBalance)}</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500">O saldo consolida valor inicial, receitas recebidas, despesas pagas e transferências entre contas.</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[27rem]">
+          <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[30rem]">
             <SmallStat label="Contas ativas" value={String(activeAccounts.length)} />
-            <SmallStat label="Transferências registradas" value={String(transfers.length)} />
-            <SmallStat label="Volume transferido" value={formatCurrency(transferVolume)} />
+            <SmallStat label="A receber" value={formatCurrency(pendingReceivables)} />
+            <SmallStat label="Saldo após receber" value={formatCurrency(consolidatedBalance + pendingReceivables)} />
+            <SmallStat label="Transferências" value={`${transfers.length} · ${formatCurrency(transferVolume)}`} />
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -6525,6 +6676,7 @@ function BankAccountsPanel({ state, onCreate, onEdit, onDelete, onTransfer, onDe
             )
           })}
         </div>
+        {!accounts.length ? <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center"><Landmark className="mx-auto text-gray-400" size={28} /><h3 className="mt-3 font-black text-gray-950">Cadastre sua primeira conta</h3><p className="mt-1 text-sm text-gray-500">Use uma conta para acompanhar saldos, recebimentos, despesas e transferências.</p><Button className="mt-4" type="button" onClick={() => onCreate()}><Plus size={16} /> Criar conta bancária</Button></div> : null}
       </Panel>
       <Panel title="Transferências entre contas">
         <div className="mb-3 grid gap-2 sm:grid-cols-3">
@@ -6565,6 +6717,7 @@ function FinancialTable({
 }) {
   const [search, setSearch] = useState('')
   const [expenseScope, setExpenseScope] = useState<'all' | 'single' | 'recurring'>('all')
+  const [receiptPreview, setReceiptPreview] = useState<{ url: string; fileName: string } | null>(null)
   const matchesFinancial = (text: string) => !search.trim() || text.toLowerCase().includes(search.trim().toLowerCase())
   if (tab === 'arquivados') {
     const archivedPayments = state.payments.filter((item) => item.archivedAt || item.deletedAt)
@@ -6609,6 +6762,7 @@ function FinancialTable({
 
   const payments = state.payments.filter((payment) => !payment.archivedAt && !payment.deletedAt && (tab !== 'receber' || payment.status !== 'Recebida') && matchesFinancial(`${payment.paymentType} ${payment.transactionNumber || ''} ${state.clients.find((client) => client.id === payment.clientId)?.companyName || ''}`))
   return (
+    <>
     <Panel title={tab === 'receber' ? 'Contas a receber' : 'Receitas e pagamentos'}>
       <input className="field-input mb-3" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar cliente, tipo ou transação…" />
       <div className="overflow-x-auto">
@@ -6631,9 +6785,9 @@ function FinancialTable({
                   <td data-label="Comprovante">
                     <div className="flex flex-wrap gap-2">
                       {payment.receiptUrl ? (
-                        <a className="focus-ring inline-flex min-h-9 items-center rounded-lg border border-gray-300 bg-white px-3 py-1 text-xs font-bold text-gray-900" href={payment.receiptUrl} target="_blank" rel="noreferrer">
-                          Abrir
-                        </a>
+                        <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => setReceiptPreview({ url: payment.receiptUrl || '', fileName: `Comprovante - ${payment.paymentType}` })}>
+                          <Eye size={14} /> Visualizar
+                        </Button>
                       ) : null}
                       <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onOpenReceipt(payment)}>
                         {payment.receiptUrl ? 'Trocar' : 'Anexar'}
@@ -6648,6 +6802,34 @@ function FinancialTable({
         </table>
       </div>
     </Panel>
+    {receiptPreview ? <ReceiptPreviewModal url={receiptPreview.url} fileName={receiptPreview.fileName} onClose={() => setReceiptPreview(null)} /> : null}
+    </>
+  )
+}
+
+function ReceiptPreviewModal({ url, fileName, onClose }: { url: string; fileName: string; onClose: () => void }) {
+  const mode = getFilePreviewMode(url, fileName)
+  return (
+    <Modal title={fileName} size="lg" onClose={onClose}>
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={() => downloadUrl(url, fileName)}><Download size={16} /> Baixar comprovante</Button>
+          <Button variant="secondary" type="button" onClick={() => openUrlInNewTab(url)}><ArrowRight size={16} /> Abrir em nova aba</Button>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-100">
+          {mode === 'image' ? (
+            <img className="max-h-[70vh] w-full object-contain" src={url} alt={fileName} />
+          ) : mode === 'pdf' ? (
+            <iframe className="h-[70vh] w-full bg-white" src={getBrowserSafeFileUrl(url)} title={fileName} />
+          ) : (
+            <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-sm text-gray-600">Este link não permite visualização dentro do sistema.</p>
+              <Button type="button" onClick={() => openUrlInNewTab(url)}><ArrowRight size={16} /> Abrir arquivo</Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -7670,13 +7852,13 @@ function getProjectDeadlineInfo(deadline?: string) {
 
   if (days <= 3) {
     return {
-      level: 'danger' as const,
+      level: 'warning' as const,
       label: days === 0 ? 'Vence hoje' : days === 1 ? 'Vence amanhã' : `Vence em ${days} dias`,
       description: `${formatDaysUntil(deadline)} • ${formattedDate}`,
-      cardClass: 'border-red-400 bg-red-50 shadow-red-100 ring-1 ring-red-200',
-      boxClass: 'border-red-300 bg-red-50',
-      textClass: 'text-red-700',
-      badgeClass: 'bg-red-600 text-white',
+      cardClass: '',
+      boxClass: 'border-amber-200 bg-amber-50',
+      textClass: 'text-amber-700',
+      badgeClass: 'bg-amber-100 text-amber-700',
     }
   }
 
@@ -8300,10 +8482,10 @@ function ClosedServiceForm({
           <InputField label="Data da captação"><input className="field-input" name="captureDate" type="date" value={captureDate} onChange={(event) => updateCaptureDate(event.currentTarget.value)} required /></InputField>
           <InputField label="Início"><input className="field-input" name="captureStartTime" type="time" defaultValue="09:00" required /></InputField>
           <InputField label="Fim"><input className="field-input" name="captureEndTime" type="time" defaultValue="11:00" /></InputField>
-          <InputField label="Data de entrega">
+          <InputField label="Prazo máximo para entregar ao cliente">
             <input className="field-input" name="deliveryDeadline" type="date" value={deliveryDeadline} onChange={(event) => updateDeliveryDeadline(event.currentTarget.value)} required />
             <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
-              <span>{deliveryDeadlineNegotiated ? `Prazo negociado: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `${defaultDeliveryDays} dias após a captação.`}</span>
+              <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
               {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[#8a6a00]" type="button" onClick={() => updateDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
             </div>
           </InputField>
@@ -8527,13 +8709,13 @@ function ProjectForm({
       <InputField label="Data de captação" error={getError(errors.captureDate?.message)}><input className="field-input" type="date" {...register('captureDate')} /></InputField>
       <InputField label="Horário inicial" error={getError(errors.captureStartTime?.message)}><input className="field-input" type="time" {...register('captureStartTime')} /></InputField>
       <InputField label="Horário final" error={getError(errors.captureEndTime?.message)}><input className="field-input" type="time" {...register('captureEndTime')} /></InputField>
-      <InputField label="Data de entrega" error={getError(errors.deliveryDeadline?.message)}>
+      <InputField label="Prazo máximo para entregar ao cliente" error={getError(errors.deliveryDeadline?.message)}>
         <input className="field-input" type="date" value={deliveryDeadline} onChange={(event) => changeProjectDeliveryDeadline(event.currentTarget.value)} required />
         <input type="hidden" {...register('deliveryDeadline')} />
         <input className="hidden" type="checkbox" {...register('deliveryDeadlineNegotiated')} />
         <input type="hidden" {...register('deliveryDaysAfterCapture')} />
         <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
-          <span>{deliveryDeadlineNegotiated ? `Prazo negociado: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `${defaultDeliveryDays} dias após a captação.`}</span>
+          <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
           {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[#8a6a00]" type="button" onClick={() => changeProjectDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
         </div>
       </InputField>
@@ -8942,12 +9124,13 @@ function ReceiptForm({
   onSubmit: (paymentId: string, values: ReceiptFormValues) => void
   onCancel: () => void
 }) {
-  const [receiptUrl, setReceiptUrl] = useState(payment.receiptUrl ?? '')
   const existingFile = state.files.find((file) => file.paymentId === payment.id && !file.deletedAt)
+  const [receiptUrl, setReceiptUrl] = useState(payment.receiptUrl || existingFile?.fileUrl || existingFile?.externalLink || '')
   const [fileName, setFileName] = useState(existingFile?.fileName ?? '')
   const [fileType, setFileType] = useState(existingFile?.fileType ?? 'payment-receipt')
   const [fileSize, setFileSize] = useState(existingFile?.fileSize)
   const [status, setStatus] = useState<ReceiptFormValues['status']>(existingFile?.receiptStatus ?? 'Anexado')
+  const [previewOpen, setPreviewOpen] = useState(false)
   const client = state.clients.find((item) => item.id === payment.clientId)
   const project = state.projects.find((item) => item.id === payment.projectId)
 
@@ -8964,6 +9147,7 @@ function ReceiptForm({
   }
 
   return (
+    <>
     <form
       className="space-y-4"
       onSubmit={(event) => {
@@ -8998,10 +9182,8 @@ function ReceiptForm({
         <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
           <div className="flex items-center justify-between gap-3"><strong className="text-sm text-gray-950">Status do comprovante</strong><StatusBadge>{status}</StatusBadge></div>
           <div className="flex flex-wrap gap-2">
-          <a className="focus-ring inline-flex min-h-11 items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-900" href={receiptUrl} target="_blank" rel="noreferrer">
-            Abrir comprovante
-          </a>
-          <a className="focus-ring inline-flex min-h-11 items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-900" href={receiptUrl} download={fileName || 'comprovante'}><Download size={16} /> Baixar</a>
+          <Button variant="secondary" type="button" onClick={() => setPreviewOpen(true)}><Eye size={16} /> Visualizar comprovante</Button>
+          <Button type="button" onClick={() => downloadUrl(receiptUrl, fileName || 'comprovante')}><Download size={16} /> Baixar comprovante</Button>
           <Button variant="secondary" type="button" onClick={() => setStatus('Conferido')}>Marcar conferido</Button>
           <Button variant="secondary" type="button" onClick={() => setStatus('Recusado')}>Recusar</Button>
           <Button variant="secondary" type="button" onClick={() => setStatus('Substituir')}>Solicitar substituição</Button>
@@ -9015,6 +9197,8 @@ function ReceiptForm({
         <Button type="submit">Salvar comprovante</Button>
       </div>
     </form>
+    {previewOpen && receiptUrl ? <ReceiptPreviewModal url={receiptUrl} fileName={fileName || 'Comprovante'} onClose={() => setPreviewOpen(false)} /> : null}
+    </>
   )
 }
 
@@ -9029,20 +9213,33 @@ function BankAccountForm({ account, onSubmit, onCancel }: { account?: BankAccoun
   const [notes, setNotes] = useState(account?.notes ?? '')
 
   return (
-    <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => {
+    <form className="space-y-5" onSubmit={(event) => {
       event.preventDefault()
       onSubmit({ name, bankName, accountType, agency, accountNumber, openingBalance, active, notes })
     }}>
-      <InputField label="Nome da conta"><input className="field-input" required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Conta principal" /></InputField>
-      <InputField label="Banco ou instituição"><input className="field-input" required value={bankName} onChange={(event) => setBankName(event.target.value)} placeholder="Ex.: Nubank" /></InputField>
-      <InputField label="Tipo"><select className="field-input" value={accountType} onChange={(event) => setAccountType(event.target.value as BankAccount['accountType'])}>{bankAccountTypes.map((type) => <option key={type}>{type}</option>)}</select></InputField>
-      <InputField label="Saldo inicial"><CurrencyInput value={openingBalance} onChange={setOpeningBalance} /></InputField>
-      <InputField label="Agência"><input className="field-input" value={agency} onChange={(event) => setAgency(event.target.value)} /></InputField>
-      <InputField label="Conta"><input className="field-input" value={accountNumber} onChange={(event) => setAccountNumber(event.target.value)} /></InputField>
-      <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-800 sm:col-span-2">
-        <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Conta disponível para novas movimentações
+      <div className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-200 text-amber-900"><Landmark size={22} /></span>
+        <div className="min-w-0 flex-1"><p className="text-xs font-black uppercase tracking-wide text-amber-800">Prévia da conta</p><p className="truncate text-lg font-black text-gray-950">{name || 'Nome da conta'}</p><p className="truncate text-sm text-gray-600">{bankName || 'Instituição financeira'} · {accountType}</p></div>
+        <div className="hidden text-right sm:block"><p className="text-xs font-bold text-gray-500">Saldo inicial</p><p className="font-black text-gray-950">{formatCurrency(openingBalance)}</p></div>
+      </div>
+      <section className="rounded-2xl border border-gray-200 p-4">
+        <div className="mb-4"><h3 className="font-black text-gray-950">Identificação</h3><p className="text-sm text-gray-500">Como esta conta aparecerá nos lançamentos financeiros.</p></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <InputField label="Apelido da conta"><input className="field-input" required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Conta principal" /></InputField>
+          <InputField label="Banco ou instituição"><input className="field-input" required value={bankName} onChange={(event) => setBankName(event.target.value)} placeholder="Ex.: Nubank, Itaú ou Caixa" /></InputField>
+          <InputField label="Tipo de conta"><select className="field-input" value={accountType} onChange={(event) => setAccountType(event.target.value as BankAccount['accountType'])}>{bankAccountTypes.map((type) => <option key={type}>{type}</option>)}</select></InputField>
+          <InputField label="Saldo inicial"><CurrencyInput value={openingBalance} onChange={setOpeningBalance} /></InputField>
+        </div>
+        <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-500"><strong className="text-gray-700">Sobre o saldo inicial:</strong> informe quanto já existia na conta antes de começar a registrar movimentações no FlyFlow.</p>
+      </section>
+      <section className="rounded-2xl border border-gray-200 p-4">
+        <div className="mb-4"><h3 className="font-black text-gray-950">Dados bancários</h3><p className="text-sm text-gray-500">Informações opcionais para facilitar a identificação.</p></div>
+        <div className="grid gap-4 sm:grid-cols-2"><InputField label="Agência (opcional)"><input className="field-input" value={agency} onChange={(event) => setAgency(event.target.value)} placeholder="0001" /></InputField><InputField label="Número da conta (opcional)"><input className="field-input" value={accountNumber} onChange={(event) => setAccountNumber(event.target.value)} placeholder="00000-0" /></InputField></div>
+      </section>
+      <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm ${active ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+        <input className="mt-0.5 h-5 w-5 accent-emerald-600" type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /><span><strong className="block">Conta ativa</strong><span className="mt-0.5 block font-normal">Disponível para receber pagamentos, pagar despesas e realizar transferências.</span></span>
       </label>
-      <div className="sm:col-span-2"><InputField label="Observações"><textarea className="field-input min-h-20" value={notes} onChange={(event) => setNotes(event.target.value)} /></InputField></div>
+      <InputField label="Observações"><textarea className="field-input min-h-20" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Informações adicionais sobre esta conta…" /></InputField>
       <FormActions onCancel={onCancel} submitLabel={account ? 'Salvar conta' : 'Criar conta'} />
     </form>
   )
@@ -9120,7 +9317,10 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
           onChange={(nextValue) => setValue('amount', nextValue, { shouldDirty: true, shouldValidate: true })}
         />
       </InputField>
-      <InputField label="Vencimento" error={getError(errors.dueDate?.message)}><input className="field-input" type="date" {...register('dueDate')} /></InputField>
+      <InputField label="Previsão de recebimento" error={getError(errors.dueDate?.message)}>
+        <input className="field-input" type="date" {...register('dueDate')} />
+        <span className="mt-1 block text-xs text-gray-500">No pagamento final, informe a data combinada para receber após a entrega. Esta data não controla o alerta vermelho do projeto.</span>
+      </InputField>
       <InputField label="Data do recebimento" error={getError(errors.paidAt?.message)}><input className="field-input" type="datetime-local" {...register('paidAt')} /></InputField>
       <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
       <InputField label="Status" error={getError(errors.status?.message)}><Select options={paymentStatuses} register={register('status')} /></InputField>

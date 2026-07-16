@@ -27,7 +27,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
-import { downloadUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
+import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
 
@@ -632,7 +632,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
           const receiptFile = files.find((file) => file.paymentId === payment.id && !file.deletedAt)
           const receiptUrl = payment.receiptUrl || receiptFile?.fileUrl || receiptFile?.externalLink || ''
           const hasReceipt = Boolean(receiptUrl)
-          const receiptMode = getFilePreviewMode(receiptUrl, receiptFile?.fileType || '')
+          const receiptMode = getFilePreviewMode(receiptUrl, `${receiptFile?.fileType || ''} ${receiptFile?.fileName || ''}`)
           const paid = payment.status === 'Recebida'
           const paidLabel = payment.paymentType === 'Sinal' ? 'Marcar sinal pago' : payment.paymentType === 'Pagamento final' ? 'Marcar final pago' : 'Marcar como pago'
           return <article key={payment.id} className="rounded-lg border border-gray-200 p-3">
@@ -647,7 +647,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
         })}</DrawerList> : null}
         {tab === 'files' ? <DrawerList empty="Nenhum arquivo vinculado.">{files.map((file) => {
           const fileUrl = file.fileUrl || file.externalLink || ''
-          const previewMode = getFilePreviewMode(fileUrl, file.fileType)
+          const previewMode = getFilePreviewMode(fileUrl, `${file.fileType} ${file.fileName}`)
           return (
             <div key={file.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3 text-sm font-bold text-gray-950">
               <button
@@ -666,19 +666,19 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
                   <>
                     <button
                       aria-label={`Visualizar ${file.fileName}`}
-                      className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
                       type="button"
                       onClick={() => setPreviewFile({ fileName: file.fileName, url: fileUrl, mode: previewMode })}
                     >
-                      <Eye size={12} />
+                      <Eye size={12} /> Visualizar
                     </button>
                     <button
                       aria-label={`Baixar ${file.fileName}`}
-                      className="rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-[0.65rem] font-bold text-gray-700 hover:bg-gray-50"
                       type="button"
                       onClick={() => downloadUrl(fileUrl, file.fileName)}
                     >
-                      <Download size={12} />
+                      <Download size={12} /> Baixar
                     </button>
                   </>
                 ) : null}
@@ -707,7 +707,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
             {previewFile.mode === 'image' ? (
               <img className="max-h-[75vh] w-full object-contain" src={previewFile.url} alt={previewFile.fileName} />
             ) : previewFile.mode === 'pdf' ? (
-              <iframe className="h-[75vh] w-full rounded-xl bg-white" src={previewFile.url} title={previewFile.fileName} />
+              <iframe className="h-[75vh] w-full rounded-xl bg-white" src={getBrowserSafeFileUrl(previewFile.url)} title={previewFile.fileName} />
             ) : (
               <div className="flex min-h-[35vh] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center">
                 <p className="text-sm text-gray-600">Este arquivo será aberto em uma nova aba. Você também pode baixá-lo.</p>
