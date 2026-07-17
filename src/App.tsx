@@ -4775,7 +4775,7 @@ function App() {
                   const controller = new AbortController()
                   const timeout = window.setTimeout(() => controller.abort(), 60_000)
                   const provider = new OpenStreetMapLeadProvider()
-                  const resultsPerSearch = 10
+                  const resultsPerSearch = 20
                   const providerLimit = filters.cityIds.length ? 30 : 8
                   const unavailableProspects = (state.leadHunterProspects || []).filter((prospect) =>
                     prospect.status === 'Importado' ||

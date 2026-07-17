@@ -165,7 +165,7 @@ export function LeadHunterPage({
           sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
           leadContactPriority(b) - leadContactPriority(a),
         )
-        .slice(0, 10),
+        .slice(0, 20),
     [categoryId, cityId, contactFilter, latestSearchId, minimumScore, onlyNew, prospects, resultQuery, sortMode],
   );
   const runSearch = async () => {
