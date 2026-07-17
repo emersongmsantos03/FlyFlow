@@ -15,7 +15,7 @@ export function LeadHunterPage({ cities, categories, prospects, searches, routes
   routes: LeadHunterRoute[]
   settings: LeadHunterSettings
   providerReady: boolean
-  onSearch: (filters: { mode: 'Manual' | 'Rotação automática'; cityIds: string[]; categoryIds: string[]; radiusKm: number; minimumScore: number; onlyNew: boolean; includeEligibleKnown: boolean }) => void
+  onSearch: (filters: { mode: 'Manual' | 'Rotação automática'; cityIds: string[]; categoryIds: string[]; radiusKm: number; minimumScore: number; onlyNew: boolean; includeEligibleKnown: boolean }) => Promise<void> | void
   onSaveSettings: (settings: LeadHunterSettings) => void
   onSaveCities: (cities: LeadHunterCity[]) => void
   onSaveCategories: (categories: LeadHunterCategory[]) => void
@@ -33,8 +33,13 @@ export function LeadHunterPage({ cities, categories, prospects, searches, routes
   const [includeKnown, setIncludeKnown] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [openedLeadId, setOpenedLeadId] = useState('')
+  const [searching, setSearching] = useState(false)
   const filtered = useMemo(() => prospects.filter((lead) => (!cityId || lead.cityId === cityId) && (!categoryId || lead.categoryId === categoryId) && lead.score >= minimumScore && (!onlyNew || lead.isNew)), [categoryId, cityId, minimumScore, onlyNew, prospects])
-  const runSearch = () => onSearch({ mode, cityIds: cityId ? [cityId] : [], categoryIds: categoryId ? [categoryId] : [], radiusKm, minimumScore, onlyNew, includeEligibleKnown: includeKnown })
+  const runSearch = async () => {
+    if (searching) return
+    setSearching(true)
+    try { await onSearch({ mode, cityIds: cityId ? [cityId] : [], categoryIds: categoryId ? [categoryId] : [], radiusKm, minimumScore, onlyNew, includeEligibleKnown: includeKnown }) } finally { setSearching(false) }
+  }
 
   return <div className="lead-hunter-page space-y-4">
     <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
@@ -42,7 +47,7 @@ export function LeadHunterPage({ cities, categories, prospects, searches, routes
         <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9a7900]">Prospecção inteligente</p><h1 className="mt-1 text-2xl font-semibold text-gray-950">Lead Hunter</h1><p className="mt-1 max-w-2xl text-sm text-gray-500">Encontre oportunidades sem repetir estabelecimentos, com score, cooldown e integração ao Comercial.</p></div>
         <div className="flex flex-wrap gap-2">{([['results', 'Resultados', Radar], ['routes', 'Rotas', MapPinned], ['mission', 'Missão do Dia', Flag], ['history', 'Histórico', History], ['settings', 'Configurações', Settings2]] as const).map(([id, label, Icon]) => <Button key={id} variant={view === id ? 'primary' : 'secondary'} type="button" onClick={() => setView(id)}><Icon size={16} />{label}</Button>)}</div>
       </div>
-      {!providerReady ? <div className="mt-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><AlertCircle className="mt-0.5 shrink-0" size={18} /><div><strong>Provedor de busca ainda não configurado</strong><p className="mt-0.5 text-amber-800">Nenhum dado será inventado. Configure Google Places no backend para realizar buscas reais.</p></div></div> : null}
+      {providerReady ? <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"><AlertCircle className="mt-0.5 shrink-0" size={18} /><div><strong>Busca gratuita com dados públicos ativada</strong><p className="mt-0.5 text-emerald-800">Resultados reais do OpenStreetMap, sem GPT e sem custo por busca. A cobertura de telefone, site e endereço depende do cadastro público. <a className="font-semibold underline" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© colaboradores do OpenStreetMap</a>.</p></div></div> : null}
     </section>
 
     {view === 'results' ? <>
@@ -55,7 +60,7 @@ export function LeadHunterPage({ cities, categories, prospects, searches, routes
           <label className="text-xs font-medium text-gray-600">Score mínimo<select className="field-input mt-1" value={minimumScore} onChange={(event) => setMinimumScore(Number(event.target.value))}>{[0, 40, 60, 75, 90].map((score) => <option key={score} value={score}>{score}+</option>)}</select></label>
           <label className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm"><input type="checkbox" checked={onlyNew} onChange={(event) => setOnlyNew(event.target.checked)} /> Apenas inéditos</label>
           <label className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm"><input type="checkbox" checked={includeKnown} onChange={(event) => setIncludeKnown(event.target.checked)} /> Incluir antigos elegíveis</label>
-          <div className="flex gap-2"><Button className="flex-1" type="button" onClick={runSearch}><Search size={16} />Buscar leads</Button><Button variant="secondary" type="button" onClick={() => { setCityId(''); setCategoryId(''); setOnlyNew(true); setIncludeKnown(false); setMinimumScore(60) }}><Filter size={16} /></Button></div>
+          <div className="flex gap-2"><Button className="flex-1" type="button" disabled={searching} onClick={runSearch}>{searching ? <RotateCw className="animate-spin" size={16} /> : <Search size={16} />}{searching ? 'Buscando dados reais...' : 'Buscar leads'}</Button><Button variant="secondary" type="button" disabled={searching} onClick={() => { setCityId(''); setCategoryId(''); setOnlyNew(true); setIncludeKnown(false); setMinimumScore(60) }}><Filter size={16} /></Button></div>
         </div>
       </Panel>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[

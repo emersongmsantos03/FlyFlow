@@ -159,6 +159,8 @@ import {
   updateUserPassword,
 } from './services/auth'
 import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState } from './services/storage'
+import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapProvider'
+import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   isFirebaseConfigured,
@@ -4658,15 +4660,44 @@ function App() {
               searches={state.leadHunterSearches || []}
               routes={state.leadHunterRoutes || []}
               settings={state.leadHunterSettings}
-              providerReady={Boolean((import.meta.env.VITE_LEAD_HUNTER_API_URL as string | undefined)?.trim())}
-              onSearch={(filters) => {
+              providerReady
+              onSearch={async (filters) => {
+                const startedAt = Date.now()
                 const now = new Date().toISOString()
-                const providerReady = Boolean((import.meta.env.VITE_LEAD_HUNTER_API_URL as string | undefined)?.trim())
-                if (!providerReady) {
-                  updateState((current) => ({ ...current, leadHunterSearches: [{ id: createId('lh-search'), ...filters, neighborhood: '', sources: [], totalFound: 0, newCount: 0, repeatedCount: 0, duplicateCount: 0, cooldownBlockedCount: 0, errorCount: 1, estimatedCost: 0, tokenUsage: 0, durationMs: 0, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }), 'Busca não executada: configure o provedor oficial no backend.')
-                  return
+                const activeCities = (state.leadHunterCities || []).filter((item) => item.active && (!item.blockedUntil || item.blockedUntil <= now))
+                const activeCategories = (state.leadHunterCategories || []).filter((item) => item.active)
+                const city = filters.cityIds.length ? activeCities.find((item) => filters.cityIds.includes(item.id)) : [...activeCities].sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)[0]
+                const selectedCategories = filters.categoryIds.length ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)) : [...activeCategories].sort((a, b) => a.searchCount - b.searchCount || b.weight - a.weight).slice(0, 4)
+                if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
+                const searchId = createId('lh-search')
+                try {
+                  const controller = new AbortController()
+                  const timeout = window.setTimeout(() => controller.abort(), 30_000)
+                  const result = await new OpenStreetMapLeadProvider().search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: state.leadHunterSettings?.maxResultsPerSearch || 20 }, controller.signal).finally(() => window.clearTimeout(timeout))
+                  let newCount = 0
+                  let repeatedCount = 0
+                  let duplicateCount = 0
+                  updateState((current) => {
+                    const existingProspects = [...(current.leadHunterProspects || [])]
+                    const incoming = result.leads.map((raw) => {
+                      const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
+                      const existing = existingProspects.find((item) => item.id === stableId || item.externalIds.openstreetmap === raw.externalIds?.openstreetmap)
+                      const duplicate = findLeadDuplicates(raw, existingProspects, current.clients, current.leads)[0]
+                      if (duplicate && duplicate.id !== existing?.id) duplicateCount += 1
+                      const category = selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.categoryName)) || selectedCategories[0]
+                      if (existing) {
+                        repeatedCount += 1
+                        return { ...existing, ...raw, categoryId: category.id, cityId: city.id, isNew: false, possibleDuplicateId: duplicate?.id, discoveryCount: existing.discoveryCount + 1, lastDiscoveredAt: now, lastSearchId: searchId, updatedAt: now }
+                      }
+                      newCount += 1
+                      return { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], score: 50, scoreReasons: [], ...raw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: city.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
+                    })
+                    const incomingIds = new Set(incoming.map((item) => item.id))
+                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => item.id === city.id ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.length, newLeadCount: item.newLeadCount + newCount, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: [city.id], categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage: 0, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
+                  }, `${newCount} novo(s), ${repeatedCount} já conhecido(s). Busca real e gratuita concluída.`)
+                } catch (error) {
+                  updateState((current) => ({ ...current, leadHunterSearches: [{ id: searchId, ...filters, cityIds: [city.id], categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: ['OpenStreetMap / Overpass API'], totalFound: 0, newCount: 0, repeatedCount: 0, duplicateCount: 0, cooldownBlockedCount: 0, errorCount: 1, estimatedCost: 0, tokenUsage: 0, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }), error instanceof Error ? error.message : 'Não foi possível concluir a busca pública.')
                 }
-                setToast('A integração do provedor será ativada na etapa de backend seguro.')
               }}
               onSaveSettings={(settings) => updateState((current) => ({ ...current, leadHunterSettings: settings }), 'Configurações do Lead Hunter salvas.')}
               onSaveCities={(cities) => updateState((current) => ({ ...current, leadHunterCities: cities }), 'Cidades do Lead Hunter atualizadas.')}
