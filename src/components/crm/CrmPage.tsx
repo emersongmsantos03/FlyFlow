@@ -743,6 +743,9 @@ function LeadHunterIntelligence({ data }: { data: NonNullable<Lead['leadHunterDa
       {data.aiSummary || data.aiApproach ? <div className="space-y-3 rounded-lg border border-amber-100 bg-amber-50/60 p-3">
         {data.aiSummary ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Análise da IA</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiSummary}</p></div> : null}
         {data.aiApproach ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Abordagem sugerida</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiApproach}</p></div> : null}
+        {data.aiSocialInsight ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Leitura das redes</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiSocialInsight}</p></div> : null}
+        {data.aiContactHook ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Gancho personalizado</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiContactHook}</p></div> : null}
+        {data.aiFirstMessage ? <div className="rounded-lg border border-amber-200 bg-white p-2"><p className="text-[0.68rem] font-black uppercase text-amber-800">Mensagem pronta</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiFirstMessage}</p><button className="mt-2 text-xs font-bold text-amber-800 hover:underline" type="button" onClick={() => void navigator.clipboard.writeText(data.aiFirstMessage || '')}>Copiar mensagem</button></div> : null}
       </div> : null}
       <div className="flex flex-wrap gap-2">
         {data.whatsapp ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" href={whatsappLink(data.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={14} /> WhatsApp</a> : null}

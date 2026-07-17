@@ -33,6 +33,10 @@ export interface LeadEnrichmentResult {
   instagram?: string
   aiSummary?: string
   aiApproach?: string
+  aiOpportunityLevel?: 'Excelente' | 'Boa' | 'Média' | 'Ruim'
+  aiSocialInsight?: string
+  aiContactHook?: string
+  aiFirstMessage?: string
   sourceUrls: string[]
 }
 

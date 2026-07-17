@@ -1696,6 +1696,9 @@ function App() {
           `Serviço recomendado: ${prospect.recommendedService || 'Vídeo institucional'}.`,
           prospect.aiSummary ? `Análise da IA: ${prospect.aiSummary}` : '',
           prospect.aiApproach ? `Abordagem sugerida: ${prospect.aiApproach}` : '',
+          prospect.aiSocialInsight ? `Leitura das redes: ${prospect.aiSocialInsight}` : '',
+          prospect.aiContactHook ? `Gancho personalizado: ${prospect.aiContactHook}` : '',
+          prospect.aiFirstMessage ? `Primeira mensagem sugerida: ${prospect.aiFirstMessage}` : '',
           prospect.instagram ? `Instagram: ${prospect.instagram}` : '',
           prospect.whatsapp ? `WhatsApp: ${prospect.whatsapp}` : '',
           `Fontes: ${prospect.sources.join(', ') || 'não informadas'}.`,
@@ -4843,6 +4846,10 @@ function App() {
                         instagram: enrichment.instagram || raw.instagram,
                         aiSummary: enrichment.aiSummary || raw.aiSummary,
                         aiApproach: enrichment.aiApproach || raw.aiApproach,
+                        aiOpportunityLevel: enrichment.aiOpportunityLevel || raw.aiOpportunityLevel,
+                        aiSocialInsight: enrichment.aiSocialInsight || raw.aiSocialInsight,
+                        aiContactHook: enrichment.aiContactHook || raw.aiContactHook,
+                        aiFirstMessage: enrichment.aiFirstMessage || raw.aiFirstMessage,
                         sources: [...new Set([...(raw.sources || []), 'OpenAI Web Search'])],
                         sourceUrls: [...new Set([...(raw.sourceUrls || []), ...enrichment.sourceUrls])],
                       } : raw
@@ -4852,7 +4859,19 @@ function App() {
                       const category = selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.categoryName)) || selectedCategories[0]
                       const leadCity = activeCities.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.city)) || city
                       const refined = refineLeadOpportunity(enrichedRaw, leadCity.distanceFromBaseKm)
-                      const evaluatedRaw = { ...enrichedRaw, ...refined, distanceKm: leadCity.distanceFromBaseKm }
+                      const aiScoreAdjustment =
+                        enrichedRaw.aiOpportunityLevel === 'Excelente' ? 8 :
+                        enrichedRaw.aiOpportunityLevel === 'Boa' ? 3 :
+                        enrichedRaw.aiOpportunityLevel === 'Ruim' ? -8 : 0
+                      const evaluatedRaw = {
+                        ...enrichedRaw,
+                        ...refined,
+                        score: Math.max(0, Math.min(100, refined.score + aiScoreAdjustment)),
+                        scoreReasons: aiScoreAdjustment
+                          ? [...refined.scoreReasons, { id: 'ai-evaluation', label: `Avaliação da IA: ${enrichedRaw.aiOpportunityLevel}`, points: aiScoreAdjustment }]
+                          : refined.scoreReasons,
+                        distanceKm: leadCity.distanceFromBaseKm,
+                      }
                       if (existing) {
                         repeatedCount += 1
                         return { ...existing, ...evaluatedRaw, categoryId: category.id, cityId: leadCity.id, isNew: false, possibleDuplicateId: duplicate?.id, discoveryCount: existing.discoveryCount + 1, lastDiscoveredAt: now, lastSearchId: searchId, updatedAt: now }

@@ -493,6 +493,10 @@ export interface LeadHunterProspect {
   discardedPermanently: boolean
   aiSummary?: string
   aiApproach?: string
+  aiOpportunityLevel?: 'Excelente' | 'Boa' | 'Média' | 'Ruim'
+  aiSocialInsight?: string
+  aiContactHook?: string
+  aiFirstMessage?: string
   notes: string
   createdAt: string
   updatedAt: string

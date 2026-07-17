@@ -78,7 +78,7 @@ export const buildLeadWhatsAppUrl = (lead: LeadHunterProspect) => {
   const digits = lead.whatsapp.replace(/\D/g, '')
   const number = digits.startsWith('55') ? digits : `55${digits}`
   const service = lead.recommendedService || recommendLeadService(lead.categoryName)
-  const message = [
+  const message = lead.aiFirstMessage || [
     `Olá! Tudo bem? Sou da Hero Drone, de Curitiba.`,
     `Conheci a ${lead.name} e acredito que um trabalho de ${service.toLocaleLowerCase('pt-BR')} pode valorizar bastante a apresentação do negócio.`,
     `Posso te enviar uma ideia rápida, sem compromisso?`,

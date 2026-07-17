@@ -809,6 +809,19 @@ function LeadDetail({
                 <strong className="block text-xs uppercase tracking-wide text-amber-800">Como iniciar o contato</strong>
                 <p className="mt-1">{lead.aiApproach || `Apresente ${lead.recommendedService || "um serviço visual com drone"} e cite um ponto específico do negócio para demonstrar que a abordagem foi personalizada.`}</p>
               </div>
+              {lead.aiSocialInsight ? <div>
+                <strong className="block text-xs uppercase tracking-wide text-amber-800">Leitura das redes</strong>
+                <p className="mt-1">{lead.aiSocialInsight}</p>
+              </div> : null}
+              {lead.aiContactHook ? <div>
+                <strong className="block text-xs uppercase tracking-wide text-amber-800">Gancho personalizado</strong>
+                <p className="mt-1">{lead.aiContactHook}</p>
+              </div> : null}
+              {lead.aiFirstMessage ? <div className="rounded-lg border border-amber-200 bg-white p-3">
+                <strong className="block text-xs uppercase tracking-wide text-amber-800">Mensagem pronta</strong>
+                <p className="mt-1">{lead.aiFirstMessage}</p>
+                <button className="mt-2 text-xs font-semibold text-amber-800 hover:underline" type="button" onClick={() => void navigator.clipboard.writeText(lead.aiFirstMessage || "")}>Copiar mensagem</button>
+              </div> : null}
               {lead.notes ? <p className="border-t border-amber-200 pt-2 text-xs text-gray-500">{lead.notes}</p> : null}
             </div>
           </details>
