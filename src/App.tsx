@@ -4779,8 +4779,6 @@ function App() {
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
                 try {
-                  const controller = new AbortController()
-                  const timeout = window.setTimeout(() => controller.abort(), 60_000)
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = 20
                   const providerLimit = filters.cityIds.length ? 30 : 16
@@ -4795,17 +4793,30 @@ function App() {
                       (prospect.normalizedName === normalizedName && normalizeLeadText(prospect.city) === normalizedCity),
                     )
                   }
-                  let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit }, controller.signal)
-                  result = { ...result, leads: result.leads.filter((lead) => !isAlreadyKnown(lead)) }
-                  const combinedLeads = new Map(result.leads.map((lead) => [lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`, lead]))
-                  const combinedSources = new Set(result.sources)
-                  for (const fallbackCity of candidateCities.slice(1)) {
-                    const fallbackResult = await provider.search({ cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit }, controller.signal)
-                    fallbackResult.sources.forEach((source) => combinedSources.add(source))
-                    fallbackResult.leads.filter((lead) => !isAlreadyKnown(lead)).forEach((lead) => {
+                  let result: Awaited<ReturnType<typeof provider.search>> = {
+                    leads: [], sources: [], estimatedCost: 0, warnings: [],
+                  }
+                  const combinedLeads = new Map<string, (typeof result.leads)[number]>()
+                  const combinedSources = new Set<string>()
+                  const searchWarnings: string[] = []
+                  for (const searchCity of candidateCities) {
+                    try {
+                      const cityResult = await provider.search(
+                        { cityNames: [searchCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
+                        AbortSignal.timeout(18_000),
+                      )
+                      cityResult.sources.forEach((source) => combinedSources.add(source))
+                      cityResult.leads.filter((lead) => !isAlreadyKnown(lead)).forEach((lead) => {
                       const key = lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
                       if (!combinedLeads.has(key)) combinedLeads.set(key, lead)
-                    })
+                      })
+                      if (combinedLeads.size >= resultsPerSearch) break
+                    } catch (error) {
+                      searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
+                    }
+                  }
+                  if (!combinedLeads.size && searchWarnings.length === candidateCities.length) {
+                    throw new Error('As fontes públicas não responderam nesta rodada. Tente novamente em instantes.')
                   }
                   const rankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
                   const leadBuckets = new Map<string, typeof rankedLeads>()
@@ -4821,8 +4832,7 @@ function App() {
                       if (mixedLeads.length >= resultsPerSearch) break
                     }
                   }
-                  result = { ...result, leads: mixedLeads, sources: [...combinedSources] }
-                  window.clearTimeout(timeout)
+                  result = { ...result, leads: mixedLeads, sources: [...combinedSources], warnings: searchWarnings }
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
                   const aiCallsToday = (state.leadHunterSearches || []).filter((search) => search.createdAt.slice(0, 10) === now.slice(0, 10) && search.tokenUsage > 0).length
