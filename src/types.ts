@@ -317,6 +317,7 @@ export interface User {
 
 export interface Lead {
   id: string
+  contactId?: string
   fullName: string
   companyName: string
   phone: string
@@ -361,16 +362,40 @@ export interface LeadInteraction {
 
 export interface Client {
   id: string
+  companyId?: string
   fullName: string
+  jobTitle?: string
   companyName: string
   document: string
   phone: string
   whatsapp: string
   email: string
   instagram: string
+  neighborhood?: string
+  postalCode?: string
   address: string
   city: string
   source: LeadSource
+  notes: string
+  tags: string[]
+  archived: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Company {
+  id: string
+  legalName: string
+  tradeName: string
+  document: string
+  email: string
+  phone: string
+  whatsapp: string
+  website: string
+  address: string
+  neighborhood: string
+  postalCode: string
+  city: string
   notes: string
   tags: string[]
   archived: boolean
@@ -787,6 +812,7 @@ export interface AppState {
   leads: Lead[]
   leadInteractions: LeadInteraction[]
   clients: Client[]
+  companies?: Company[]
   services: ServiceCatalogItem[]
   projects: Project[]
   projectChecklistItems: ProjectChecklistItem[]

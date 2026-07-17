@@ -977,6 +977,7 @@ export const createEmptyState = (): AppState => {
     leads: [],
     leadInteractions: [],
     clients: [],
+    companies: [],
     services: [],
     projects: [],
     projectChecklistItems: [],

@@ -16,6 +16,7 @@ const ARRAY_SECTION_KEYS = [
   'leads',
   'leadInteractions',
   'clients',
+  'companies',
   'services',
   'projects',
   'projectChecklistItems',

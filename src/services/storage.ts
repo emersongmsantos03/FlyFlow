@@ -1,7 +1,7 @@
 import { createEmptyState } from '../data/demoData'
 import { rolePermissionPresets } from '../lib/permissions'
 import { synchronizeOperationalState } from '../lib/operations'
-import type { AppState, BankAccount, Expense, User } from '../types'
+import type { AppState, BankAccount, Client, Expense, Lead, User } from '../types'
 
 const STORAGE_KEY = 'hero-drone-manager:data:v2-empty'
 const PRIMARY_OWNER_EMAIL = 'herodronecwb@gmail.com'
@@ -131,6 +131,46 @@ const normalizeUsers = (users: User[]) => {
 
 export const normalizeAppState = (state: AppState): AppState => {
   const createdAt = state.updatedAt || new Date().toISOString()
+  const normalizedClients: Client[] = (state.clients || []).map((client) => ({
+    ...client,
+    jobTitle: client.jobTitle || '',
+    neighborhood: client.neighborhood || '',
+    postalCode: client.postalCode || '',
+  }))
+  const contactKey = (value?: string) => value?.trim().toLowerCase().replace(/\D/g, '') || ''
+  const findContact = (lead: Lead) => normalizedClients.find((client) =>
+    client.id === lead.contactId ||
+    (contactKey(lead.whatsapp) && contactKey(lead.whatsapp) === contactKey(client.whatsapp)) ||
+    (contactKey(lead.phone) && contactKey(lead.phone) === contactKey(client.phone)) ||
+    (lead.email && lead.email.toLowerCase() === client.email?.toLowerCase()),
+  )
+  const normalizedLeads = (state.leads || []).map((lead) => {
+    const existingContact = findContact(lead)
+    if (existingContact) return { ...lead, contactId: existingContact.id }
+    const migratedContact: Client = {
+      id: `client-migrated-${lead.id}`,
+      fullName: lead.fullName || lead.companyName || 'Contato sem nome',
+      companyName: lead.companyName || '',
+      jobTitle: '',
+      document: '',
+      phone: lead.phone || '',
+      whatsapp: lead.whatsapp || '',
+      email: lead.email || '',
+      instagram: lead.instagram || '',
+      neighborhood: lead.neighborhood || '',
+      postalCode: '',
+      address: lead.address || '',
+      city: lead.city || '',
+      source: lead.source,
+      notes: lead.notes || '',
+      tags: lead.tags || [],
+      archived: false,
+      createdAt: lead.createdAt || createdAt,
+      updatedAt: lead.updatedAt || createdAt,
+    }
+    normalizedClients.push(migratedContact)
+    return { ...lead, contactId: migratedContact.id }
+  })
   const bankAccounts = state.bankAccounts?.length ? state.bankAccounts : defaultBankAccounts(createdAt)
   const primaryAccount = bankAccounts.find((account) => account.active) ?? bankAccounts[0]
   const resolveLegacyAccountId = (accountName?: string) => {
@@ -143,6 +183,9 @@ export const normalizeAppState = (state: AppState): AppState => {
 
   return synchronizeOperationalState({
     ...state,
+    leads: normalizedLeads,
+    clients: normalizedClients,
+    companies: state.companies || [],
     companySettings: {
       ...state.companySettings,
       document: state.companySettings.document?.trim() || HERO_DRONE_CNPJ,

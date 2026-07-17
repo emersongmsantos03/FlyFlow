@@ -114,6 +114,7 @@ import {
 import {
   appointmentFormSchema,
   clientFormSchema,
+  companyFormSchema,
   equipmentFormSchema,
   expenseFormSchema,
   leadFormSchema,
@@ -126,6 +127,8 @@ import {
   type AppointmentFormInput,
   type ClientFormInput,
   type ClientFormValues,
+  type CompanyFormInput,
+  type CompanyFormValues,
   type EquipmentFormInput,
   type EquipmentFormValues,
   type ExpenseFormInput,
@@ -194,6 +197,7 @@ import {
   type BankAccount,
   type BankTransfer,
   type Client,
+  type Company,
   type Equipment,
   type Expense,
   type Lead,
@@ -228,6 +232,7 @@ type ModalType =
   | 'lead'
   | 'leadDetail'
   | 'client'
+  | 'company'
   | 'project'
   | 'appointment'
   | 'task'
@@ -946,6 +951,7 @@ function App() {
   const [selectedProposalLeadId, setSelectedProposalLeadId] = useState<string>('')
   const [selectedProposalQuoteId, setSelectedProposalQuoteId] = useState<string>('')
   const [selectedLeadId, setSelectedLeadId] = useState<string>('')
+  const [selectedClientId, setSelectedClientId] = useState<string>('')
   const [selectedCloseDealLeadId, setSelectedCloseDealLeadId] = useState<string>('')
   const [selectedCloseDealQuoteId, setSelectedCloseDealQuoteId] = useState<string>('')
   const [selectedReceiptPaymentId, setSelectedReceiptPaymentId] = useState<string>('')
@@ -1162,6 +1168,7 @@ function App() {
     () => state.leads.find((lead) => lead.id === selectedLeadId),
     [selectedLeadId, state.leads],
   )
+  const selectedClient = useMemo(() => state.clients.find((client) => client.id === selectedClientId), [selectedClientId, state.clients])
   const selectedProposalQuote = useMemo(
     () => state.quotes.find((quote) => quote.id === selectedProposalQuoteId),
     [selectedProposalQuoteId, state.quotes],
@@ -1539,6 +1546,21 @@ function App() {
     const normalizedValues = normalizeContactValues(values)
     updateState(
       (current) => {
+        const linkedContact = current.clients.find((contact) => contact.id === normalizedValues.contactId)
+        if (!linkedContact) return current
+        const opportunityValues = {
+          ...normalizedValues,
+          fullName: linkedContact.fullName,
+          companyName: (current.companies || []).find((company) => company.id === linkedContact.companyId)?.tradeName || linkedContact.companyName,
+          phone: linkedContact.phone,
+          whatsapp: linkedContact.whatsapp,
+          email: linkedContact.email,
+          instagram: linkedContact.instagram,
+          city: linkedContact.city,
+          neighborhood: linkedContact.neighborhood || '',
+          address: linkedContact.address,
+          source: linkedContact.source,
+        }
         const existing = selectedLeadId
           ? current.leads.find((lead) => lead.id === selectedLeadId)
           : undefined
@@ -1550,8 +1572,8 @@ function App() {
               lead.id === existing.id
                 ? {
                     ...lead,
-                    ...normalizedValues,
-                    nextContactAt: normalizedValues.nextContactAt ? asIsoFromInput(normalizedValues.nextContactAt) : undefined,
+                    ...opportunityValues,
+                    nextContactAt: opportunityValues.nextContactAt ? asIsoFromInput(opportunityValues.nextContactAt) : undefined,
                     updatedAt: now,
                   }
                 : lead,
@@ -1573,10 +1595,10 @@ function App() {
 
         const lead: Lead = {
           id: createId('lead'),
-          ...normalizedValues,
+          ...opportunityValues,
           entryDate: dateInput(),
           lastContactAt: undefined,
-          nextContactAt: normalizedValues.nextContactAt ? asIsoFromInput(normalizedValues.nextContactAt) : undefined,
+          nextContactAt: opportunityValues.nextContactAt ? asIsoFromInput(opportunityValues.nextContactAt) : undefined,
           responsibleUserId: activeUserId,
           archived: false,
           tags: [],
@@ -1612,6 +1634,7 @@ function App() {
     const normalizedWhatsapp = normalizedValues.whatsapp.replace(/\D/g, '')
     const duplicate = state.clients.find(
       (client) =>
+        client.id !== selectedClientId &&
         (normalizedWhatsapp.length > 0 && normalizedWhatsapp === client.whatsapp.replace(/\D/g, '')) ||
         (normalizedValues.email && normalizedValues.email === client.email),
     )
@@ -1627,23 +1650,29 @@ function App() {
     }
 
     const now = new Date().toISOString()
-    updateState(
-      (current) => ({
-        ...current,
-        clients: [
-          {
-            id: createId('client'),
-            ...normalizedValues,
-            tags: [],
-            archived: false,
-            createdAt: now,
-            updatedAt: now,
-          },
-          ...current.clients,
-        ],
-      }),
-      'Contato cadastrado na base central.',
-    )
+    updateState((current) => selectedClientId ? {
+      ...current,
+      clients: current.clients.map((client) => client.id === selectedClientId ? { ...client, ...normalizedValues, updatedAt: now } : client),
+      leads: current.leads.map((lead) => lead.contactId === selectedClientId ? { ...lead, fullName: normalizedValues.fullName, companyName: (current.companies || []).find((company) => company.id === normalizedValues.companyId)?.tradeName || normalizedValues.companyName, phone: normalizedValues.phone, whatsapp: normalizedValues.whatsapp, email: normalizedValues.email, instagram: normalizedValues.instagram, city: normalizedValues.city, neighborhood: normalizedValues.neighborhood, address: normalizedValues.address, updatedAt: now } : lead),
+    } : {
+      ...current,
+      clients: [{ id: createId('client'), ...normalizedValues, tags: [], archived: false, createdAt: now, updatedAt: now }, ...current.clients],
+    }, selectedClientId ? 'Contato atualizado em todo o CRM.' : 'Contato cadastrado na base central.')
+    setModal(null)
+    setSelectedClientId('')
+  }
+
+  const addCompany = (values: CompanyFormValues) => {
+    const now = new Date().toISOString()
+    const company: Company = {
+      id: createId('company'),
+      ...values,
+      tags: [],
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    }
+    updateState((current) => ({ ...current, companies: [company, ...(current.companies || [])] }), 'Empresa cadastrada e disponível para vincular aos contatos.')
     setModal(null)
   }
 
@@ -4571,6 +4600,7 @@ function App() {
               state={state}
               onOpenModal={setModal}
               onGenerateProposal={openProposalGenerator}
+              onEditContact={(client) => { setSelectedClientId(client.id); setModal('client') }}
             />
           ) : null}
           {page === 'projects' ? (
@@ -4742,6 +4772,7 @@ function App() {
             {[
               { label: 'Nova oportunidade', modalName: 'lead', permission: 'manageLeads' },
               { label: 'Novo contato', modalName: 'client', permission: 'manageClients' },
+              { label: 'Nova empresa', modalName: 'company', permission: 'manageClients' },
               { label: 'Nova tarefa', modalName: 'task', permission: 'manageAgenda' },
               { label: 'Novo projeto', modalName: 'project', permission: 'manageProjects' },
               { label: 'Nova proposta', modalName: 'proposal', permission: 'manageQuotes' },
@@ -4845,6 +4876,7 @@ function App() {
           <LeadForm
             key={selectedLead?.id ?? 'new-lead'}
             lead={selectedLead}
+            contacts={state.clients.filter((contact) => !contact.archived)}
             onCancel={() => {
               setModal(null)
               setSelectedLeadId('')
@@ -4854,8 +4886,13 @@ function App() {
         </Modal>
       ) : null}
       {modal === 'client' ? (
-        <Modal title="Novo contato" onClose={() => setModal(null)}>
-          <ClientForm onCancel={() => setModal(null)} onSubmit={addClient} />
+        <Modal title={selectedClient ? 'Editar contato' : 'Novo contato'} onClose={() => { setModal(null); setSelectedClientId('') }}>
+          <ClientForm client={selectedClient} companies={(state.companies || []).filter((company) => !company.archived)} onCancel={() => { setModal(null); setSelectedClientId('') }} onSubmit={addClient} />
+        </Modal>
+      ) : null}
+      {modal === 'company' ? (
+        <Modal title="Nova empresa" onClose={() => setModal(null)}>
+          <CompanyForm onCancel={() => setModal(null)} onSubmit={addCompany} />
         </Modal>
       ) : null}
       {modal === 'project' ? (
@@ -5654,11 +5691,13 @@ function ClientsPage({
   state,
   onOpenModal,
   onGenerateProposal,
+  onEditContact,
 }: {
   clients: Client[]
   state: AppState
   onOpenModal: (modal: ModalType) => void
   onGenerateProposal: (clientId: string) => void
+  onEditContact: (client: Client) => void
 }) {
   return (
     <div className="space-y-4">
@@ -5667,6 +5706,7 @@ function ClientsPage({
         description="Base central conectada ao comercial, propostas, projetos e financeiro."
         action={
           <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" type="button" onClick={() => onOpenModal('company')}><Plus size={16} /> Nova empresa</Button>
             <Button variant="secondary" type="button" onClick={() => onGenerateProposal(clients[0]?.id ?? '')}>
               <Wand2 size={16} /> Gerar proposta
             </Button>
@@ -5682,6 +5722,7 @@ function ClientsPage({
                 <tr>
                   <th>Contato</th>
                   <th>Canais</th>
+                  <th>Empresa</th>
                   <th>Cidade</th>
                   <th>Total faturado</th>
                   <th>Recebido</th>
@@ -5691,6 +5732,7 @@ function ClientsPage({
               </thead>
               <tbody>
                 {clients.map((client) => {
+                  const company = (state.companies || []).find((item) => item.id === client.companyId)
                   const projects = state.projects.filter((project) => isVisibleProject(project) && project.clientId === client.id)
                   const total = projects.reduce((sum, project) => sum + project.totalValue, 0)
                   const received = state.payments
@@ -5698,10 +5740,11 @@ function ClientsPage({
                     .reduce((sum, payment) => sum + payment.amount, 0)
                   return (
                     <tr key={client.id}>
-                      <td data-label="Contato">
+                      <td data-label="Canais">
                         <div className="font-black text-gray-950">{contactDisplayName(client)}</div>
                         <div className="text-sm text-gray-500">{contactDisplayDetail(client)}</div>
                       </td>
+                      <td data-label="Empresa">{company?.tradeName || client.companyName || '-'}</td>
                       <td data-label="Contato">
                         <div className="flex gap-2">
                           {client.whatsapp || client.phone ? (
@@ -5716,9 +5759,7 @@ function ClientsPage({
                       <td data-label="Recebido">{formatCurrency(received)}</td>
                       <td data-label="Projetos">{projects.length}</td>
                       <td data-label="Ações">
-                        <Button variant="secondary" type="button" onClick={() => onGenerateProposal(client.id)}>
-                          <Wand2 size={16} /> Gerar proposta
-                        </Button>
+                        <div className="flex gap-2"><Button variant="secondary" type="button" onClick={() => onEditContact(client)}><Pencil size={16} /> Editar</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal(client.id)}><Wand2 size={16} /> Proposta</Button></div>
                       </td>
                     </tr>
                   )
@@ -5730,6 +5771,11 @@ function ClientsPage({
 
         <Panel title="Detalhes rápidos">
           <div className="space-y-3">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs font-bold uppercase text-gray-500">Empresas cadastradas</p>
+              <p className="mt-1 text-2xl font-black text-gray-950">{(state.companies || []).filter((company) => !company.archived).length}</p>
+              <div className="mt-2 space-y-1 text-sm">{(state.companies || []).filter((company) => !company.archived).slice(0, 4).map((company) => <div key={company.id} className="flex justify-between gap-3"><strong className="truncate">{company.tradeName}</strong><span className="text-gray-500">{company.document || company.city}</span></div>)}</div>
+            </div>
             {clients.slice(0, 4).map((client) => {
               const projects = state.projects.filter((project) => isVisibleProject(project) && project.clientId === client.id)
               const total = projects.reduce((sum, project) => sum + project.totalValue, 0)
@@ -8394,10 +8440,12 @@ function createDefaultChecklist(projectId: string, createdAt: string): ProjectCh
 
 function LeadForm({
   lead,
+  contacts,
   onSubmit,
   onCancel,
 }: {
   lead?: Lead
+  contacts: Client[]
   onSubmit: (values: LeadFormValues) => void
   onCancel: () => void
 }) {
@@ -8405,6 +8453,7 @@ function LeadForm({
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeadFormInput, unknown, LeadFormValues>({
     resolver: zodResolver(leadFormSchema),
     defaultValues: {
+      contactId: lead?.contactId ?? '',
       fullName: lead?.fullName ?? '',
       companyName: lead?.companyName ?? '',
       phone: lead?.phone ?? '',
@@ -8437,6 +8486,29 @@ function LeadForm({
       <input type="hidden" {...register('estimatedValue')} />
       <input type="hidden" {...register('nextContactAt')} />
       <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <InputField label="Contato vinculado" error={getError(errors.contactId?.message)}>
+            <select className="field-input" {...register('contactId')} onChange={(event) => {
+              register('contactId').onChange(event)
+              const contact = contacts.find((item) => item.id === event.currentTarget.value)
+              if (!contact) return
+              setValue('fullName', contact.fullName)
+              setValue('companyName', contact.companyName)
+              setValue('phone', contact.phone)
+              setValue('whatsapp', contact.whatsapp)
+              setValue('email', contact.email)
+              setValue('instagram', contact.instagram)
+              setValue('city', contact.city)
+              setValue('neighborhood', contact.neighborhood)
+              setValue('address', contact.address)
+              setValue('source', contact.source)
+            }}>
+              <option value="">Selecione um contato</option>
+              {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contactDisplayName(contact)}{contact.companyName ? ` · ${contact.companyName}` : ''}</option>)}
+            </select>
+          </InputField>
+          {!contacts.length ? <p className="mt-1 text-xs font-bold text-amber-700">Cadastre um contato na aba Contatos antes de criar a oportunidade.</p> : null}
+        </div>
         <InputField label="Nome" error={getError(errors.fullName?.message)}><input className="field-input" {...register('fullName')} /></InputField>
         <InputField label="Empresa ou estabelecimento" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} /></InputField>
         <InputField label="WhatsApp" error={getError(errors.whatsapp?.message)}>
@@ -8469,7 +8541,7 @@ function LeadForm({
           <div className="sm:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-20" {...register('notes')} /></InputField></div>
         </div>
       </details>
-      <FormActions onCancel={onCancel} submitLabel={lead ? 'Salvar contato' : 'Criar contato'} />
+      <FormActions onCancel={onCancel} submitLabel={lead ? 'Salvar oportunidade' : 'Criar oportunidade'} />
     </form>
   )
 }
@@ -8667,21 +8739,25 @@ function ClosedServiceForm({
   )
 }
 
-function ClientForm({ onSubmit, onCancel }: { onSubmit: (values: ClientFormValues) => void; onCancel: () => void }) {
+function ClientForm({ client, companies, onSubmit, onCancel }: { client?: Client; companies: Company[]; onSubmit: (values: ClientFormValues) => void; onCancel: () => void }) {
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ClientFormInput, unknown, ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
     defaultValues: {
-      fullName: '',
-      companyName: '',
-      document: '',
-      phone: '',
-      whatsapp: '',
-      email: '',
-      instagram: '',
-      address: '',
-      city: 'Curitiba',
-      source: 'Instagram',
-      notes: '',
+      companyId: client?.companyId ?? '',
+      fullName: client?.fullName ?? '',
+      jobTitle: client?.jobTitle ?? '',
+      companyName: client?.companyName ?? '',
+      document: client?.document ?? '',
+      phone: client?.phone ?? '',
+      whatsapp: client?.whatsapp ?? '',
+      email: client?.email ?? '',
+      instagram: client?.instagram ?? '',
+      neighborhood: client?.neighborhood ?? '',
+      postalCode: client?.postalCode ?? '',
+      address: client?.address ?? '',
+      city: client?.city ?? 'Curitiba',
+      source: client?.source ?? 'Instagram',
+      notes: client?.notes ?? '',
     },
   })
   const clientAddress = watch('address') ?? ''
@@ -8691,7 +8767,9 @@ function ClientForm({ onSubmit, onCancel }: { onSubmit: (values: ClientFormValue
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Nome" error={getError(errors.fullName?.message)}><input className="field-input" {...register('fullName')} /></InputField>
-      <InputField label="Empresa ou estabelecimento" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} /></InputField>
+      <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}><select className="field-input" {...register('companyId')}><option value="">Sem empresa</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.tradeName}</option>)}</select></InputField>
+      <InputField label="Cargo ou função" error={getError(errors.jobTitle?.message)}><input className="field-input" {...register('jobTitle')} /></InputField>
+      <InputField label="Empresa (texto livre)" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} placeholder="Use apenas se a empresa ainda não estiver cadastrada" /></InputField>
       <InputField label="CPF/CNPJ" error={getError(errors.document?.message)}><input className="field-input" {...register('document')} /></InputField>
       <InputField label="Telefone" error={getError(errors.phone?.message)}>
         <input type="hidden" {...register('phone')} />
@@ -8704,6 +8782,8 @@ function ClientForm({ onSubmit, onCancel }: { onSubmit: (values: ClientFormValue
       <InputField label="E-mail" error={getError(errors.email?.message)}><input className="field-input" type="email" {...register('email')} /></InputField>
       <InputField label="Instagram" error={getError(errors.instagram?.message)}><input className="field-input" {...register('instagram')} /></InputField>
       <InputField label="Cidade" error={getError(errors.city?.message)}><input className="field-input" {...register('city')} /></InputField>
+      <InputField label="Bairro" error={getError(errors.neighborhood?.message)}><input className="field-input" {...register('neighborhood')} /></InputField>
+      <InputField label="CEP" error={getError(errors.postalCode?.message)}><input className="field-input" {...register('postalCode')} /></InputField>
       <InputField label="Origem" error={getError(errors.source?.message)}><Select options={leadSources} register={register('source')} /></InputField>
       <div>
         <input type="hidden" {...register('address')} />
@@ -8720,6 +8800,31 @@ function ClientForm({ onSubmit, onCancel }: { onSubmit: (values: ClientFormValue
       <FormActions onCancel={onCancel} />
     </form>
   )
+}
+
+function CompanyForm({ onSubmit, onCancel }: { onSubmit: (values: CompanyFormValues) => void; onCancel: () => void }) {
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CompanyFormInput, unknown, CompanyFormValues>({
+    resolver: zodResolver(companyFormSchema),
+    defaultValues: { legalName: '', tradeName: '', document: '', email: '', phone: '', whatsapp: '', website: '', address: '', neighborhood: '', postalCode: '', city: 'Curitiba', notes: '' },
+  })
+  const address = watch('address') ?? ''
+  const phone = watch('phone') ?? ''
+  const whatsapp = watch('whatsapp') ?? ''
+  return <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
+    <InputField label="Nome da empresa" error={getError(errors.tradeName?.message)}><input className="field-input" {...register('tradeName')} autoFocus /></InputField>
+    <InputField label="Razão social" error={getError(errors.legalName?.message)}><input className="field-input" {...register('legalName')} /></InputField>
+    <InputField label="CNPJ" error={getError(errors.document?.message)}><input className="field-input" {...register('document')} /></InputField>
+    <InputField label="E-mail" error={getError(errors.email?.message)}><input className="field-input" type="email" {...register('email')} /></InputField>
+    <InputField label="WhatsApp" error={getError(errors.whatsapp?.message)}><input type="hidden" {...register('whatsapp')} /><PhoneInput value={whatsapp} onChange={(value) => setValue('whatsapp', value, { shouldDirty: true })} /></InputField>
+    <InputField label="Telefone" error={getError(errors.phone?.message)}><input type="hidden" {...register('phone')} /><PhoneInput value={phone} onChange={(value) => setValue('phone', value, { shouldDirty: true })} /></InputField>
+    <InputField label="Site" error={getError(errors.website?.message)}><input className="field-input" {...register('website')} placeholder="https://" /></InputField>
+    <InputField label="Cidade" error={getError(errors.city?.message)}><input className="field-input" {...register('city')} /></InputField>
+    <InputField label="Bairro" error={getError(errors.neighborhood?.message)}><input className="field-input" {...register('neighborhood')} /></InputField>
+    <InputField label="CEP" error={getError(errors.postalCode?.message)}><input className="field-input" {...register('postalCode')} /></InputField>
+    <div className="md:col-span-2"><input type="hidden" {...register('address')} /><MapsAddressField label="Endereço" error={getError(errors.address?.message)} value={address} onChange={(value) => setValue('address', value, { shouldDirty: true })} /></div>
+    <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24" {...register('notes')} /></InputField></div>
+    <FormActions onCancel={onCancel} submitLabel="Criar empresa" />
+  </form>
 }
 
 function ProjectForm({

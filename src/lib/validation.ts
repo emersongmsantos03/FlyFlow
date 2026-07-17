@@ -31,6 +31,7 @@ export const loginSchema = z.object({
 })
 
 export const leadFormSchema = z.object({
+  contactId: z.string().min(1, 'Selecione um contato'),
   fullName: optionalText,
   companyName: optionalText,
   phone: optionalText,
@@ -51,16 +52,35 @@ export const leadFormSchema = z.object({
 })
 
 export const clientFormSchema = z.object({
+  companyId: optionalText,
   fullName: optionalText,
+  jobTitle: optionalText,
   companyName: optionalText,
   document: optionalText,
   phone: optionalText,
   whatsapp: optionalText,
   email: optionalEmail,
   instagram: optionalText,
+  neighborhood: optionalText,
+  postalCode: optionalText,
   address: optionalText,
   city: z.string().min(2, 'Informe a cidade'),
   source: z.enum(leadSources),
+  notes: optionalText,
+})
+
+export const companyFormSchema = z.object({
+  legalName: optionalText,
+  tradeName: z.string().min(2, 'Informe o nome da empresa'),
+  document: optionalText,
+  email: optionalEmail,
+  phone: optionalText,
+  whatsapp: optionalText,
+  website: optionalText,
+  address: optionalText,
+  neighborhood: optionalText,
+  postalCode: optionalText,
+  city: z.string().min(2, 'Informe a cidade'),
   notes: optionalText,
 })
 
@@ -237,6 +257,8 @@ export type LeadFormInput = z.input<typeof leadFormSchema>
 export type LeadFormValues = z.output<typeof leadFormSchema>
 export type ClientFormInput = z.input<typeof clientFormSchema>
 export type ClientFormValues = z.output<typeof clientFormSchema>
+export type CompanyFormInput = z.input<typeof companyFormSchema>
+export type CompanyFormValues = z.output<typeof companyFormSchema>
 export type ProjectFormInput = z.input<typeof projectFormSchema>
 export type ProjectFormValues = z.output<typeof projectFormSchema>
 export type AppointmentFormInput = z.input<typeof appointmentFormSchema>
