@@ -133,7 +133,10 @@ export function LeadHunterPage({
   const aiCallsToday = todaySearches.filter((search) => (search.tokenUsage || 0) > 0).length;
   const effectiveDailyAiLimit = settings.maxDailyCalls;
   const tokensToday = todaySearches.reduce((total, search) => total + (search.tokenUsage || 0), 0);
-  const latestSearchId = searches[0]?.id;
+  const searchRank = useMemo(
+    () => new globalThis.Map(searches.map((search, index) => [search.id, index])),
+    [searches],
+  );
   const filtered = useMemo(
     () =>
       deduplicateLeadHunterProspects(prospects)
@@ -150,7 +153,6 @@ export function LeadHunterPage({
             lead.status !== "Descartado" &&
             lead.status !== "Importado" &&
             !lead.leadId &&
-            (!latestSearchId || lead.lastSearchId === latestSearchId) &&
             (!cityId || lead.cityId === cityId) &&
             (!categoryId || lead.categoryId === categoryId) &&
             lead.score >= minimumScore &&
@@ -160,13 +162,16 @@ export function LeadHunterPage({
             );
           },
         )
-        .sort((a, b) =>
-          sortMode === "score" ? b.score - a.score :
-          sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
-          leadContactPriority(b) - leadContactPriority(a),
-        )
-        .slice(0, 20),
-    [categoryId, cityId, contactFilter, latestSearchId, minimumScore, onlyNew, prospects, resultQuery, sortMode],
+        .sort((a, b) => {
+          const batchDifference =
+            (searchRank.get(a.lastSearchId || "") ?? Number.MAX_SAFE_INTEGER) -
+            (searchRank.get(b.lastSearchId || "") ?? Number.MAX_SAFE_INTEGER);
+          if (batchDifference) return batchDifference;
+          return sortMode === "score" ? b.score - a.score :
+            sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
+            leadContactPriority(b) - leadContactPriority(a);
+        }),
+    [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, searchRank, sortMode],
   );
   const runSearch = async () => {
     if (searching) return;

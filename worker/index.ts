@@ -17,6 +17,7 @@ type InputLead = {
   email?: string
   website?: string
   instagram?: string
+  googleMapsUrl?: string
   sourceUrls?: string[]
 }
 
@@ -123,6 +124,7 @@ export default {
       email: clean(lead.email, 160),
       website: clean(lead.website, 240),
       instagram: clean(lead.instagram, 160),
+      googleMapsUrl: clean(lead.googleMapsUrl, 400),
       sourceUrls: (lead.sourceUrls || []).slice(0, 5).map((item) => clean(item, 400)),
     })).filter((lead) => lead.id && lead.name)
     if (!leads.length) return json({ error: 'Envie ao menos um lead.' }, 400, origin)
@@ -139,7 +141,9 @@ export default {
         include: ['web_search_call.action.sources'],
         instructions: [
           'Enriqueça leads B2B brasileiros usando somente informações públicas verificáveis.',
-          'Pesquise cada empresa por nome, cidade, endereço e site.',
+          'Pesquise cada empresa por nome, cidade, endereço, site e perfil fornecido do Google Maps/Google Business.',
+          'Procure primeiro no Google Business, site oficial e página de contato; depois no Instagram oficial, bio, Linktree e Facebook comercial.',
+          'Busque links wa.me, api.whatsapp.com, botões ou textos que anunciem explicitamente WhatsApp. Um telefone comum só pode preencher whatsapp quando uma fonte pública disser que ele atende por WhatsApp.',
           'Priorize WhatsApp público, telefone, e-mail, Instagram oficial e o nome de proprietário, gerente ou responsável comercial.',
           'Avalie como oportunidade real para um profissional de drone que está começando: negócio local e independente, qualidade e frequência das redes sociais, apelo visual do imóvel ou operação, facilidade de contato e chance de contratar.',
           'Grandes redes e marcas nacionais devem ter menor prioridade, salvo evidência clara de decisão local.',

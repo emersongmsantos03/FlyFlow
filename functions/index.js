@@ -74,6 +74,7 @@ export const leadApi = onRequest(
         email: clean(lead.email, 160),
         website: clean(lead.website, 240),
         instagram: clean(lead.instagram, 160),
+        googleMapsUrl: clean(lead.googleMapsUrl, 400),
         sourceUrls: Array.isArray(lead.sourceUrls) ? lead.sourceUrls.slice(0, 5).map((url) => clean(url, 400)) : [],
       })).filter((lead) => lead.id && lead.name)
       const client = new OpenAI({ apiKey: openaiApiKey.value() })
@@ -85,7 +86,9 @@ export const leadApi = onRequest(
         include: ['web_search_call.action.sources'],
         instructions: [
           'Você enriquece leads B2B brasileiros usando somente informações públicas verificáveis.',
-          'Pesquise cada empresa pelo nome, cidade e site. Procure proprietário, gerente comercial ou responsável publicamente identificado.',
+          'Pesquise cada empresa pelo nome, cidade, site e perfil fornecido do Google Maps/Google Business. Procure proprietário, gerente comercial ou responsável publicamente identificado.',
+          'Procure contatos no Google Business, site oficial, Instagram oficial, bio, Linktree e Facebook comercial.',
+          'Busque links wa.me, api.whatsapp.com ou indicação explícita de WhatsApp. Telefone comum não deve ser marcado como WhatsApp sem evidência pública.',
           'Nunca invente dados. Deixe o campo vazio quando não houver evidência confiável.',
           'Não substitua um dado recebido por outro sem evidência mais forte. WhatsApp deve ser um número publicamente anunciado como WhatsApp.',
           'Não retorne dados pessoais sensíveis nem contatos encontrados somente em bases vazadas.',

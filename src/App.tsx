@@ -4839,7 +4839,9 @@ function App() {
                           (raw.website ? 18 : 0) +
                           (raw.instagram ? 10 : 0) +
                           (raw.phone ? 6 : 0) +
-                          (raw.address ? 4 : 0)
+                          (raw.address ? 4 : 0) +
+                          (!raw.whatsapp && (raw.website || raw.phone || raw.instagram) ? 22 : 0) +
+                          (!raw.instagram && raw.website ? 12 : 0)
                         return (raw.score || 0) + commercialPotential + discoverability
                       }
                       const enrichmentInput = result.leads.filter((raw) => {
