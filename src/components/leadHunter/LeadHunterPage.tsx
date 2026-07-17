@@ -455,9 +455,9 @@ export function LeadHunterPage({
               ))}
             </div>
             {filtered.length ? (
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-gray-50/70 p-2">
+              <div className="lead-batch-toolbar mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-2">
                 <button
-                  className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-gray-700 transition hover:bg-white hover:text-gray-950"
+                  className="lead-batch-control inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition"
                   type="button"
                   onClick={() => {
                     const visibleIds = filtered.map((lead) => lead.id);
@@ -465,7 +465,7 @@ export function LeadHunterPage({
                     setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : [...new Set([...selectedIds, ...visibleIds])]);
                   }}
                 >
-                  <span className={`flex h-5 w-5 items-center justify-center rounded border ${filtered.every((lead) => selectedIds.includes(lead.id)) ? "border-[#c89b20] bg-[#e4bd45] text-[#17140b]" : "border-gray-300 bg-white"}`}>
+                  <span className={`lead-select-box flex h-5 w-5 items-center justify-center rounded border ${filtered.every((lead) => selectedIds.includes(lead.id)) ? "is-selected" : ""}`}>
                     {filtered.every((lead) => selectedIds.includes(lead.id)) ? <Check size={13} /> : null}
                   </span>
                   {filtered.every((lead) => selectedIds.includes(lead.id)) ? "Desmarcar todos" : "Marcar todos"}
@@ -475,7 +475,7 @@ export function LeadHunterPage({
                     {selectedIds.length ? `${selectedIds.length} selecionado(s)` : `${filtered.length} oportunidades`}
                   </span>
                   <button
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="lead-batch-control lead-batch-accept inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
                     type="button"
                     disabled={!selectedIds.length}
                     onClick={() => {
@@ -486,7 +486,7 @@ export function LeadHunterPage({
                     <Check size={15} /> Aceitar selecionados
                   </button>
                   <button
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="lead-batch-control lead-batch-reject inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
                     type="button"
                     disabled={!selectedIds.length}
                     onClick={() => {
@@ -498,7 +498,7 @@ export function LeadHunterPage({
                     <X size={15} /> Rejeitar selecionados
                   </button>
                   <button
-                    className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                    className="lead-batch-quiet-reject inline-flex h-9 items-center rounded-lg px-3 text-xs font-semibold transition"
                     type="button"
                     onClick={() => {
                       if (!window.confirm(`Rejeitar todos os ${filtered.length} leads visíveis e impedir que apareçam novamente?`)) return;
@@ -516,11 +516,11 @@ export function LeadHunterPage({
                 {filtered.map((lead) => (
                   <article
                     key={lead.id}
-                    className={`group rounded-xl border p-3 transition hover:border-[#d6bd72] ${selectedIds.includes(lead.id) ? "border-[#d2aa35] bg-[#fffbef] ring-1 ring-[#ead999]" : "border-gray-200 bg-white"}`}
+                    className={`lead-result-card group rounded-xl border p-3 transition ${selectedIds.includes(lead.id) ? "is-selected" : ""}`}
                   >
                     <div className="flex items-start gap-2.5">
                       <button
-                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selectedIds.includes(lead.id) ? "border-[#c89b20] bg-[#e4bd45] text-[#17140b]" : "border-gray-300"}`}
+                        className={`lead-select-box mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selectedIds.includes(lead.id) ? "is-selected" : ""}`}
                         type="button"
                         aria-label={`Selecionar ${lead.name}`}
                         onClick={() =>
@@ -591,7 +591,7 @@ export function LeadHunterPage({
                       {!lead.whatsapp && !lead.instagram ? <span className="text-[11px] text-gray-400">Contato nos detalhes</span> : null}
                       <div className="ml-auto flex items-center gap-1">
                         <button
-                          className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                          className="lead-card-accept inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition"
                           type="button"
                           title="Aceitar e enviar ao Comercial"
                           onClick={() => {
@@ -602,7 +602,7 @@ export function LeadHunterPage({
                           <Check size={14} /> Aceitar
                         </button>
                         <button
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50"
+                          className="lead-card-reject inline-flex h-8 w-8 items-center justify-center rounded-lg transition"
                           type="button"
                           title="Rejeitar lead"
                           aria-label={`Rejeitar ${lead.name}`}

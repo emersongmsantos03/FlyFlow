@@ -61,6 +61,75 @@
   background: color-mix(in srgb, var(--surface-soft) 55%, var(--surface));
 }
 
+.lead-batch-toolbar {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-soft) 46%, var(--surface));
+}
+
+.lead-batch-control {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
+.lead-batch-control:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 45%, var(--border));
+  color: var(--text-primary);
+}
+
+.lead-batch-accept svg {
+  color: var(--success);
+}
+
+.lead-batch-reject svg,
+.lead-batch-quiet-reject,
+.lead-card-reject {
+  color: var(--danger);
+}
+
+.lead-batch-quiet-reject:hover,
+.lead-card-reject:hover {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.lead-result-card {
+  border-color: var(--border-subtle);
+  background: var(--surface);
+}
+
+.lead-result-card:hover {
+  border-color: var(--border);
+}
+
+.lead-result-card.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.lead-select-box {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.lead-select-box.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--border));
+  background: color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+
+.lead-card-accept {
+  color: var(--text-secondary);
+}
+
+.lead-card-accept svg {
+  color: var(--success);
+}
+
+.lead-card-accept:hover {
+  background: var(--surface-soft);
+  color: var(--text-primary);
+}
+
 .panel-surface:hover,
 .metric-card:hover {
   border-color: var(--border) !important;
