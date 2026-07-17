@@ -37,7 +37,11 @@ import type {
 } from "../../types";
 import { Button, Panel, StatusBadge } from "../ui";
 import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
-import { leadContactPriority } from "../../services/leadHunter/LeadOpportunityService";
+import {
+  buildLeadWhatsAppUrl,
+  leadContactPriority,
+  leadOpportunitySummary,
+} from "../../services/leadHunter/LeadOpportunityService";
 import { deduplicateLeadHunterProspects } from "../../services/leadHunter/LeadDeduplicationService";
 import {
   buildGoogleMapsRouteUrl,
@@ -73,6 +77,7 @@ export function LeadHunterPage({
     cityIds: string[];
     categoryIds: string[];
     errorCount: number;
+    tokenUsage?: number;
   }>;
   routes: LeadHunterRoute[];
   settings: LeadHunterSettings;
@@ -116,6 +121,10 @@ export function LeadHunterPage({
   const [resultQuery, setResultQuery] = useState("");
   const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "contactable" | "ai">("all");
   const [sortMode, setSortMode] = useState<"priority" | "score" | "newest">("priority");
+  const today = new Date().toISOString().slice(0, 10);
+  const todaySearches = searches.filter((search) => search.createdAt.slice(0, 10) === today);
+  const aiCallsToday = todaySearches.filter((search) => (search.tokenUsage || 0) > 0).length;
+  const tokensToday = todaySearches.reduce((total, search) => total + (search.tokenUsage || 0), 0);
   const filtered = useMemo(
     () =>
       deduplicateLeadHunterProspects(prospects)
@@ -201,9 +210,9 @@ export function LeadHunterPage({
           </div>
         </div>
         {providerReady ? (
-          <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 lg:flex-row lg:items-center">
             <AlertCircle className="mt-0.5 shrink-0" size={18} />
-            <div>
+            <div className="min-w-0 flex-1">
               <strong>Busca de empresas e contatos públicos ativada</strong>
               <p className="mt-0.5 text-emerald-800">
                 O OpenStreetMap encontra empresas reais; com o backend
@@ -219,6 +228,16 @@ export function LeadHunterPage({
                 </a>
                 .
               </p>
+            </div>
+            <div className="grid shrink-0 grid-cols-2 gap-2 text-center">
+              <div className="rounded-lg border border-emerald-200 bg-white/50 px-3 py-2">
+                <strong className="block text-base">{aiCallsToday}/{settings.maxDailyCalls}</strong>
+                <span className="text-[10px] uppercase tracking-wide text-emerald-700">IA hoje</span>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-white/50 px-3 py-2">
+                <strong className="block text-base">{tokensToday.toLocaleString("pt-BR")}</strong>
+                <span className="text-[10px] uppercase tracking-wide text-emerald-700">tokens</span>
+              </div>
             </div>
           </div>
         ) : null}
@@ -517,6 +536,9 @@ export function LeadHunterPage({
                             <strong>{lead.recommendedService}</strong>
                           </div>
                         ) : null}
+                        <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                          {leadOpportunitySummary(lead)}
+                        </p>
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100">
                           <div className={`h-full rounded-full ${lead.score >= 75 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${lead.score}%` }} />
                         </div>
@@ -529,7 +551,7 @@ export function LeadHunterPage({
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
                       {lead.whatsapp ? (
-                        <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700" href={`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">
+                        <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700" href={buildLeadWhatsAppUrl(lead)} target="_blank" rel="noreferrer" onClick={() => { if (!lead.leadId) onImport([lead.id]); }}>
                           <MessageCircle size={15} /> WhatsApp
                         </a>
                       ) : null}
@@ -775,7 +797,7 @@ function LeadDetail({
           {lead.whatsapp ? (
             <a
               className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold"
-              href={`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}`}
+              href={buildLeadWhatsAppUrl(lead)}
               target="_blank"
               rel="noreferrer"
             >

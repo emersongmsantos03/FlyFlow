@@ -4671,7 +4671,10 @@ function App() {
                   item.group !== 'Eventos' &&
                   /hotel|pousada|restaurante|imobiliária|vinícola|resort|haras|pesqueiro|concessionária|shopping|academia|clínica|escola|indústria|logístico|galpão|energia solar|condomínio|fazenda|sítio|cooperativa|construtora|incorporadora|loteamento/i.test(item.name),
                 )
-                const city = filters.cityIds.length ? activeCities.find((item) => filters.cityIds.includes(item.id)) : [...activeCities].sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)[0]
+                const candidateCities = filters.cityIds.length
+                  ? activeCities.filter((item) => filters.cityIds.includes(item.id)).slice(0, 1)
+                  : [...activeCities].sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm).slice(0, 3)
+                let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
                   ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
                   : [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
@@ -4682,10 +4685,19 @@ function App() {
                 try {
                   const controller = new AbortController()
                   const timeout = window.setTimeout(() => controller.abort(), 45_000)
-                  const result = await new OpenStreetMapLeadProvider().search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: state.leadHunterSettings?.maxResultsPerSearch || 20 }, controller.signal).finally(() => window.clearTimeout(timeout))
+                  const provider = new OpenStreetMapLeadProvider()
+                  let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: state.leadHunterSettings?.maxResultsPerSearch || 20 }, controller.signal)
+                  for (const fallbackCity of candidateCities.slice(1)) {
+                    if (result.leads.length) break
+                    city = fallbackCity
+                    result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: state.leadHunterSettings?.maxResultsPerSearch || 20 }, controller.signal)
+                  }
+                  window.clearTimeout(timeout)
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
-                  if (isOpenAILeadEnrichmentConfigured) {
+                  const aiCallsToday = (state.leadHunterSearches || []).filter((search) => search.createdAt.slice(0, 10) === now.slice(0, 10) && search.tokenUsage > 0).length
+                  const aiBudgetAvailable = aiCallsToday < (state.leadHunterSettings?.maxDailyCalls || 10)
+                  if (isOpenAILeadEnrichmentConfigured && aiBudgetAvailable) {
                     try {
                       const knownProspects = state.leadHunterProspects || []
                       const enrichmentPriority = (raw: typeof result.leads[number]) => {
