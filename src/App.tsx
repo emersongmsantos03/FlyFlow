@@ -4754,7 +4754,9 @@ function App() {
                 }
                 const candidateCities = filters.cityIds.length
                   ? activeCities.filter((item) => filters.cityIds.includes(item.id)).slice(0, 1)
-                  : [...activeCities].sort((a, b) => a.distanceFromBaseKm - b.distanceFromBaseKm || a.searchCount - b.searchCount).slice(0, 3)
+                  : [...activeCities]
+                    .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
+                    .slice(0, 4)
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
                   ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
@@ -4776,31 +4778,26 @@ function App() {
                   const timeout = window.setTimeout(() => controller.abort(), 60_000)
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = 20
-                  const providerLimit = filters.cityIds.length ? 30 : 8
-                  const unavailableProspects = (state.leadHunterProspects || []).filter((prospect) =>
-                    prospect.status === 'Importado' ||
-                    prospect.status === 'Descartado' ||
-                    prospect.discardedPermanently ||
-                    Boolean(prospect.leadId),
-                  )
-                  const isAlreadyImported = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
+                  const providerLimit = filters.cityIds.length ? 30 : 12
+                  const knownProspects = state.leadHunterProspects || []
+                  const isAlreadyKnown = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
                     const normalizedName = normalizeLeadText(raw.name)
                     const normalizedCity = normalizeLeadText(raw.city)
-                    return unavailableProspects.some((prospect) =>
+                    return knownProspects.some((prospect) =>
                       prospect.id === raw.id ||
                       Boolean(osmId && prospect.externalIds.openstreetmap === osmId) ||
                       (prospect.normalizedName === normalizedName && normalizeLeadText(prospect.city) === normalizedCity),
                     )
                   }
                   let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit }, controller.signal)
-                  result = { ...result, leads: result.leads.filter((lead) => !isAlreadyImported(lead)) }
+                  result = { ...result, leads: result.leads.filter((lead) => !isAlreadyKnown(lead)) }
                   const combinedLeads = new Map(result.leads.map((lead) => [lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`, lead]))
                   const combinedSources = new Set(result.sources)
                   for (const fallbackCity of candidateCities.slice(1)) {
                     const fallbackResult = await provider.search({ cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit }, controller.signal)
                     fallbackResult.sources.forEach((source) => combinedSources.add(source))
-                    fallbackResult.leads.filter((lead) => !isAlreadyImported(lead)).forEach((lead) => {
+                    fallbackResult.leads.filter((lead) => !isAlreadyKnown(lead)).forEach((lead) => {
                       const key = lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
                       if (!combinedLeads.has(key)) combinedLeads.set(key, lead)
                     })
@@ -4828,7 +4825,6 @@ function App() {
                   const aiBudgetAvailable = aiCallsToday < effectiveDailyAiLimit
                   if (isOpenAILeadEnrichmentConfigured && aiBudgetAvailable) {
                     try {
-                      const knownProspects = state.leadHunterProspects || []
                       const enrichmentPriority = (raw: typeof result.leads[number]) => {
                         const category = normalizeLeadText(raw.categoryName)
                         const commercialPotential =
@@ -4922,8 +4918,11 @@ function App() {
                       return { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], ...evaluatedRaw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
                     })
                     const incomingIds = new Set(incoming.map((item) => item.id))
-                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => item.id === city.id ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.length, newLeadCount: item.newLeadCount + newCount, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: [city.id], categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: isOpenAILeadEnrichmentConfigured ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
-                  }, `${newCount} novo(s), ${repeatedCount} já conhecido(s). Busca real e gratuita concluída.`)
+                    const searchedCityIds = new Set(candidateCities.map((item) => item.id))
+                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => searchedCityIds.has(item.id) ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.filter((lead) => lead.cityId === item.id).length, newLeadCount: item.newLeadCount + incoming.filter((lead) => lead.cityId === item.id && lead.isNew).length, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: candidateCities.map((item) => item.id), categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: isOpenAILeadEnrichmentConfigured ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
+                  }, newCount
+                    ? `${newCount} novo(s) adicionado(s) no topo. Os anteriores foram mantidos abaixo.`
+                    : 'Nenhuma empresa inédita foi encontrada nesta rodada. A próxima busca alternará cidades e categorias.')
                 } catch (error) {
                   updateState((current) => ({ ...current, leadHunterSearches: [{ id: searchId, ...filters, cityIds: [city.id], categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: ['OpenStreetMap / Overpass API'], totalFound: 0, newCount: 0, repeatedCount: 0, duplicateCount: 0, cooldownBlockedCount: 0, errorCount: 1, estimatedCost: 0, tokenUsage: 0, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }), error instanceof Error ? error.message : 'Não foi possível concluir a busca pública.')
                 }
