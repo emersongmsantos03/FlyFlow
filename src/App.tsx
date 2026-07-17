@@ -4754,9 +4754,14 @@ function App() {
                 }
                 const candidateCities = filters.cityIds.length
                   ? activeCities.filter((item) => filters.cityIds.includes(item.id)).slice(0, 1)
-                  : [...activeCities]
-                    .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
-                    .slice(0, 4)
+                  : (() => {
+                    const nearby = [...activeCities]
+                      .sort((a, b) => a.distanceFromBaseKm - b.distanceFromBaseKm || a.searchCount - b.searchCount)
+                      .slice(0, 2)
+                    const underSearched = [...activeCities]
+                      .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
+                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 5)
+                  })()
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
                   ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
@@ -4768,8 +4773,8 @@ function App() {
                       )
                     const mixed = ranked.filter((category, index, list) =>
                       list.findIndex((candidate) => candidate.group === category.group) === index,
-                    ).slice(0, 3)
-                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 3)
+                    ).slice(0, 6)
+                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 6)
                   })()
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
@@ -4778,7 +4783,7 @@ function App() {
                   const timeout = window.setTimeout(() => controller.abort(), 60_000)
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = 20
-                  const providerLimit = filters.cityIds.length ? 30 : 12
+                  const providerLimit = filters.cityIds.length ? 30 : 16
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
