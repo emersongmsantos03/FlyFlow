@@ -4656,6 +4656,7 @@ function App() {
               categories={state.leadHunterCategories || []}
               prospects={state.leadHunterProspects || []}
               searches={state.leadHunterSearches || []}
+              routes={state.leadHunterRoutes || []}
               settings={state.leadHunterSettings}
               providerReady={Boolean((import.meta.env.VITE_LEAD_HUNTER_API_URL as string | undefined)?.trim())}
               onSearch={(filters) => {
@@ -4671,6 +4672,15 @@ function App() {
               onSaveCities={(cities) => updateState((current) => ({ ...current, leadHunterCities: cities }), 'Cidades do Lead Hunter atualizadas.')}
               onSaveCategories={(categories) => updateState((current) => ({ ...current, leadHunterCategories: categories }), 'Categorias do Lead Hunter atualizadas.')}
               onImport={importLeadHunterProspects}
+              onCreateRoute={(input) => {
+                const now = new Date().toISOString()
+                updateState((current) => ({ ...current, leadHunterRoutes: [{ id: createId('lh-route'), ...input, visitedProspectIds: [], status: 'Planejada', notes: '', createdBy: activeUserId, createdAt: now, updatedAt: now }, ...(current.leadHunterRoutes || [])] }), 'Rota salva no Lead Hunter.')
+              }}
+              onToggleVisited={(routeId, prospectId) => updateState((current) => ({ ...current, leadHunterRoutes: (current.leadHunterRoutes || []).map((route) => {
+                if (route.id !== routeId) return route
+                const visitedProspectIds = route.visitedProspectIds.includes(prospectId) ? route.visitedProspectIds.filter((id) => id !== prospectId) : [...route.visitedProspectIds, prospectId]
+                return { ...route, visitedProspectIds, status: visitedProspectIds.length === route.prospectIds.length ? 'Concluída' : visitedProspectIds.length ? 'Em andamento' : 'Planejada', updatedAt: new Date().toISOString() }
+              }) }), 'Visita atualizada na rota.')}
             />
           ) : null}
           {page === 'projects' ? (

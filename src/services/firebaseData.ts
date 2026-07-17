@@ -21,6 +21,7 @@ const ARRAY_SECTION_KEYS = [
   'leadHunterCategories',
   'leadHunterProspects',
   'leadHunterSearches',
+  'leadHunterRoutes',
   'services',
   'projects',
   'projectChecklistItems',

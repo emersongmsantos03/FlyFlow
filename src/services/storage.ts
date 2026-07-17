@@ -191,6 +191,7 @@ export const normalizeAppState = (state: AppState): AppState => {
     leadHunterCategories: state.leadHunterCategories?.length ? state.leadHunterCategories : createDefaultLeadHunterCategories(),
     leadHunterProspects: state.leadHunterProspects || [],
     leadHunterSearches: state.leadHunterSearches || [],
+    leadHunterRoutes: state.leadHunterRoutes || [],
     leadHunterSettings: state.leadHunterSettings || createDefaultLeadHunterSettings(),
     companySettings: {
       ...state.companySettings,

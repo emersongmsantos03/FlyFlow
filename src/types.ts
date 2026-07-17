@@ -517,6 +517,24 @@ export interface LeadHunterSearch {
   createdAt: string
 }
 
+export interface LeadHunterRoute {
+  id: string
+  name: string
+  startAddress: string
+  targetCity: string
+  prospectIds: string[]
+  visitedProspectIds: string[]
+  status: 'Planejada' | 'Em andamento' | 'Concluída' | 'Cancelada'
+  estimatedDistanceKm?: number
+  estimatedDurationMinutes?: number
+  googleMapsUrl: string
+  notes: string
+  plannedFor?: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface LeadHunterSettings {
   radiusKm: number
   maxResultsPerSearch: number
@@ -944,6 +962,7 @@ export interface AppState {
   leadHunterCategories?: LeadHunterCategory[]
   leadHunterProspects?: LeadHunterProspect[]
   leadHunterSearches?: LeadHunterSearch[]
+  leadHunterRoutes?: LeadHunterRoute[]
   leadHunterSettings?: LeadHunterSettings
   services: ServiceCatalogItem[]
   projects: Project[]
