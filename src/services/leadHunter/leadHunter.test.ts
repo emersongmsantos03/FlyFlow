@@ -4,6 +4,8 @@ import type { LeadHunterProspect } from '../../types'
 import { normalizeLeadText } from './LeadDeduplicationService'
 import { calculateLeadScore } from './LeadScoringService'
 import { shouldDisplayLead } from './LeadRotationService'
+import { buildGoogleMapsRouteUrl, recommendDailyMission } from './LeadRouteService'
+import { createDefaultLeadHunterCities } from '../../constants/leadHunterDefaults'
 
 const prospect = (overrides: Partial<LeadHunterProspect> = {}): LeadHunterProspect => ({
   id: 'prospect-1', externalIds: {}, name: 'Refúgio Marmeleiros', normalizedName: 'refugiomarmeleiros',
@@ -32,5 +34,19 @@ describe('Lead Hunter services', () => {
     const decision = shouldDisplayLead(known, settings, { includeKnown: true, onlyNew: false })
     expect(decision.display).toBe(false)
     expect(decision.reason).toContain('menos de 30 dias')
+  })
+
+  it('gera rota externa sem inventar distância ou duração', () => {
+    const url = buildGoogleMapsRouteUrl('Curitiba, PR', [prospect({ address: 'Rua A, Curitiba' }), prospect({ id: 'prospect-2', name: 'Cabana B', address: 'Rua B, Curitiba' })])
+    expect(url).toContain('google.com/maps/dir')
+    expect(url).toContain('waypoints')
+  })
+
+  it('recomenda missão com leads reais disponíveis', () => {
+    const cities = createDefaultLeadHunterCities()
+    const curitiba = cities.find((city) => city.name === 'Curitiba')!
+    const mission = recommendDailyMission(cities, [prospect({ cityId: curitiba.id })], [], 'Curitiba')
+    expect(mission?.city.name).toBe('Curitiba')
+    expect(mission?.newCount).toBe(1)
   })
 })

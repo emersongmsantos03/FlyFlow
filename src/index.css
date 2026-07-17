@@ -37,7 +37,102 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Design system refinement: lighter hierarchy shared by every FlyFlow module. */
+.page-shell .font-black {
+  font-weight: 650;
+}
+
+.page-shell .font-bold {
+  font-weight: 600;
+}
+
+.panel-surface,
+.metric-card,
+.dashboard-intro,
+.dashboard-supporting-metrics,
+.crm-page > section,
+.lead-hunter-page > section {
+  border-color: var(--border-subtle) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.panel-surface:hover,
+.metric-card:hover {
+  border-color: var(--border) !important;
+}
+
+.field-input {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+  min-height: 2.65rem;
+}
+
+.field-input:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 35%, var(--border)) !important;
+}
+
+.field-input:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 17%, transparent) !important;
+}
+
+.field-label,
+.data-table th {
+  color: var(--text-secondary) !important;
+  font-weight: 550 !important;
+  letter-spacing: 0.01em;
+}
+
+.data-table th {
+  background: var(--surface-muted) !important;
+  border-bottom-color: var(--border) !important;
+}
+
+.data-table td {
+  border-bottom-color: var(--border-subtle) !important;
+}
+
+.data-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--primary-soft) 32%, var(--surface)) !important;
+}
+
+.status-badge {
+  font-weight: 550 !important;
+}
+
+.modal-surface {
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 24px 70px rgb(24 28 22 / 0.16) !important;
+}
+
+.modal-header {
+  border-color: var(--border-subtle) !important;
+}
+
+.recharts-default-tooltip {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: var(--shadow-md) !important;
+  color: var(--text-primary) !important;
+  font-family: inherit !important;
+  font-size: 0.78rem !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 html[data-theme='dark'] {
+  --background: #0b0d10;
   --app-bg: #0b0d10;
   --surface: #14171b;
   --surface-soft: #1b1f25;
@@ -46,8 +141,12 @@ html[data-theme='dark'] {
   --text-secondary: #c7cdd6;
   --text-muted: #8e98a7;
   --border: #292e36;
-  --accent: #ddb72e;
-  --accent-strong: #e6c44c;
+  --border-subtle: #22272e;
+  --primary: #d7b33f;
+  --primary-hover: #e2c45b;
+  --primary-soft: #2d2817;
+  --accent: var(--primary);
+  --accent-strong: var(--primary-hover);
   --success: #22c55e;
   --danger: #f87171;
   color-scheme: dark;

@@ -42,7 +42,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   Bar,
@@ -61,7 +61,7 @@ import {
 } from 'recharts'
 import { Button, InputField, MetricCard, Modal, Panel, StatusBadge, Tag, Toast } from './components/ui'
 import { CrmPage, type CrmView } from './components/crm/CrmPage'
-import { LeadHunterPage } from './components/leadHunter/LeadHunterPage'
+const LeadHunterPage = lazy(() => import('./components/leadHunter/LeadHunterPage').then((module) => ({ default: module.LeadHunterPage })))
 import {
   buildLeadSourceSeries,
   buildMonthlySeries,
@@ -4651,7 +4651,7 @@ function App() {
             />
           ) : null}
           {page === 'leadHunter' && state.leadHunterSettings ? (
-            <LeadHunterPage
+            <Suspense fallback={<div className="flex min-h-72 items-center justify-center rounded-2xl border border-gray-200 bg-white text-sm font-medium text-gray-500">Carregando Lead Hunter...</div>}><LeadHunterPage
               cities={state.leadHunterCities || []}
               categories={state.leadHunterCategories || []}
               prospects={state.leadHunterProspects || []}
@@ -4681,7 +4681,7 @@ function App() {
                 const visitedProspectIds = route.visitedProspectIds.includes(prospectId) ? route.visitedProspectIds.filter((id) => id !== prospectId) : [...route.visitedProspectIds, prospectId]
                 return { ...route, visitedProspectIds, status: visitedProspectIds.length === route.prospectIds.length ? 'Concluída' : visitedProspectIds.length ? 'Em andamento' : 'Planejada', updatedAt: new Date().toISOString() }
               }) }), 'Visita atualizada na rota.')}
-            />
+            /></Suspense>
           ) : null}
           {page === 'projects' ? (
             <ProjectsPage
