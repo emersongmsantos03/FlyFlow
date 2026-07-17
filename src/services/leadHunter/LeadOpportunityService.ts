@@ -74,14 +74,18 @@ export const leadOpportunitySummary = (lead: LeadHunterProspect) => {
   return lead.scoreReasons[0]?.label || 'Empresa real localizada em fonte pública.'
 }
 
-export const buildLeadWhatsAppUrl = (lead: LeadHunterProspect) => {
-  const digits = lead.whatsapp.replace(/\D/g, '')
-  const number = digits.startsWith('55') ? digits : `55${digits}`
+export const buildLeadWhatsAppMessage = (lead: LeadHunterProspect) => {
   const service = lead.recommendedService || recommendLeadService(lead.categoryName)
-  const message = lead.aiFirstMessage || [
+  return lead.aiFirstMessage || [
     `Olá! Tudo bem? Sou da Hero Drone, de Curitiba.`,
     `Conheci a ${lead.name} e acredito que um trabalho de ${service.toLocaleLowerCase('pt-BR')} pode valorizar bastante a apresentação do negócio.`,
     `Posso te enviar uma ideia rápida, sem compromisso?`,
   ].join(' ')
+}
+
+export const buildLeadWhatsAppUrl = (lead: LeadHunterProspect, customMessage?: string) => {
+  const digits = lead.whatsapp.replace(/\D/g, '')
+  const number = digits.startsWith('55') ? digits : `55${digits}`
+  const message = customMessage?.trim() || buildLeadWhatsAppMessage(lead)
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`
 }

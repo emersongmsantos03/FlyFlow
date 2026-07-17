@@ -36,6 +36,7 @@ import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
 import {
   buildInstagramUrl,
   buildGoogleBusinessUrl,
+  buildLeadWhatsAppMessage,
   buildLeadWhatsAppUrl,
   leadContactPriority,
   leadOpportunitySummary,
@@ -760,6 +761,9 @@ function LeadDetail({
   onImport: (id: string) => void;
   onReject: (id: string) => void;
 }) {
+  const [whatsAppDraft, setWhatsAppDraft] = useState(() =>
+    lead ? buildLeadWhatsAppMessage(lead) : "",
+  );
   if (!lead) return null;
   return (
     <div
@@ -872,6 +876,44 @@ function LeadDetail({
             </div>
           </details>
         </section>
+        {lead.whatsapp ? (
+          <section className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-gray-950">Contato seguro pelo WhatsApp</h3>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                  Revise a mensagem e confirme o envio no WhatsApp oficial. O FlyFlow não armazena sua sessão, senha ou QR Code.
+                </p>
+              </div>
+              <MessageCircle className="shrink-0 text-emerald-600" size={20} />
+            </div>
+            <textarea
+              className="mt-3 min-h-32 w-full resize-y rounded-lg border border-gray-200 bg-white p-3 text-sm leading-relaxed text-gray-800 outline-none focus:border-amber-400"
+              value={whatsAppDraft}
+              onChange={(event) => setWhatsAppDraft(event.currentTarget.value)}
+              aria-label="Mensagem para WhatsApp"
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                href={buildLeadWhatsAppUrl(lead, whatsAppDraft)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => onImport(lead.id)}
+              >
+                <ExternalLink size={16} />
+                Abrir no WhatsApp e salvar no Comercial
+              </a>
+              <button
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(whatsAppDraft)}
+              >
+                Copiar mensagem
+              </button>
+            </div>
+          </section>
+        ) : null}
         <section className="mt-5">
           <h3 className="font-semibold">Composição do score</h3>
           <div className="mt-2 space-y-2">
