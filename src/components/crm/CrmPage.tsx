@@ -31,7 +31,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
-import { buildGoogleBusinessUrl, buildInstagramUrl } from '../../services/leadHunter/LeadOpportunityService'
+import { buildGoogleBusinessUrl, buildInstagramUrl, leadOpportunitySummary } from '../../services/leadHunter/LeadOpportunityService'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
@@ -626,7 +626,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
       <div className="space-y-4 p-4">
         {tab === 'overview' ? <>
           <div className="grid grid-cols-2 gap-2">{[['Valor potencial', formatCurrency(lead.estimatedValue)], ['Próxima ação', lead.nextContactAt ? formatDateTime(lead.nextContactAt) : 'Não definida'], ['Serviço', lead.serviceInterest], ['Origem', lead.source]].map(([label, value]) => <div key={label} className="rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">{label}</p><p className="mt-1 text-sm font-black text-gray-950">{value}</p></div>)}</div>
-          {leadHunterData ? <LeadHunterDossier data={leadHunterData} /> : null}
+          {leadHunterData ? <LeadHunterDossier data={leadHunterData} notes={lead.notes} /> : null}
           <section><h3 className="text-sm font-black text-gray-950">Ações principais</h3><div className="mt-2 grid gap-2 sm:grid-cols-2"><Button type="button" onClick={() => onRegisterInteraction(lead, 'Contato realizado')}><MessageCircle size={16} /> Registrar atividade</Button><Button variant="secondary" type="button" onClick={() => onCreateTask(lead)}><CheckCircle2 size={16} /> Criar tarefa</Button><Button variant="secondary" type="button" onClick={() => onScheduleReturn(lead)}><CalendarDays size={16} /> Agendar retorno</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal('', lead.id)}><FileText size={16} /> Gerar proposta</Button>{quoteForDeposit ? <Button variant="secondary" type="button" onClick={() => onRegisterDeposit(quoteForDeposit)}><CircleDollarSign size={16} /> Registrar entrada</Button> : null}{receiptTarget ? <Button variant="secondary" type="button" onClick={() => receiptTarget.receiptUrl ? setPreviewFile({ fileName: `${receiptTarget.paymentType} comprovante`, url: receiptTarget.receiptUrl, mode: getFilePreviewMode(receiptTarget.receiptUrl) }) : onAttachReceipt(receiptTarget)}><Paperclip size={16} /> {receiptTarget.receiptUrl ? 'Ver comprovante' : 'Anexar comprovante'}</Button> : null}{lead.pipelineStage === 'Serviço confirmado' && !currentProject(state, lead.id) ? <Button className="sm:col-span-2" type="button" onClick={() => onCreateProject(lead)}><Briefcase size={16} /> Criar projeto</Button> : null}</div></section>
           <section><h3 className="text-sm font-black text-gray-950">Contato</h3><dl className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-gray-500">Telefone</dt><dd className="font-bold text-gray-950">{lead.whatsapp || lead.phone || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">E-mail</dt><dd className="break-all text-right font-bold text-gray-950">{lead.email || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">Local</dt><dd className="text-right font-bold text-gray-950">{lead.city || 'Não informado'}</dd></div></dl></section>
         </> : null}
@@ -746,10 +746,14 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   </>
 }
 
-function LeadHunterDossier({ data }: { data: NonNullable<Lead['leadHunterData']> }) {
+function LeadHunterDossier({ data, notes }: { data: NonNullable<Lead['leadHunterData']>; notes: string }) {
   const location = [data.address, data.neighborhood, data.city].filter(Boolean).join(' · ')
   const googleBusinessUrl = data.googleMapsUrl || buildGoogleBusinessUrl(data)
   const rating = data.googleRating ? `${data.googleRating} ★ · ${data.googleReviewCount || 0} avaliações` : ''
+  const savedAiComment = notes.split(/\r?\n/).find((line) => line.trim().toLocaleLowerCase('pt-BR').startsWith('análise da ia:'))
+    ?.replace(/^análise da ia:\s*/i, '').trim()
+  const aiComment = data.aiSummary || savedAiComment || data.aiApproach || data.aiContactHook || ''
+  const opportunityComment = aiComment || leadOpportunitySummary(data)
   return <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
     <div className="p-3">
       <div className="flex items-start justify-between gap-3">
@@ -767,7 +771,7 @@ function LeadHunterDossier({ data }: { data: NonNullable<Lead['leadHunterData']>
         {data.website ? <a className="crm-lead-link" href={data.website} target="_blank" rel="noreferrer"><Globe2 size={15} /> Site</a> : null}
         <a className="crm-lead-link" href={googleBusinessUrl} target="_blank" rel="noreferrer"><MapPin size={15} /> Google Business</a>
       </div>
-      {data.aiSummary ? <div className="mt-3 border-l-2 border-gray-300 pl-3"><p className="text-[0.65rem] font-bold uppercase tracking-wide text-gray-500">Resumo da oportunidade</p><p className="mt-1 text-sm leading-relaxed text-gray-700">{data.aiSummary}</p></div> : null}
+      <div className="mt-3 border-l-2 border-gray-300 pl-3"><p className="text-[0.65rem] font-bold uppercase tracking-wide text-gray-500">{aiComment ? 'Comentários da IA' : 'Leitura automática'}</p><p className="mt-1 text-sm leading-relaxed text-gray-700">{opportunityComment}</p></div>
     </div>
     <details className="group border-t border-gray-200">
       <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50">
