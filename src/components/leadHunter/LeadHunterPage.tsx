@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
+  ArrowUpDown,
+  Bot,
   CalendarDays,
   Check,
   Clock3,
@@ -9,10 +11,12 @@ import {
   Filter,
   Flag,
   History,
+  Globe2,
   Import,
   Map,
   MapPinned,
   MessageCircle,
+  Mail,
   Navigation,
   Radar,
   RotateCw,
@@ -20,6 +24,8 @@ import {
   Settings2,
   Sparkles,
   Target,
+  Trophy,
+  Phone,
   X,
 } from "lucide-react";
 import type {
@@ -107,18 +113,36 @@ export function LeadHunterPage({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [openedLeadId, setOpenedLeadId] = useState("");
   const [searching, setSearching] = useState(false);
+  const [resultQuery, setResultQuery] = useState("");
+  const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "contactable" | "ai">("all");
+  const [sortMode, setSortMode] = useState<"priority" | "score" | "newest">("priority");
   const filtered = useMemo(
     () =>
       deduplicateLeadHunterProspects(prospects)
         .filter(
-          (lead) =>
+          (lead) => {
+            const searchable = `${lead.name} ${lead.contactName || ""} ${lead.categoryName} ${lead.city} ${lead.neighborhood} ${lead.recommendedService || ""}`.toLocaleLowerCase("pt-BR");
+            const matchesContact =
+              contactFilter === "all" ||
+              (contactFilter === "whatsapp" && Boolean(lead.whatsapp)) ||
+              (contactFilter === "contactable" && Boolean(lead.whatsapp || lead.phone || lead.email)) ||
+              (contactFilter === "ai" && lead.sources.some((source) => /openai/i.test(source)));
+            return (
             (!cityId || lead.cityId === cityId) &&
             (!categoryId || lead.categoryId === categoryId) &&
             lead.score >= minimumScore &&
-            (!onlyNew || lead.isNew),
+            (!onlyNew || lead.isNew) &&
+            (!resultQuery.trim() || searchable.includes(resultQuery.trim().toLocaleLowerCase("pt-BR"))) &&
+            matchesContact
+            );
+          },
         )
-        .sort((a, b) => leadContactPriority(b) - leadContactPriority(a)),
-    [categoryId, cityId, minimumScore, onlyNew, prospects],
+        .sort((a, b) =>
+          sortMode === "score" ? b.score - a.score :
+          sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
+          leadContactPriority(b) - leadContactPriority(a),
+        ),
+    [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, sortMode],
   );
   const runSearch = async () => {
     if (searching) return;
@@ -329,28 +353,28 @@ export function LeadHunterPage({
           </Panel>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Encontrados", filtered.length, Target],
+              ["Oportunidades", filtered.length, Target],
               [
-                "Inéditos",
-                filtered.filter((item) => item.isNew).length,
-                Sparkles,
+                "Com WhatsApp",
+                filtered.filter((item) => item.whatsapp).length,
+                MessageCircle,
               ],
               [
-                "Reapresentados",
-                filtered.filter((item) => !item.isNew).length,
-                RotateCw,
+                "Alta prioridade",
+                filtered.filter((item) => item.score >= 75).length,
+                Trophy,
               ],
               [
-                "Cidades ativas",
-                cities.filter((item) => item.active).length,
-                Map,
+                "Enriquecidos por IA",
+                filtered.filter((item) => item.sources.some((source) => /openai/i.test(source))).length,
+                Bot,
               ],
             ].map(([label, value, Icon]) => {
               const MetricIcon = Icon as typeof Target;
               return (
                 <div
                   key={String(label)}
-                  className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+                  className="group rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md"
                 >
                   <MetricIcon className="text-[#a98512]" size={18} />
                   <p className="mt-3 text-xs font-medium text-gray-500">
@@ -364,7 +388,7 @@ export function LeadHunterPage({
             })}
           </div>
           <Panel
-            title="Resultados qualificados"
+            title="Pipeline de oportunidades"
             action={
               selectedIds.length ? (
                 <Button type="button" onClick={() => onImport(selectedIds)}>
@@ -374,12 +398,53 @@ export function LeadHunterPage({
               ) : undefined
             }
           >
+            <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-3 lg:flex-row lg:items-center">
+              <label className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
+                <input
+                  className="field-input w-full pl-10"
+                  value={resultQuery}
+                  onChange={(event) => setResultQuery(event.target.value)}
+                  placeholder="Buscar empresa, cidade, categoria ou serviço..."
+                />
+              </label>
+              <select className="field-input min-w-44" value={contactFilter} onChange={(event) => setContactFilter(event.target.value as typeof contactFilter)}>
+                <option value="all">Todos os contatos</option>
+                <option value="whatsapp">Com WhatsApp</option>
+                <option value="contactable">Com algum contato</option>
+                <option value="ai">Enriquecidos por IA</option>
+              </select>
+              <label className="relative">
+                <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <select className="field-input min-w-44 pl-9" value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)}>
+                  <option value="priority">Melhor oportunidade</option>
+                  <option value="score">Maior score</option>
+                  <option value="newest">Mais recente</option>
+                </select>
+              </label>
+            </div>
+            {filtered.length ? (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <button
+                  className="text-xs font-semibold text-gray-600 hover:text-gray-950"
+                  type="button"
+                  onClick={() => {
+                    const visibleIds = filtered.map((lead) => lead.id);
+                    const allSelected = visibleIds.every((id) => selectedIds.includes(id));
+                    setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : [...new Set([...selectedIds, ...visibleIds])]);
+                  }}
+                >
+                  {filtered.every((lead) => selectedIds.includes(lead.id)) ? "Desmarcar visíveis" : "Selecionar visíveis"}
+                </button>
+                <span className="text-xs text-gray-500">{filtered.length} oportunidade(s) ordenada(s) por potencial</span>
+              </div>
+            ) : null}
             {filtered.length ? (
               <div className="grid gap-3 xl:grid-cols-2">
                 {filtered.map((lead) => (
                   <article
                     key={lead.id}
-                    className={`rounded-xl border p-4 ${selectedIds.includes(lead.id) ? "border-amber-400 bg-amber-50/40" : "border-gray-200"}`}
+                    className={`group rounded-2xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${selectedIds.includes(lead.id) ? "border-amber-400 bg-amber-50/40 ring-2 ring-amber-100" : "border-gray-200 bg-white hover:border-amber-200"}`}
                   >
                     <div className="flex items-start gap-3">
                       <button
@@ -436,12 +501,35 @@ export function LeadHunterPage({
                             </p>
                           </div>
                         </div>
+                        {lead.recommendedService ? (
+                          <div className="mt-3 flex items-center gap-2 rounded-xl bg-[#faf6e8] px-3 py-2 text-sm text-[#765d08]">
+                            <Sparkles size={15} />
+                            <span className="text-xs text-[#9a7900]">Melhor oferta:</span>
+                            <strong>{lead.recommendedService}</strong>
+                          </div>
+                        ) : null}
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                          <div className={`h-full rounded-full ${lead.score >= 75 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${lead.score}%` }} />
+                        </div>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
                           <span>{lead.sources.join(", ")}</span>
                           <span>·</span>
                           <span>Exibido {lead.displayCount}x</span>
                         </div>
                       </button>
+                    </div>
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                      {lead.whatsapp ? (
+                        <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700" href={`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">
+                          <MessageCircle size={15} /> WhatsApp
+                        </a>
+                      ) : null}
+                      {lead.phone ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={`tel:${lead.phone}`} title="Ligar"><Phone size={15} /></a> : null}
+                      {lead.email ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={`mailto:${lead.email}`} title="Enviar e-mail"><Mail size={15} /></a> : null}
+                      {lead.website ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={lead.website} target="_blank" rel="noreferrer" title="Abrir site"><Globe2 size={15} /></a> : null}
+                      {lead.googleMapsUrl ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={lead.googleMapsUrl} target="_blank" rel="noreferrer" title="Abrir mapa"><Map size={15} /></a> : null}
+                      {!lead.whatsapp && !lead.phone && !lead.email ? <span className="text-xs text-gray-400">Contato ainda não localizado</span> : null}
+                      <button className="ml-auto text-xs font-semibold text-[#8a6d08] hover:underline" type="button" onClick={() => setOpenedLeadId(lead.id)}>Ver inteligência</button>
                     </div>
                   </article>
                 ))}
