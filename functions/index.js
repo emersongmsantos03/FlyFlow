@@ -61,7 +61,7 @@ export const leadApi = onRequest(
       const authHeader = request.get('authorization') || ''
       if (!authHeader.startsWith('Bearer ')) return response.status(401).json({ error: 'Autenticação obrigatória.' })
       await getAuth().verifyIdToken(authHeader.slice(7))
-      const inputLeads = Array.isArray(request.body?.leads) ? request.body.leads.slice(0, 10) : []
+      const inputLeads = Array.isArray(request.body?.leads) ? request.body.leads.slice(0, 3) : []
       if (!inputLeads.length) return response.status(400).json({ error: 'Envie ao menos um lead.' })
       const leads = inputLeads.map((lead) => ({
         id: clean(lead.id, 100),
@@ -79,9 +79,9 @@ export const leadApi = onRequest(
       const client = new OpenAI({ apiKey: openaiApiKey.value() })
       const result = await client.responses.create({
         model: 'gpt-5.6-luna',
-        reasoning: { effort: 'low' },
+        reasoning: { effort: 'none' },
         store: false,
-        tools: [{ type: 'web_search' }],
+        tools: [{ type: 'web_search', search_context_size: 'low' }],
         include: ['web_search_call.action.sources'],
         instructions: [
           'Você enriquece leads B2B brasileiros usando somente informações públicas verificáveis.',
@@ -96,7 +96,7 @@ export const leadApi = onRequest(
           format: { type: 'json_schema', name: 'lead_enrichment', strict: true, schema: leadSchema },
           verbosity: 'low',
         },
-        max_output_tokens: 3500,
+        max_output_tokens: 1200,
       })
       const parsed = JSON.parse(result.output_text)
       const requestedIds = new Set(leads.map((lead) => lead.id))

@@ -4683,7 +4683,22 @@ function App() {
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
                   if (isOpenAILeadEnrichmentConfigured) {
                     try {
-                      const enrichmentInput = result.leads.map((raw) => ({
+                      const knownProspects = state.leadHunterProspects || []
+                      const enrichmentInput = result.leads.filter((raw) => {
+                        const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
+                        const osmId = raw.externalIds?.openstreetmap
+                        const normalizedName = normalizeLeadText(raw.name)
+                        const normalizedCity = normalizeLeadText(raw.city)
+                        const alreadyKnown = knownProspects.some((item) =>
+                          item.id === stableId ||
+                          Boolean(osmId && item.externalIds.openstreetmap === osmId) ||
+                          (item.normalizedName === normalizedName && normalizeLeadText(item.city) === normalizedCity),
+                        )
+                        return !alreadyKnown && !(raw.whatsapp && raw.phone && raw.email)
+                      }).sort((a, b) =>
+                        Number(Boolean(b.website || b.instagram || b.sourceUrls?.length)) -
+                        Number(Boolean(a.website || a.instagram || a.sourceUrls?.length)),
+                      ).slice(0, 3).map((raw) => ({
                         externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '',
                         sources: [], sourceUrls: [], score: 0, scoreReasons: [], normalizedName: normalizeLeadText(raw.name), categoryId: '', status: 'Descoberto' as const,
                         isNew: true, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, changedSinceLastDisplay: false,

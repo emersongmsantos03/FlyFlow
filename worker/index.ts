@@ -104,7 +104,7 @@ export default {
     }
 
     const body = await request.json().catch(() => null) as { leads?: InputLead[] } | null
-    const leads = (Array.isArray(body?.leads) ? body.leads : []).slice(0, 10).map((lead) => ({
+    const leads = (Array.isArray(body?.leads) ? body.leads : []).slice(0, 3).map((lead) => ({
       id: clean(lead.id, 100),
       name: clean(lead.name, 160),
       city: clean(lead.city, 100),
@@ -125,9 +125,9 @@ export default {
       headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gpt-5.6-luna',
-        reasoning: { effort: 'low' },
+        reasoning: { effort: 'none' },
         store: false,
-        tools: [{ type: 'web_search' }],
+        tools: [{ type: 'web_search', search_context_size: 'low' }],
         include: ['web_search_call.action.sources'],
         instructions: [
           'Enriqueça leads B2B brasileiros usando somente informações públicas verificáveis.',
@@ -139,7 +139,7 @@ export default {
         ].join(' '),
         input: JSON.stringify(leads),
         text: { format: { type: 'json_schema', name: 'lead_enrichment', strict: true, schema }, verbosity: 'low' },
-        max_output_tokens: 3500,
+        max_output_tokens: 1200,
       }),
     })
     const openaiBody = await openaiResponse.json() as {
