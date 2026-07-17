@@ -21,7 +21,7 @@ const ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ]
 const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:v6:'
+const CACHE_PREFIX = 'flyflow:osm-leads:v7:'
 const CITY_COORDINATES: Record<string, [number, number]> = {
   curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
   'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
@@ -185,10 +185,10 @@ const searchNominatimCategory = async (city: string, category: string, limit: nu
 const searchNominatim = async (city: string, categories: string[], limit: number, signal?: AbortSignal): Promise<LeadSearchProviderResult['leads']> => {
   const searchCategories = [...new Set(categories.map((category) => clean(category, 80)).filter(Boolean))].slice(0, 3)
   const collected: Array<{ result: NominatimResult; category: string }> = []
+  const perCategoryLimit = Math.max(4, Math.ceil(limit / Math.max(searchCategories.length, 1)) + 2)
   for (const category of searchCategories.length ? searchCategories : ['hotel']) {
-    const data = await searchNominatimCategory(city, category, limit, signal)
+    const data = await searchNominatimCategory(city, category, perCategoryLimit, signal)
     collected.push(...data.map((result) => ({ result, category })))
-    if (collected.length >= limit) break
   }
   const mapped = collected.map(({ result, category }) => mapNominatimResult(result, city, [category]))
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -199,7 +199,21 @@ const searchNominatim = async (city: string, categories: string[], limit: number
     const existing = unique.get(key)
     if (!existing || leadContactPriority(lead) > leadContactPriority(existing)) unique.set(key, lead)
   }
-  return [...unique.values()].slice(0, limit)
+  const groups = new Map<string, Array<(typeof mapped)[number]>>()
+  for (const lead of unique.values()) {
+    const group = groups.get(lead.categoryName) || []
+    group.push(lead)
+    groups.set(lead.categoryName, group)
+  }
+  const diversified: Array<(typeof mapped)[number]> = []
+  while (diversified.length < limit && [...groups.values()].some((group) => group.length)) {
+    for (const group of groups.values()) {
+      const lead = group.shift()
+      if (lead) diversified.push(lead)
+      if (diversified.length >= limit) break
+    }
+  }
+  return diversified
 }
 
 export class OpenStreetMapLeadProvider implements LeadSearchProvider {

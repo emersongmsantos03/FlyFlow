@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
-  ArrowUpDown,
   AtSign,
   Bot,
   CalendarDays,
@@ -165,7 +164,8 @@ export function LeadHunterPage({
           sortMode === "score" ? b.score - a.score :
           sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
           leadContactPriority(b) - leadContactPriority(a),
-        ),
+        )
+        .slice(0, 10),
     [categoryId, cityId, contactFilter, latestSearchId, minimumScore, onlyNew, prospects, resultQuery, sortMode],
   );
   const runSearch = async () => {
@@ -434,48 +434,33 @@ export function LeadHunterPage({
               ) : undefined
             }
           >
-            <div className="lead-hunter-toolbar mb-4 grid gap-3 rounded-xl border p-3 lg:grid-cols-[minmax(18rem,1fr)_14rem_14rem]">
-              <label className="min-w-0 text-xs font-medium text-gray-500">
-                Localizar nos resultados
-                <span className="relative mt-1 block">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    className="field-input w-full pl-10"
-                    value={resultQuery}
-                    onChange={(event) => setResultQuery(event.target.value)}
-                    placeholder="Empresa, cidade, categoria ou serviço"
-                  />
-                </span>
-              </label>
-              <label className="min-w-0 text-xs font-medium text-gray-500">
-                Canal disponível
-                <select className="field-input mt-1 w-full" value={contactFilter} onChange={(event) => setContactFilter(event.target.value as typeof contactFilter)}>
-                  <option value="all">Todos os contatos</option>
-                  <option value="whatsapp">Com WhatsApp</option>
-                  <option value="contactable">Com algum contato</option>
-                  <option value="ai">Enriquecidos por IA</option>
-                </select>
-              </label>
-              <label className="min-w-0 text-xs font-medium text-gray-500">
-                Ordenar por
-                <span className="relative mt-1 block">
-                  <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400" size={15} />
-                  <select className="field-input w-full pl-9" value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)}>
-                    <option value="priority">Melhor oportunidade</option>
-                    <option value="score">Maior score</option>
-                    <option value="newest">Mais recente</option>
-                  </select>
-                </span>
-              </label>
+            <div className="lead-hunter-toolbar mb-3 grid gap-2 rounded-xl border p-2 md:grid-cols-[minmax(0,1fr)_11rem_11rem]">
+              <input
+                className="field-input min-w-0"
+                aria-label="Localizar nos resultados"
+                value={resultQuery}
+                onChange={(event) => setResultQuery(event.target.value)}
+                placeholder="Buscar empresa, cidade ou categoria"
+              />
+              <select aria-label="Canal disponível" className="field-input min-w-0" value={contactFilter} onChange={(event) => setContactFilter(event.target.value as typeof contactFilter)}>
+                <option value="all">Todos os contatos</option>
+                <option value="whatsapp">Com WhatsApp</option>
+                <option value="contactable">Com algum contato</option>
+                <option value="ai">Enriquecidos por IA</option>
+              </select>
+              <select aria-label="Ordenar resultados" className="field-input min-w-0" value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)}>
+                <option value="priority">Melhor oportunidade</option>
+                <option value="score">Maior score</option>
+                <option value="newest">Mais recente</option>
+              </select>
             </div>
-            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-gray-500">
+            <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
               {[[90, "Excelente"], [75, "Boa"], [55, "Média"], [30, "Ruim"]].map(([score, label]) => (
                 <span key={label} className="inline-flex items-center gap-1.5">
                   <i className={`h-2 w-2 rounded-full ${String(opportunityTone(Number(score))).split(" ")[0]}`} />
                   {label}
                 </span>
               ))}
-              <span className="ml-auto text-gray-400">Distância, contato, presença digital e potencial visual</span>
             </div>
             {filtered.length ? (
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -551,10 +536,7 @@ export function LeadHunterPage({
                             <p className="text-[10px] uppercase tracking-wide text-gray-400">potencial</p>
                           </div>
                         </div>
-                        <p className="mt-2 line-clamp-1 text-xs text-gray-500">
-                          {lead.aiSummary || leadOpportunitySummary(lead)}
-                        </p>
-                        <p className="mt-1 text-[11px] text-[#8a6d08]">
+                        <p className="mt-1.5 text-[11px] text-[#8a6d08]">
                           {lead.recommendedService || "Vídeo institucional"}
                         </p>
                       </button>
@@ -570,8 +552,8 @@ export function LeadHunterPage({
                           <AtSign size={15} />
                         </a>
                       ) : null}
-                      <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100" href={buildGoogleBusinessUrl(lead)} target="_blank" rel="noreferrer" title="Abrir perfil no Google">
-                        <Map size={15} />
+                      <a className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100" href={buildGoogleBusinessUrl(lead)} target="_blank" rel="noreferrer" title="Abrir Google Business">
+                        <Map size={14} /> Google Business
                       </a>
                       {!lead.whatsapp && !lead.instagram ? <span className="text-[11px] text-gray-400">Contato nos detalhes</span> : null}
                       <button className="ml-auto inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-semibold text-[#8a6d08] hover:bg-amber-50" type="button" onClick={() => setOpenedLeadId(lead.id)}>Detalhes →</button>
