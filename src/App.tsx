@@ -4746,14 +4746,27 @@ function App() {
                   const timeout = window.setTimeout(() => controller.abort(), 45_000)
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 10)
-                  let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
+                  const providerLimit = Math.min(30, resultsPerSearch * 3)
+                  const importedProspects = (state.leadHunterProspects || []).filter((prospect) => prospect.status === 'Importado' || Boolean(prospect.leadId))
+                  const isAlreadyImported = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
+                    const osmId = raw.externalIds?.openstreetmap
+                    const normalizedName = normalizeLeadText(raw.name)
+                    const normalizedCity = normalizeLeadText(raw.city)
+                    return importedProspects.some((prospect) =>
+                      prospect.id === raw.id ||
+                      Boolean(osmId && prospect.externalIds.openstreetmap === osmId) ||
+                      (prospect.normalizedName === normalizedName && normalizeLeadText(prospect.city) === normalizedCity),
+                    )
+                  }
+                  let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit }, controller.signal)
+                  result = { ...result, leads: result.leads.filter((lead) => !isAlreadyImported(lead)) }
                   const combinedLeads = new Map(result.leads.map((lead) => [lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`, lead]))
                   const combinedSources = new Set(result.sources)
                   for (const fallbackCity of candidateCities.slice(1)) {
                     if (combinedLeads.size >= resultsPerSearch) break
-                    const fallbackResult = await provider.search({ cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
+                    const fallbackResult = await provider.search({ cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit }, controller.signal)
                     fallbackResult.sources.forEach((source) => combinedSources.add(source))
-                    fallbackResult.leads.forEach((lead) => {
+                    fallbackResult.leads.filter((lead) => !isAlreadyImported(lead)).forEach((lead) => {
                       const key = lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
                       if (!combinedLeads.has(key)) combinedLeads.set(key, lead)
                     })

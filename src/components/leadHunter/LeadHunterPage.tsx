@@ -140,6 +140,8 @@ export function LeadHunterPage({
               (contactFilter === "contactable" && Boolean(lead.whatsapp || lead.phone || lead.email)) ||
               (contactFilter === "ai" && lead.sources.some((source) => /openai/i.test(source)));
             return (
+            lead.status !== "Importado" &&
+            !lead.leadId &&
             (!cityId || lead.cityId === cityId) &&
             (!categoryId || lead.categoryId === categoryId) &&
             lead.score >= minimumScore &&
