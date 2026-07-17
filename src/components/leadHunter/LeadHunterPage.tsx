@@ -71,6 +71,7 @@ export function LeadHunterPage({
   onSaveCategories,
   onImport,
   onCreateManual,
+  onEnrich,
   onReject,
   onCreateRoute,
   onToggleVisited,
@@ -113,6 +114,7 @@ export function LeadHunterPage({
     instagram: string;
     googleMapsUrl: string;
   }) => void;
+  onEnrich: (prospectId: string) => Promise<void> | void;
   onReject: (prospectId: string) => void;
   onCreateRoute: (input: {
     name: string;
@@ -137,6 +139,7 @@ export function LeadHunterPage({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [openedLeadId, setOpenedLeadId] = useState("");
   const [manualLeadOpen, setManualLeadOpen] = useState(false);
+  const [enrichingId, setEnrichingId] = useState("");
   const [searching, setSearching] = useState(false);
   const [resultQuery, setResultQuery] = useState("");
   const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "contactable" | "ai">("all");
@@ -683,6 +686,15 @@ export function LeadHunterPage({
               lead={prospects.find((lead) => lead.id === openedLeadId)}
               onClose={() => setOpenedLeadId("")}
               onImport={(id) => onImport([id])}
+              enriching={enrichingId === openedLeadId}
+              onEnrich={async (id) => {
+                setEnrichingId(id);
+                try {
+                  await onEnrich(id);
+                } finally {
+                  setEnrichingId("");
+                }
+              }}
               onReject={onReject}
             />
           ) : null}
@@ -883,11 +895,15 @@ function LeadDetail({
   lead,
   onClose,
   onImport,
+  onEnrich,
+  enriching,
   onReject,
 }: {
   lead?: LeadHunterProspect;
   onClose: () => void;
   onImport: (id: string) => void;
+  onEnrich: (id: string) => Promise<void> | void;
+  enriching: boolean;
   onReject: (id: string) => void;
 }) {
   const [whatsAppDraft, setWhatsAppDraft] = useState(() =>
@@ -1115,6 +1131,10 @@ function LeadDetail({
           </details>
         </section>
         <div className="mt-6 flex flex-wrap gap-2">
+          <Button variant="secondary" type="button" disabled={enriching} onClick={() => void onEnrich(lead.id)}>
+            {enriching ? <RotateCw className="animate-spin" size={16} /> : <Bot size={16} />}
+            {enriching ? "Analisando..." : "Buscar contatos com IA"}
+          </Button>
           <Button type="button" onClick={() => onImport(lead.id)}>
             <Import size={16} />
             Salvar e adicionar ao Comercial

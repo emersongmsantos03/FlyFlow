@@ -1762,8 +1762,9 @@ function App() {
           serviceInterest: prospect.recommendedService || 'Vídeo institucional' as const,
           pipelineStage: 'Entrada' as const, temperature: prospect.score >= 75 ? 'Quente' as const : prospect.score >= 60 ? 'Morno' as const : 'Frio' as const,
           estimatedValue: 0, probability: Math.min(prospect.score, 90), entryDate: dateInput(), notes: intelligenceNotes,
+          nextContactAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
           leadHunterData: completeProspect,
-          responsibleUserId: activeUserId, archived: false, tags: ['Lead Hunter', prospect.categoryName], createdAt: now, updatedAt: now,
+          responsibleUserId: activeUserId, archived: false, tags: ['Lead Hunter', 'A abordar', prospect.categoryName], createdAt: now, updatedAt: now,
         }
         if (!existingLead) {
           leads = [lead, ...leads]
@@ -4945,6 +4946,63 @@ function App() {
               onSaveSettings={(settings) => updateState((current) => ({ ...current, leadHunterSettings: settings }), 'Configurações do Lead Hunter salvas.')}
               onSaveCities={(cities) => updateState((current) => ({ ...current, leadHunterCities: cities }), 'Cidades do Lead Hunter atualizadas.')}
               onSaveCategories={(categories) => updateState((current) => ({ ...current, leadHunterCategories: categories }), 'Categorias do Lead Hunter atualizadas.')}
+              onEnrich={async (prospectId) => {
+                const prospect = (state.leadHunterProspects || []).find((item) => item.id === prospectId)
+                if (!prospect) {
+                  setToast('Lead não encontrado para análise.')
+                  return
+                }
+                if (!isOpenAILeadEnrichmentConfigured) {
+                  setToast('A integração com a OpenAI não está disponível.')
+                  return
+                }
+                try {
+                  const enrichment = await enrichLeadsWithOpenAI([prospect], AbortSignal.timeout(110_000))
+                  const enriched = enrichment.leads.find((item) => item.id === prospect.id)
+                  if (!enriched) {
+                    setToast('A IA não encontrou informações públicas adicionais para este lead.')
+                    return
+                  }
+                  const now = new Date().toISOString()
+                  const searchId = createId('lh-enrichment')
+                  updateState((current) => ({
+                    ...current,
+                    leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospect.id ? {
+                      ...item,
+                      contactName: enriched.contactName || item.contactName,
+                      phone: enriched.phone || item.phone,
+                      whatsapp: enriched.whatsapp || item.whatsapp,
+                      email: enriched.email || item.email,
+                      website: enriched.website || item.website,
+                      instagram: enriched.instagram || item.instagram,
+                      aiSummary: enriched.aiSummary || item.aiSummary,
+                      aiApproach: enriched.aiApproach || item.aiApproach,
+                      aiOpportunityLevel: enriched.aiOpportunityLevel || item.aiOpportunityLevel,
+                      aiSocialInsight: enriched.aiSocialInsight || item.aiSocialInsight,
+                      aiContactHook: enriched.aiContactHook || item.aiContactHook,
+                      aiFirstMessage: enriched.aiFirstMessage || item.aiFirstMessage,
+                      sources: [...new Set([...item.sources, 'OpenAI Web Search'])],
+                      sourceUrls: [...new Set([...item.sourceUrls, ...enriched.sourceUrls])],
+                      status: 'Analisado' as const,
+                      lastAnalyzedAt: now,
+                      lastSearchId: searchId,
+                      updatedAt: now,
+                    } : item),
+                    leadHunterSearches: [{
+                      id: searchId, mode: 'Manual' as const, cityIds: prospect.cityId ? [prospect.cityId] : [],
+                      categoryIds: [prospect.categoryId], radiusKm: 0, neighborhood: '', onlyNew: false,
+                      includeEligibleKnown: true, minimumScore: 0, sources: ['OpenAI Web Search'],
+                      totalFound: 1, newCount: 0, repeatedCount: 1, duplicateCount: 0, cooldownBlockedCount: 0,
+                      errorCount: 0, estimatedCost: 0, tokenUsage: enrichment.tokenUsage, durationMs: 0,
+                      userId: activeUserId, createdAt: now,
+                    }, ...(current.leadHunterSearches || [])],
+                  }), enriched.whatsapp || enriched.instagram || enriched.phone || enriched.email
+                    ? 'Contatos e análise do lead atualizados pela IA.'
+                    : 'Análise atualizada. Nenhum novo contato público foi confirmado.')
+                } catch (error) {
+                  setToast(error instanceof Error ? error.message : 'Não foi possível analisar este lead agora.')
+                }
+              }}
               onCreateManual={(input) => {
                 const now = new Date().toISOString()
                 const category = (state.leadHunterCategories || []).find((item) => item.id === input.categoryId)
