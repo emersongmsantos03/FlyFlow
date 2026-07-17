@@ -497,6 +497,15 @@ export interface LeadHunterProspect {
   aiSocialInsight?: string
   aiContactHook?: string
   aiFirstMessage?: string
+  decision?: 'Aceito' | 'Rejeitado'
+  decisionAt?: string
+  contactValidation?: {
+    whatsapp: 'Confirmado' | 'Provável' | 'Não informado'
+    instagram: 'Confirmado' | 'Provável' | 'Não informado'
+    email: 'Confirmado' | 'Provável' | 'Não informado'
+    website: 'Confirmado' | 'Provável' | 'Não informado'
+    checkedAt: string
+  }
   notes: string
   createdAt: string
   updatedAt: string

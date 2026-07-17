@@ -163,6 +163,7 @@ import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapPr
 import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
 import { buildGoogleBusinessUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
+import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './services/leadHunter/LeadLearningService'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   isFirebaseConfigured,
@@ -206,6 +207,7 @@ import {
   type Equipment,
   type Expense,
   type Lead,
+  type LeadHunterProspect,
   type Payment,
   type PipelineStage,
   type Project,
@@ -1703,6 +1705,9 @@ function App() {
       for (const prospect of (current.leadHunterProspects || []).filter((item) => prospectIds.includes(item.id))) {
         const completeProspect = {
           ...prospect,
+          decision: 'Aceito' as const,
+          decisionAt: now,
+          contactValidation: prospect.contactValidation || validateLeadContacts(prospect, now),
           googleMapsUrl: prospect.googleMapsUrl || buildGoogleBusinessUrl(prospect),
           sourceUrls: [...new Set([
             ...(prospect.sourceUrls || []),
@@ -1780,9 +1785,10 @@ function App() {
             address: item.address || prospect.address,
             serviceInterest: prospect.recommendedService || item.serviceInterest,
             probability: Math.max(item.probability, Math.min(prospect.score, 90)),
+            nextContactAt: item.nextContactAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             notes: item.notes.includes('Análise da IA:') ? item.notes : [item.notes, intelligenceNotes].filter(Boolean).join('\n\n'),
             leadHunterData: completeProspect,
-            tags: [...new Set([...item.tags, 'Lead Hunter', prospect.categoryName])],
+            tags: [...new Set([...item.tags, 'Lead Hunter', 'A abordar', prospect.categoryName])],
             updatedAt: now,
           } : item)
         }
@@ -1792,7 +1798,7 @@ function App() {
         ...current, clients, leads,
         leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => {
           const link = importedLinks.get(prospect.id)
-          return link ? { ...prospect, ...link, status: 'Importado' as const, isNew: false, updatedAt: now } : prospect
+          return link ? { ...prospect, ...link, decision: 'Aceito' as const, decisionAt: now, contactValidation: prospect.contactValidation || validateLeadContacts(prospect, now), status: 'Importado' as const, isNew: false, updatedAt: now } : prospect
         }),
       }
     }, `${prospectIds.length} lead(s) processado(s) e vinculado(s) ao Comercial.`)
@@ -4739,6 +4745,7 @@ function App() {
                 const now = new Date().toISOString()
                 const activeCities = (state.leadHunterCities || []).filter((item) => item.active && (!item.blockedUntil || item.blockedUntil <= now))
                 const activeCategories = (state.leadHunterCategories || []).filter((item) => item.active)
+                const searchLearningProfile = buildLeadLearningProfile(state.leadHunterProspects || [])
                 const publicSearchCategories = activeCategories.filter((item) =>
                   /hotel|pousada|airbnb|chal[eé]|cabana|glamping|ref[uú]gio|temporada|espa[cç]o para eventos|clube|restaurante|imobili[aá]ria|corretor|vin[ií]cola|resort|haras|pesqueiro|concession[aá]ria|shopping|energia solar|construtora|incorporadora/i.test(item.name),
                 )
@@ -4769,8 +4776,8 @@ function App() {
                   : (() => {
                     const ranked = [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
                       .sort((a, b) =>
-                        (categoryCoveragePriority(b.name) + b.weight * 2 - b.searchCount * 4) -
-                        (categoryCoveragePriority(a.name) + a.weight * 2 - a.searchCount * 4),
+                        (categoryCoveragePriority(b.name) + b.weight * 2 - b.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(b.name)] || 0)) -
+                        (categoryCoveragePriority(a.name) + a.weight * 2 - a.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(a.name)] || 0)),
                       )
                     const mixed = ranked.filter((category, index, list) =>
                       list.findIndex((candidate) => candidate.group === category.group) === index,
@@ -4887,6 +4894,7 @@ function App() {
                   let duplicateCount = 0
                   updateState((current) => {
                     const existingProspects = [...(current.leadHunterProspects || [])]
+                    const learningProfile = buildLeadLearningProfile(existingProspects)
                     const incoming = result.leads.map((raw) => {
                       const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
                       const enrichment = enrichmentById.get(stableId)
@@ -4913,6 +4921,10 @@ function App() {
                       const category = selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.categoryName)) || selectedCategories[0]
                       const leadCity = activeCities.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.city)) || city
                       const refined = refineLeadOpportunity(enrichedRaw, leadCity.distanceFromBaseKm)
+                      const learningAdjustment = learningAdjustmentForLead({
+                        categoryName: enrichedRaw.categoryName,
+                        city: enrichedRaw.city,
+                      }, learningProfile)
                       const aiScoreAdjustment =
                         enrichedRaw.aiOpportunityLevel === 'Excelente' ? 8 :
                         enrichedRaw.aiOpportunityLevel === 'Boa' ? 3 :
@@ -4920,18 +4932,26 @@ function App() {
                       const evaluatedRaw = {
                         ...enrichedRaw,
                         ...refined,
-                        score: Math.max(0, Math.min(100, refined.score + aiScoreAdjustment)),
+                        score: Math.max(0, Math.min(100, refined.score + aiScoreAdjustment + learningAdjustment)),
                         scoreReasons: aiScoreAdjustment
                           ? [...refined.scoreReasons, { id: 'ai-evaluation', label: `Avaliação da IA: ${enrichedRaw.aiOpportunityLevel}`, points: aiScoreAdjustment }]
                           : refined.scoreReasons,
                         distanceKm: leadCity.distanceFromBaseKm,
                       }
+                      if (learningAdjustment) {
+                        evaluatedRaw.scoreReasons = [
+                          ...evaluatedRaw.scoreReasons,
+                          { id: 'learned-preference', label: 'Ajuste baseado nos leads aceitos e rejeitados', points: learningAdjustment },
+                        ]
+                      }
                       if (existing) {
                         repeatedCount += 1
-                        return { ...existing, ...evaluatedRaw, categoryId: category.id, cityId: leadCity.id, isNew: false, possibleDuplicateId: duplicate?.id, discoveryCount: existing.discoveryCount + 1, lastDiscoveredAt: now, lastSearchId: searchId, updatedAt: now }
+                        const repeated = { ...existing, ...evaluatedRaw, categoryId: category.id, cityId: leadCity.id, isNew: false, possibleDuplicateId: duplicate?.id, discoveryCount: existing.discoveryCount + 1, lastDiscoveredAt: now, lastSearchId: searchId, updatedAt: now }
+                        return { ...repeated, contactValidation: validateLeadContacts(repeated, now) }
                       }
                       newCount += 1
-                      return { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], ...evaluatedRaw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
+                      const created = { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], ...evaluatedRaw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
+                      return { ...created, contactValidation: validateLeadContacts(created as LeadHunterProspect, now) }
                     })
                     const incomingIds = new Set(incoming.map((item) => item.id))
                     const searchedCityIds = new Set(candidateCities.map((item) => item.id))
@@ -4983,6 +5003,16 @@ function App() {
                       aiFirstMessage: enriched.aiFirstMessage || item.aiFirstMessage,
                       sources: [...new Set([...item.sources, 'OpenAI Web Search'])],
                       sourceUrls: [...new Set([...item.sourceUrls, ...enriched.sourceUrls])],
+                      contactValidation: validateLeadContacts({
+                        ...item,
+                        phone: enriched.phone || item.phone,
+                        whatsapp: enriched.whatsapp || item.whatsapp,
+                        email: enriched.email || item.email,
+                        website: enriched.website || item.website,
+                        instagram: enriched.instagram || item.instagram,
+                        sources: [...new Set([...item.sources, 'OpenAI Web Search'])],
+                        sourceUrls: [...new Set([...item.sourceUrls, ...enriched.sourceUrls])],
+                      }, now),
                       status: 'Analisado' as const,
                       lastAnalyzedAt: now,
                       lastSearchId: searchId,
@@ -5092,7 +5122,7 @@ function App() {
                   ...current,
                   leadHunterProspects: (current.leadHunterProspects || []).map((prospect) =>
                     prospect.id === prospectId
-                      ? { ...prospect, status: 'Descartado' as const, discardedPermanently: true, isNew: false, updatedAt: now }
+                      ? { ...prospect, decision: 'Rejeitado' as const, decisionAt: now, status: 'Descartado' as const, discardedPermanently: true, isNew: false, updatedAt: now }
                       : prospect,
                   ),
                 }), 'Lead rejeitado e removido das próximas buscas.')

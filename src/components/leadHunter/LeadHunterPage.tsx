@@ -44,6 +44,7 @@ import {
   opportunityLevel,
 } from "../../services/leadHunter/LeadOpportunityService";
 import { deduplicateLeadHunterProspects } from "../../services/leadHunter/LeadDeduplicationService";
+import { leadDecisionMetrics } from "../../services/leadHunter/LeadLearningService";
 import {
   buildGoogleMapsRouteUrl,
   recommendDailyMission,
@@ -144,6 +145,8 @@ export function LeadHunterPage({
   const [resultQuery, setResultQuery] = useState("");
   const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "contactable" | "ai">("all");
   const [sortMode, setSortMode] = useState<"priority" | "score" | "newest">("priority");
+  const [searchBatchId, setSearchBatchId] = useState("");
+  const [showMetrics, setShowMetrics] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const todaySearches = searches.filter((search) => search.createdAt.slice(0, 10) === today);
   const aiCallsToday = todaySearches.filter((search) => (search.tokenUsage || 0) > 0).length;
@@ -153,6 +156,8 @@ export function LeadHunterPage({
     () => new globalThis.Map(searches.map((search, index) => [search.id, index])),
     [searches],
   );
+  const decisionMetrics = useMemo(() => leadDecisionMetrics(prospects), [prospects]);
+  const latestSearchId = searches[0]?.id || "";
   const filtered = useMemo(
     () =>
       deduplicateLeadHunterProspects(prospects)
@@ -172,6 +177,7 @@ export function LeadHunterPage({
             (!cityId || lead.cityId === cityId) &&
             (!categoryId || lead.categoryId === categoryId) &&
             lead.score >= minimumScore &&
+            (!searchBatchId || lead.lastSearchId === searchBatchId) &&
             (!onlyNew || lead.isNew) &&
             (!resultQuery.trim() || searchable.includes(resultQuery.trim().toLocaleLowerCase("pt-BR"))) &&
             matchesContact
@@ -187,7 +193,7 @@ export function LeadHunterPage({
             sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
             leadContactPriority(b) - leadContactPriority(a);
         }),
-    [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, searchRank, sortMode],
+    [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, searchBatchId, searchRank, sortMode],
   );
   const runSearch = async () => {
     if (searching) return;
@@ -444,6 +450,29 @@ export function LeadHunterPage({
               );
             })}
           </div>
+          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <button className="flex w-full items-center justify-between gap-4 p-4 text-left" type="button" onClick={() => setShowMetrics((current) => !current)}>
+              <span>
+                <strong className="block text-sm text-gray-900">Aprendizado comercial</strong>
+                <span className="mt-0.5 block text-xs text-gray-500">
+                  {decisionMetrics.accepted} aceitos · {decisionMetrics.rejected} rejeitados · {decisionMetrics.decisionRate}% avaliados
+                </span>
+              </span>
+              <span className="text-xs font-semibold text-[#8a6d08]">{showMetrics ? "Ocultar" : "Ver métricas"}</span>
+            </button>
+            {showMetrics ? (
+              <div className="grid gap-3 border-t border-gray-100 p-4 md:grid-cols-3">
+                <div className="rounded-xl bg-gray-50 p-3"><span className="text-xs text-gray-500">Aceitos com contato</span><strong className="mt-1 block text-xl text-gray-900">{decisionMetrics.contactableAccepted}</strong></div>
+                <div className="rounded-xl bg-gray-50 p-3"><span className="text-xs text-gray-500">Taxa de decisão</span><strong className="mt-1 block text-xl text-gray-900">{decisionMetrics.decisionRate}%</strong></div>
+                <div className="rounded-xl bg-gray-50 p-3">
+                  <span className="text-xs text-gray-500">Categorias com melhor resposta</span>
+                  <p className="mt-1 line-clamp-2 text-sm font-semibold text-gray-900">
+                    {decisionMetrics.categoryPerformance.slice(0, 3).map((item) => `${item.category} (${item.rate}%)`).join(" · ") || "Avalie alguns leads para começar"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </section>
           <Panel
             title="Pipeline de oportunidades"
             action={
@@ -453,7 +482,7 @@ export function LeadHunterPage({
               </Button>
             }
           >
-            <div className="lead-hunter-toolbar mb-3 grid gap-2 rounded-xl border p-2 md:grid-cols-[minmax(0,1fr)_11rem_11rem]">
+            <div className="lead-hunter-toolbar mb-3 grid gap-2 rounded-xl border p-2 md:grid-cols-[minmax(0,1fr)_10rem_10rem_11rem]">
               <input
                 className="field-input min-w-0"
                 aria-label="Localizar nos resultados"
@@ -466,6 +495,14 @@ export function LeadHunterPage({
                 <option value="whatsapp">Com WhatsApp</option>
                 <option value="contactable">Com algum contato</option>
                 <option value="ai">Enriquecidos por IA</option>
+              </select>
+              <select aria-label="Rodada da busca" className="field-input min-w-0" value={searchBatchId} onChange={(event) => setSearchBatchId(event.target.value)}>
+                <option value="">Todas as rodadas</option>
+                {searches.filter((search) => search.totalFound > 0).slice(0, 12).map((search, index) => (
+                  <option key={search.id} value={search.id}>
+                    {index === 0 ? "Última busca" : new Date(search.createdAt).toLocaleDateString("pt-BR")} · {search.totalFound}
+                  </option>
+                ))}
               </select>
               <select aria-label="Ordenar resultados" className="field-input min-w-0" value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)}>
                 <option value="priority">Melhor oportunidade</option>
@@ -570,6 +607,7 @@ export function LeadHunterPage({
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex flex-wrap items-center gap-1.5">
+                              {lead.lastSearchId === latestSearchId ? <span className="rounded-full bg-[#f5edcf] px-2 py-0.5 text-[10px] font-bold text-[#745b00]">Nova rodada</span> : null}
                               <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${opportunityTone(lead.score)}`}>
                                 {opportunityLevel(lead.score)}
                               </span>
@@ -989,6 +1027,20 @@ function LeadDetail({
               </div>
             ))}
           </dl>
+          {lead.contactValidation ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {([
+                ["WhatsApp", lead.contactValidation.whatsapp],
+                ["Instagram", lead.contactValidation.instagram],
+                ["E-mail", lead.contactValidation.email],
+                ["Site", lead.contactValidation.website],
+              ] as const).filter(([, status]) => status !== "Não informado").map(([channel, status]) => (
+                <span key={channel} className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${status === "Confirmado" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
+                  {channel} · {status}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </section>
         <section className="mt-5">
           <details className="rounded-xl border border-amber-200 bg-amber-50 p-3" open={Boolean(lead.aiSummary || lead.aiApproach)}>

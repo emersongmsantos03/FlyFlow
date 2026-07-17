@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { createDefaultLeadHunterSettings } from '../../constants/leadHunterDefaults'
+import { createDefaultLeadHunterCities, createDefaultLeadHunterSettings } from '../../constants/leadHunterDefaults'
 import type { LeadHunterProspect } from '../../types'
 import { normalizeLeadText } from './LeadDeduplicationService'
-import { calculateLeadScore } from './LeadScoringService'
+import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './LeadLearningService'
+import { opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
 import { shouldDisplayLead } from './LeadRotationService'
 import { buildGoogleMapsRouteUrl, recommendDailyMission } from './LeadRouteService'
-import { createDefaultLeadHunterCities } from '../../constants/leadHunterDefaults'
-import { opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
+import { calculateLeadScore } from './LeadScoringService'
 
 const prospect = (overrides: Partial<LeadHunterProspect> = {}): LeadHunterProspect => ({
   id: 'prospect-1', externalIds: {}, name: 'Refúgio Marmeleiros', normalizedName: 'refugiomarmeleiros',
@@ -14,7 +14,8 @@ const prospect = (overrides: Partial<LeadHunterProspect> = {}): LeadHunterProspe
   whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: ['Manual'], sourceUrls: [],
   score: 70, scoreReasons: [], status: 'Descoberto', isNew: true, firstDiscoveredAt: '2026-07-01T00:00:00.000Z',
   lastDiscoveredAt: '2026-07-01T00:00:00.000Z', discoveryCount: 1, displayCount: 0, changedSinceLastDisplay: false,
-  discardedPermanently: false, notes: '', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z', ...overrides,
+  discardedPermanently: false, notes: '', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+  ...overrides,
 })
 
 describe('Lead Hunter services', () => {
@@ -31,8 +32,7 @@ describe('Lead Hunter services', () => {
   it('prioriza inédito e bloqueia cooldown conhecido', () => {
     const settings = createDefaultLeadHunterSettings()
     expect(shouldDisplayLead(prospect(), settings, { includeKnown: false, onlyNew: true }).display).toBe(true)
-    const known = prospect({ isNew: false, lastDisplayedAt: new Date().toISOString() })
-    const decision = shouldDisplayLead(known, settings, { includeKnown: true, onlyNew: false })
+    const decision = shouldDisplayLead(prospect({ isNew: false, lastDisplayedAt: new Date().toISOString() }), settings, { includeKnown: true, onlyNew: false })
     expect(decision.display).toBe(false)
     expect(decision.reason).toContain('menos de 30 dias')
   })
@@ -57,5 +57,25 @@ describe('Lead Hunter services', () => {
     expect(local.score).toBeGreaterThan(chain.score)
     expect(opportunityLevel(local.score)).toBe('Boa')
     expect(chain.scoreReasons.some((reason) => reason.id === 'large-chain')).toBe(true)
+  })
+
+  it('aprende gradualmente com aceites e rejeições', () => {
+    const history = [
+      prospect({ id: 'accepted-1', categoryName: 'Pousada', city: 'Curitiba', decision: 'Aceito' }),
+      prospect({ id: 'accepted-2', categoryName: 'Pousada', city: 'Curitiba', decision: 'Aceito' }),
+      prospect({ id: 'rejected-1', categoryName: 'Indústria', city: 'Araucária', decision: 'Rejeitado' }),
+    ]
+    const profile = buildLeadLearningProfile(history)
+    expect(learningAdjustmentForLead(prospect({ categoryName: 'Pousada', city: 'Curitiba' }), profile)).toBeGreaterThan(0)
+    expect(learningAdjustmentForLead(prospect({ categoryName: 'Indústria', city: 'Araucária' }), profile)).toBeLessThan(0)
+  })
+
+  it('valida contatos sem afirmar o que não possui evidência', () => {
+    const validation = validateLeadContacts(prospect({
+      whatsapp: '41999999999', email: 'contato@empresa.com.br', sources: ['OpenAI Web Search'],
+    }), '2026-07-17T00:00:00.000Z')
+    expect(validation.whatsapp).toBe('Confirmado')
+    expect(validation.email).toBe('Confirmado')
+    expect(validation.instagram).toBe('Não informado')
   })
 })
