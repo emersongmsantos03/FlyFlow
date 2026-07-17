@@ -754,6 +754,7 @@ function LeadHunterDossier({ data, notes }: { data: NonNullable<Lead['leadHunter
     ?.replace(/^análise da ia:\s*/i, '').trim()
   const aiComment = data.aiSummary || savedAiComment || data.aiApproach || data.aiContactHook || ''
   const opportunityComment = aiComment || leadOpportunitySummary(data)
+  const approachComment = data.aiApproach || data.aiContactHook || `Apresente ${data.recommendedService || 'o serviço indicado'} e cite um ponto específico do negócio para demonstrar que a abordagem foi personalizada.`
   return <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
     <div className="p-3">
       <div className="flex items-start justify-between gap-3">
@@ -771,7 +772,13 @@ function LeadHunterDossier({ data, notes }: { data: NonNullable<Lead['leadHunter
         {data.website ? <a className="crm-lead-link" href={data.website} target="_blank" rel="noreferrer"><Globe2 size={15} /> Site</a> : null}
         <a className="crm-lead-link" href={googleBusinessUrl} target="_blank" rel="noreferrer"><MapPin size={15} /> Google Business</a>
       </div>
-      <div className="mt-3 border-l-2 border-gray-300 pl-3"><p className="text-[0.65rem] font-bold uppercase tracking-wide text-gray-500">{aiComment ? 'Comentários da IA' : 'Leitura automática'}</p><p className="mt-1 text-sm leading-relaxed text-gray-700">{opportunityComment}</p></div>
+      <div className="mt-3 rounded-lg border border-gray-200 p-3">
+        <p className="flex items-center gap-1.5 text-xs font-bold text-gray-700"><Sparkles size={14} /> Comentários e abordagem sugerida</p>
+        <div className="mt-3 space-y-3">
+          <div><p className="text-[0.65rem] font-black uppercase tracking-wide text-gray-500">Leitura da oportunidade</p><p className="mt-1 text-sm leading-relaxed text-gray-700">{opportunityComment}</p></div>
+          <div><p className="text-[0.65rem] font-black uppercase tracking-wide text-gray-500">Como iniciar o contato</p><p className="mt-1 text-sm leading-relaxed text-gray-700">{approachComment}</p></div>
+        </div>
+      </div>
     </div>
     <details className="group border-t border-gray-200">
       <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50">
