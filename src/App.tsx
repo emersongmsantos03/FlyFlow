@@ -1380,11 +1380,28 @@ function App() {
       confirmLabel: 'Registrar atividade',
       onSubmit: (description) => {
         const now = new Date().toISOString()
+        const isContact = /contato|whatsapp|liga/i.test(interactionType)
+        const nextContactAt = isContact ? new Date(Date.now() + 3 * 86_400_000).toISOString() : undefined
+        const nextStage = isContact && lead.pipelineStage === 'Entrada' ? 'Contato realizado' as const : lead.pipelineStage
         updateState((current) => ({
           ...current,
-          leads: current.leads.map((item) => item.id === lead.id ? { ...item, lastContactAt: now, pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage, updatedAt: now } : item),
+          leads: current.leads.map((item) => item.id === lead.id ? {
+            ...item,
+            lastContactAt: isContact ? now : item.lastContactAt,
+            nextContactAt: nextContactAt || item.nextContactAt,
+            pipelineStage: nextStage,
+            tags: isContact ? [...new Set([...item.tags.filter((tag) => tag !== 'A abordar'), 'Contato iniciado'])] : item.tags,
+            updatedAt: now,
+          } : item),
+          leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.leadId === lead.id && isContact ? {
+            ...prospect,
+            status: 'Contatado' as const,
+            lastContactAt: now,
+            isNew: false,
+            updatedAt: now,
+          } : prospect),
           leadInteractions: [{ id: createId('int'), leadId: lead.id, interactionType, description, interactionDate: now, userId: activeUserId, createdAt: now }, ...current.leadInteractions],
-          statusHistory: [createStatusHistory('Contato', lead.id, interactionType, description, activeUserId, lead.pipelineStage, lead.pipelineStage, now), ...current.statusHistory],
+          statusHistory: [createStatusHistory('Contato', lead.id, interactionType, description, activeUserId, lead.pipelineStage, nextStage, now), ...current.statusHistory],
         }), `${interactionType} registrado.`)
       },
     })

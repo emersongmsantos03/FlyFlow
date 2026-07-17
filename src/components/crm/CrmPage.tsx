@@ -32,6 +32,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { createPortal } from 'react-dom'
 import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
 import { buildGoogleBusinessUrl, buildInstagramUrl, leadOpportunitySummary } from '../../services/leadHunter/LeadOpportunityService'
+import { buildCommercialActionQueue } from '../../services/commercial/CommercialPriorityService'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
@@ -178,6 +179,7 @@ export function CrmPage({
   const activeQuotes = state.quotes.filter((quote) => !quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Recusada', 'Expirada'].includes(quote.status))
   const potentialValue = activeLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
   const contactsNeedingAction = activeLeads.filter((lead) => !lead.nextContactAt || new Date(lead.nextContactAt) < new Date()).length
+  const actionQueue = useMemo(() => buildCommercialActionQueue(activeLeads, state).slice(0, 5), [activeLeads, state])
 
   const scrollBoard = (direction: -1 | 1) => boardRef.current?.scrollBy({ left: direction * 620, behavior: 'smooth' })
 
@@ -206,6 +208,34 @@ export function CrmPage({
           ))}
         </div>
       </section>
+
+      {actionQueue.length ? (
+        <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <div>
+              <h2 className="text-sm font-black text-gray-950">Prioridades de hoje</h2>
+              <p className="mt-0.5 text-xs text-gray-500">Ordem sugerida por urgência, potencial e facilidade de contato.</p>
+            </div>
+            <button className="text-xs font-bold text-[#866800]" type="button" onClick={() => { setQuickFilter('action'); onViewChange('table') }}>Ver todas</button>
+          </div>
+          <div className="mt-3 grid gap-2 lg:grid-cols-5">
+            {actionQueue.map(({ lead, priority }, index) => (
+              <article key={lead.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[0.65rem] font-black uppercase tracking-wide text-gray-400">#{index + 1}</span>
+                  <strong className="text-xs text-[#806400]">{priority.score} pts</strong>
+                </div>
+                <button className="mt-1 block w-full truncate text-left text-sm font-black text-gray-950 hover:underline" type="button" onClick={() => onOpenLead(lead)}>{displayName(lead)}</button>
+                <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-gray-500">{priority.reason}</p>
+                <div className="mt-2 flex gap-2">
+                  {lead.whatsapp ? <a className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" href={whatsappLink(lead.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={13} /> WhatsApp</a> : null}
+                  <button className="inline-flex min-h-8 flex-1 items-center justify-center rounded-md border border-gray-200 bg-white px-2 text-xs font-bold text-gray-700 hover:bg-gray-100" type="button" onClick={() => onOpenLead(lead)}>Abrir</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
