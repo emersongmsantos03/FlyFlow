@@ -5,6 +5,6 @@
   "compatibility_date": "2026-07-17",
   "workers_dev": true,
   "vars": {
-    "FIREBASE_WEB_API_KEY": "AIzaSyDsXCiwRC9NON07z28Re75qXNDp1vs7WMs"
+    "FIREBASE_PROJECT_ID": "flyflow-a97ab"
   }
 }

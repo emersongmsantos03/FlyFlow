@@ -1,6 +1,8 @@
+import { createRemoteJWKSet, jwtVerify } from 'jose'
+
 interface Env {
   OPENAI_API_KEY: string
-  FIREBASE_WEB_API_KEY: string
+  FIREBASE_PROJECT_ID: string
 }
 
 type InputLead = {
@@ -39,16 +41,22 @@ const corsHeaders = (origin: string | null) => ({
 const json = (body: unknown, status: number, origin: string | null) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders(origin) })
 
-const verifyFirebaseToken = async (token: string, apiKey: string) => {
-  if (!apiKey) return false
-  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken: token }),
-  })
-  if (!response.ok) return false
-  const body = await response.json() as { users?: Array<{ localId?: string }> }
-  return Boolean(body.users?.[0]?.localId)
+const firebaseKeys = createRemoteJWKSet(
+  new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'),
+)
+
+const verifyFirebaseToken = async (token: string, projectId: string) => {
+  if (!projectId) return false
+  try {
+    const { payload } = await jwtVerify(token, firebaseKeys, {
+      algorithms: ['RS256'],
+      audience: projectId,
+      issuer: `https://securetoken.google.com/${projectId}`,
+    })
+    return Boolean(payload.sub && payload.sub.length <= 128)
+  } catch {
+    return false
+  }
 }
 
 const schema = {
@@ -91,7 +99,7 @@ export default {
 
     const authorization = request.headers.get('Authorization') || ''
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
-    if (!token || !(await verifyFirebaseToken(token, env.FIREBASE_WEB_API_KEY))) {
+    if (!token || !(await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID))) {
       return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
     }
 
