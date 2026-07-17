@@ -298,10 +298,15 @@ interface ServiceConfirmationState {
 }
 
 interface TaskFormDefaults {
+  title?: string
+  description?: string
+  taskType?: NonNullable<TaskItem['taskType']>
   leadId?: string
   clientId?: string
   dueAt?: string
   durationMinutes?: number
+  priority?: TaskItem['priority']
+  responsibleUserId?: string
 }
 
 interface TaskFormValues {
@@ -977,6 +982,7 @@ function App() {
   const [selectedEquipmentId, setSelectedEquipmentId] = useState<string>('')
   const [appointmentDefaults, setAppointmentDefaults] = useState<AppointmentFormDefaults>({})
   const [taskDefaults, setTaskDefaults] = useState<TaskFormDefaults>({})
+  const [selectedTaskId, setSelectedTaskId] = useState('')
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
   const [noticeDialog, setNoticeDialog] = useState<NoticeDialogState | null>(null)
   const [inputDialog, setInputDialog] = useState<InputDialogState | null>(null)
@@ -1414,7 +1420,24 @@ function App() {
   }
 
   const openTaskModal = (defaults: TaskFormDefaults = {}) => {
+    setSelectedTaskId('')
     setTaskDefaults(defaults)
+    setModal('task')
+  }
+
+  const openTaskEditor = (task: TaskItem) => {
+    setSelectedTaskId(task.id)
+    setTaskDefaults({
+      title: task.title,
+      description: task.description,
+      taskType: task.taskType || 'Tarefa',
+      leadId: task.leadId,
+      clientId: task.clientId,
+      dueAt: dateTimeInputFromDate(new Date(task.dueAt)),
+      durationMinutes: task.durationMinutes,
+      priority: task.priority,
+      responsibleUserId: task.responsibleUserId,
+    })
     setModal('task')
   }
 
@@ -2035,14 +2058,16 @@ function App() {
     const dueAt = asIsoFromInput(values.dueAt)
     const durationMinutes = Math.max(Number(values.durationMinutes) || 30, 15)
     const endAt = new Date(new Date(dueAt).getTime() + durationMinutes * 60_000).toISOString()
-    const taskId = createId('task')
-    const appointmentId = createId('appt')
+    const existingTask = selectedTaskId ? state.tasks.find((item) => item.id === selectedTaskId) : undefined
+    const taskId = existingTask?.id || createId('task')
+    const appointmentId = existingTask?.appointmentId || createId('appt')
     updateState(
       (current) => {
         const lead = values.leadId ? current.leads.find((item) => item.id === values.leadId) : undefined
         const client = values.clientId ? current.clients.find((item) => item.id === values.clientId) : undefined
         const address = lead?.address || client?.address || ''
         const task: TaskItem = {
+          ...existingTask,
           id: taskId,
           title: values.title.trim(),
           description: values.description.trim(),
@@ -2050,12 +2075,13 @@ function App() {
           dueAt,
           durationMinutes,
           priority: values.priority,
-          status: 'Pendente',
+          status: existingTask?.status || 'Pendente',
           leadId: values.leadId || undefined,
           clientId: values.clientId || undefined,
           appointmentId,
           responsibleUserId: values.responsibleUserId || activeUserId,
-          createdAt: now,
+          sourceKey: undefined,
+          createdAt: existingTask?.createdAt || now,
           updatedAt: now,
         }
         const appointment: Appointment = {
@@ -2068,30 +2094,33 @@ function App() {
           endAt,
           address,
           notes: values.description.trim(),
-          status: 'Agendado',
+          status: task.status === 'Concluída' ? 'Concluído' : task.status === 'Cancelada' ? 'Cancelado' : 'Agendado',
           color: values.priority === 'Urgente' ? '#dc2626' : values.priority === 'Alta' ? '#d97706' : values.priority === 'Média' ? '#2563eb' : '#64748b',
           createdAt: now,
           updatedAt: now,
         }
         return {
           ...current,
-          tasks: [task, ...current.tasks],
-          appointments: [appointment, ...current.appointments],
+          tasks: existingTask ? current.tasks.map((item) => item.id === task.id ? task : item) : [task, ...current.tasks],
+          appointments: existingTask
+            ? current.appointments.map((item) => item.id === appointment.id ? { ...item, ...appointment, createdAt: item.createdAt } : item)
+            : [appointment, ...current.appointments],
           leads: lead
             ? current.leads.map((item) => item.id === lead.id && (!item.nextContactAt || item.nextContactAt > dueAt)
                 ? { ...item, nextContactAt: dueAt, updatedAt: now }
                 : item)
             : current.leads,
           statusHistory: [
-            createStatusHistory('Agendamento', appointmentId, 'Tarefa criada', `${values.taskType}: ${values.title.trim()} · ${formatDateTime(dueAt)}.`, activeUserId, undefined, 'Agendado', now),
+            createStatusHistory('Agendamento', appointmentId, existingTask ? 'Tarefa editada' : 'Tarefa criada', `${values.taskType}: ${values.title.trim()} · ${formatDateTime(dueAt)}.`, activeUserId, existingTask?.status, task.status, now),
             ...current.statusHistory,
           ],
         }
       },
-      'Tarefa criada e vinculada ao contato.',
+      existingTask ? 'Tarefa atualizada.' : 'Tarefa criada e vinculada ao contato.',
     )
     setModal(null)
     setTaskDefaults({})
+    setSelectedTaskId('')
   }
 
   const setTaskStatus = (task: TaskItem, status: TaskItem['status']) => {
@@ -2106,8 +2135,29 @@ function App() {
               : appointment)
           : current.appointments,
       }),
-      status === 'Concluída' ? 'Tarefa concluída.' : 'Tarefa cancelada.',
+      status === 'Concluída' ? 'Tarefa concluída.' : status === 'Pendente' ? 'Tarefa reaberta como pendente.' : status === 'Em andamento' ? 'Tarefa iniciada.' : 'Tarefa cancelada.',
     )
+  }
+
+  const deleteTask = (task: TaskItem) => {
+    requestConfirm({
+      title: 'Excluir tarefa?',
+      description: `${task.title} será removida definitivamente. O compromisso vinculado também será excluído.`,
+      confirmLabel: 'Excluir tarefa',
+      tone: 'danger',
+      onConfirm: () => {
+        updateState((current) => ({
+          ...current,
+          tasks: current.tasks.filter((item) => item.id !== task.id),
+          appointments: task.appointmentId ? current.appointments.filter((item) => item.id !== task.appointmentId) : current.appointments,
+        }), 'Tarefa excluída.')
+        if (selectedTaskId === task.id) {
+          setSelectedTaskId('')
+          setTaskDefaults({})
+          setModal(null)
+        }
+      },
+    })
   }
 
   const saveAppointment = async (values: AppointmentFormValues) => {
@@ -4735,8 +4785,11 @@ function App() {
               onMarkPaymentPaid={markPaymentPaid}
               onCreateProject={(lead) => beginServiceConfirmation(lead)}
               onCreateTask={(lead) => openTaskModal({ leadId: lead?.id })}
+              onEditTask={openTaskEditor}
               onCompleteTask={(task) => setTaskStatus(task, 'Concluída')}
+              onReopenTask={(task) => setTaskStatus(task, 'Pendente')}
               onCancelTask={(task) => setTaskStatus(task, 'Cancelada')}
+              onDeleteTask={deleteTask}
             />
           ) : null}
           {page === 'clients' ? (
@@ -5492,11 +5545,13 @@ function App() {
         </Modal>
       ) : null}
       {modal === 'task' ? (
-        <Modal title="Nova tarefa" size="sm" onClose={() => { setModal(null); setTaskDefaults({}) }}>
+        <Modal title={selectedTaskId ? 'Editar tarefa' : 'Nova tarefa'} size="sm" onClose={() => { setModal(null); setTaskDefaults({}); setSelectedTaskId('') }}>
           <TaskForm
             state={state}
             initialValues={taskDefaults}
-            onCancel={() => { setModal(null); setTaskDefaults({}) }}
+            editing={Boolean(selectedTaskId)}
+            onDelete={selectedTaskId ? () => { const task = state.tasks.find((item) => item.id === selectedTaskId); if (task) deleteTask(task) } : undefined}
+            onCancel={() => { setModal(null); setTaskDefaults({}); setSelectedTaskId('') }}
             onSubmit={saveTask}
           />
         </Modal>
@@ -9608,21 +9663,25 @@ function ProjectForm({
 function TaskForm({
   state,
   initialValues,
+  editing,
+  onDelete,
   onSubmit,
   onCancel,
 }: {
   state: AppState
   initialValues?: TaskFormDefaults
+  editing?: boolean
+  onDelete?: () => void
   onSubmit: (values: TaskFormValues) => void
   onCancel: () => void
 }) {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [taskType, setTaskType] = useState<NonNullable<TaskItem['taskType']>>('Tarefa')
+  const [title, setTitle] = useState(initialValues?.title ?? '')
+  const [description, setDescription] = useState(initialValues?.description ?? '')
+  const [taskType, setTaskType] = useState<NonNullable<TaskItem['taskType']>>(initialValues?.taskType ?? 'Tarefa')
   const [dueAt, setDueAt] = useState(initialValues?.dueAt ?? dateTimeInput(0, new Date().getHours() + 1))
   const [durationMinutes, setDurationMinutes] = useState(initialValues?.durationMinutes ?? 30)
-  const [priority, setPriority] = useState<TaskItem['priority']>('Média')
-  const [responsibleUserId, setResponsibleUserId] = useState(state.users.find((user) => user.active)?.id ?? '')
+  const [priority, setPriority] = useState<TaskItem['priority']>(initialValues?.priority ?? 'Média')
+  const [responsibleUserId, setResponsibleUserId] = useState(initialValues?.responsibleUserId ?? state.users.find((user) => user.active)?.id ?? '')
   const [contactKey, setContactKey] = useState(initialValues?.leadId ? `lead:${initialValues.leadId}` : initialValues?.clientId ? `client:${initialValues.clientId}` : '')
   const [error, setError] = useState('')
 
@@ -9664,7 +9723,10 @@ function TaskForm({
     <InputField label="Prioridade"><select className="field-input" value={priority} onChange={(event) => setPriority(event.currentTarget.value as TaskItem['priority'])}>{['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => <option key={value}>{value}</option>)}</select></InputField>
     <InputField label="Responsável"><select className="field-input" value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.currentTarget.value)}>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
     <div className="sm:col-span-2"><InputField label="Observações"><textarea className="field-input min-h-20" value={description} onChange={(event) => setDescription(event.currentTarget.value)} placeholder="Contexto ou próximo passo" /></InputField></div>
-    <div className="flex justify-end gap-2 sm:col-span-2"><Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button><Button type="submit"><CheckCircle2 size={16} /> Criar tarefa</Button></div>
+    <div className="flex flex-wrap justify-between gap-2 sm:col-span-2">
+      <div>{onDelete ? <Button variant="danger" type="button" onClick={onDelete}><Trash2 size={16} /> Excluir</Button> : null}</div>
+      <div className="flex gap-2"><Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button><Button type="submit"><CheckCircle2 size={16} /> {editing ? 'Salvar alterações' : 'Criar tarefa'}</Button></div>
+    </div>
   </form>
 }
 

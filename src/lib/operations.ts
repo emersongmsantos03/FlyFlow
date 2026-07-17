@@ -139,6 +139,11 @@ export const buildOperationalTasks = (state: AppState, nowDate = new Date()): Ta
     if (['Enviada', 'Visualizada', 'Em negociação'].includes(quote.status)) {
       generated.push(generatedTask(`quote-followup:${quote.id}`, `Acompanhar aprovação de ${quote.quoteNumber}`, `${quote.expirationDate}T10:00:00`, 'Alta', { leadId: quote.leadId, quoteId: quote.id }, now))
     }
+    if (quote.status === 'Enviada' || quote.status === 'Visualizada') {
+      const cadenceBase = quote.viewedAt || quote.sentAt || quote.createdAt
+      const cadenceDays = quote.viewedAt ? 1 : 2
+      generated.push(generatedTask(`quote-nudge:${quote.id}`, `Fazer follow-up de ${quote.quoteNumber}`, new Date(new Date(cadenceBase).getTime() + cadenceDays * DAY_MS).toISOString(), 'Alta', { leadId: quote.leadId, quoteId: quote.id }, now, quote.viewedAt ? 'Cliente visualizou a proposta. Retomar em 1 dia.' : 'Proposta enviada. Retomar em 2 dias.'))
+    }
     if (quote.status === 'Aprovada' || quote.status === 'Aguardando entrada') {
       generated.push(generatedTask(`quote-deposit:${quote.id}`, `Confirmar entrada de ${quote.quoteNumber}`, now, 'Urgente', { leadId: quote.leadId, quoteId: quote.id }, now))
     }

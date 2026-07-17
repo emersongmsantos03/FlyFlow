@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Lead } from '../../types'
-import { buildCommercialActionQueue, calculateCommercialPriority } from './CommercialPriorityService'
+import { buildCommercialActionQueue, buildCommercialInsights, calculateCommercialPriority } from './CommercialPriorityService'
 
 const lead = (overrides: Partial<Lead> = {}): Lead => ({
   id: 'lead-1', fullName: 'Contato', companyName: 'Empresa', phone: '', whatsapp: '', email: '', instagram: '',
@@ -30,5 +30,14 @@ describe('Commercial priority', () => {
     ], state, now)
     expect(queue.map((item) => item.lead.id)).toEqual(expect.arrayContaining(['overdue', 'missing']))
     expect(queue.some((item) => item.lead.id === 'future')).toBe(false)
+  })
+
+  it('identifica oportunidade parada e calcula conversão', () => {
+    const insights = buildCommercialInsights([
+      lead({ id: 'won', pipelineStage: 'Serviço confirmado', source: 'Lead Hunter' }),
+      lead({ id: 'stalled', updatedAt: '2026-07-01T00:00:00.000Z', source: 'Indicação' }),
+    ], state, new Date('2026-07-17T12:00:00.000Z'))
+    expect(insights.conversionRate).toBe(50)
+    expect(insights.stalled.map((item) => item.id)).toContain('stalled')
   })
 })

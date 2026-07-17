@@ -32,7 +32,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { createPortal } from 'react-dom'
 import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
 import { buildGoogleBusinessUrl, buildInstagramUrl, leadOpportunitySummary } from '../../services/leadHunter/LeadOpportunityService'
-import { buildCommercialActionQueue } from '../../services/commercial/CommercialPriorityService'
+import { buildCommercialActionQueue, buildCommercialInsights } from '../../services/commercial/CommercialPriorityService'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
@@ -50,6 +50,7 @@ type QuickFilter =
   | 'no-receipt'
   | 'with-project'
   | 'confirmed-no-project'
+  | 'stalled'
 
 type DrawerTab = 'overview' | 'activities' | 'tasks' | 'quotes' | 'projects' | 'finance' | 'files'
 
@@ -123,8 +124,11 @@ export function CrmPage({
   onMarkPaymentPaid,
   onCreateProject,
   onCreateTask,
+  onEditTask,
   onCompleteTask,
+  onReopenTask,
   onCancelTask,
+  onDeleteTask,
 }: {
   leads: Lead[]
   state: AppState
@@ -147,8 +151,11 @@ export function CrmPage({
   onMarkPaymentPaid: (payment: Payment) => void
   onCreateProject: (lead: Lead) => void
   onCreateTask: (lead?: Lead) => void
+  onEditTask: (task: TaskItem) => void
   onCompleteTask: (task: TaskItem) => void
+  onReopenTask: (task: TaskItem) => void
   onCancelTask: (task: TaskItem) => void
+  onDeleteTask: (task: TaskItem) => void
 }) {
   const boardRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
@@ -156,6 +163,8 @@ export function CrmPage({
   const [mobileColumn, setMobileColumn] = useState(columns[0].id)
 
   const activeLeads = useMemo(() => leads.filter((lead) => !lead.archived && !lead.deletedAt), [leads])
+  const commercialInsights = useMemo(() => buildCommercialInsights(activeLeads, state), [activeLeads, state])
+  const stalledIds = useMemo(() => new Set(commercialInsights.stalled.map((lead) => lead.id)), [commercialInsights.stalled])
   const filtered = useMemo(() => activeLeads.filter((lead) => {
     const quote = newestQuote(state, lead.id)
     const project = currentProject(state, lead.id)
@@ -172,9 +181,10 @@ export function CrmPage({
     if (quickFilter === 'paid') return payments.some((payment) => payment.status === 'Recebida')
     if (quickFilter === 'no-receipt') return payments.some((payment) => payment.status === 'Recebida') && !hasReceipt
     if (quickFilter === 'with-project') return Boolean(project)
+    if (quickFilter === 'stalled') return stalledIds.has(lead.id)
     if (quickFilter === 'confirmed-no-project') return lead.pipelineStage === 'Serviço confirmado' && !project
     return true
-  }), [activeLeads, quickFilter, search, state])
+  }), [activeLeads, quickFilter, search, stalledIds, state])
 
   const activeQuotes = state.quotes.filter((quote) => !quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Recusada', 'Expirada'].includes(quote.status))
   const potentialValue = activeLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
@@ -237,6 +247,12 @@ export function CrmPage({
         </section>
       ) : null}
 
+      <section className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Taxa de contato</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.contactRate}%</strong><p className="text-xs text-gray-500">Oportunidades com atividade registrada</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Conversão geral</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.conversionRate}%</strong><p className="text-xs text-gray-500">{commercialInsights.sourceConversion[0] ? `Melhor origem: ${commercialInsights.sourceConversion[0].source} (${commercialInsights.sourceConversion[0].rate}%)` : 'Ainda sem conversões registradas'}</p></div>
+        <button className="rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:border-amber-300" type="button" onClick={() => { setQuickFilter('stalled'); onViewChange('table') }}><p className="text-[0.65rem] font-bold uppercase text-gray-500">Recuperação</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.stalled.length}</strong><p className="text-xs text-gray-500">Oportunidades paradas há 7 dias ou mais</p></button>
+      </section>
+
       <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="inline-flex w-full rounded-lg bg-gray-100 p-1 sm:w-auto">
@@ -265,6 +281,7 @@ export function CrmPage({
               <option value="paid">Entrada paga</option>
               <option value="no-receipt">Sem comprovante</option>
               <option value="with-project">Com projeto</option>
+              <option value="stalled">Oportunidades paradas</option>
               <option value="confirmed-no-project">Confirmado sem projeto</option>
             </select>
           </div>
@@ -339,7 +356,7 @@ export function CrmPage({
           onCreateProject={onCreateProject}
         />
       ) : null}
-      {view === 'tasks' ? <TaskView state={state} onOpenLead={onOpenLead} onCreate={onCreateTask} onComplete={onCompleteTask} onCancel={onCancelTask} /> : null}
+      {view === 'tasks' ? <TaskWorkspace state={state} onOpenLead={onOpenLead} onCreate={onCreateTask} onEdit={onEditTask} onComplete={onCompleteTask} onReopen={onReopenTask} onCancel={onCancelTask} onDelete={onDeleteTask} /> : null}
 
       {selectedLead ? (
         <ContactDrawer
@@ -358,8 +375,11 @@ export function CrmPage({
           onMarkPaymentPaid={onMarkPaymentPaid}
           onCreateProject={onCreateProject}
           onCreateTask={onCreateTask}
+          onEditTask={onEditTask}
           onCompleteTask={onCompleteTask}
+          onReopenTask={onReopenTask}
           onCancelTask={onCancelTask}
+          onDeleteTask={onDeleteTask}
         />
       ) : null}
     </div>
@@ -569,7 +589,65 @@ function CrmTable({ leads, state, onOpen, onEdit, onDelete, onAttachReceipt, onG
   )
 }
 
-function TaskView({ state, onOpenLead, onCreate, onComplete, onCancel }: { state: AppState; onOpenLead: (lead: Lead) => void; onCreate: (lead?: Lead) => void; onComplete: (task: TaskItem) => void; onCancel: (task: TaskItem) => void }) {
+function TaskWorkspace({ state, onOpenLead, onCreate, onEdit, onComplete, onReopen, onCancel, onDelete }: { state: AppState; onOpenLead: (lead: Lead) => void; onCreate: (lead?: Lead) => void; onEdit: (task: TaskItem) => void; onComplete: (task: TaskItem) => void; onReopen: (task: TaskItem) => void; onCancel: (task: TaskItem) => void; onDelete: (task: TaskItem) => void }) {
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'Ativas' | 'Todas' | TaskItem['status']>('Ativas')
+  const [typeFilter, setTypeFilter] = useState('')
+  const taskTypes = [...new Set(state.tasks.map((task) => task.taskType || 'Tarefa'))]
+  const filteredTasks = state.tasks.filter((task) => {
+    const lead = task.leadId ? state.leads.find((item) => item.id === task.leadId) : undefined
+    const client = task.clientId ? state.clients.find((item) => item.id === task.clientId) : undefined
+    const contact = lead ? displayName(lead) : client?.companyName || client?.fullName || ''
+    const haystack = `${task.title} ${task.description} ${task.taskType} ${contact}`.toLocaleLowerCase('pt-BR')
+    if (query.trim() && !haystack.includes(query.trim().toLocaleLowerCase('pt-BR'))) return false
+    if (statusFilter === 'Ativas' && ['Concluída', 'Cancelada'].includes(task.status)) return false
+    if (statusFilter !== 'Ativas' && statusFilter !== 'Todas' && task.status !== statusFilter) return false
+    if (typeFilter && (task.taskType || 'Tarefa') !== typeFilter) return false
+    return true
+  })
+  const buckets = statusFilter === 'Ativas'
+    ? ['Atrasadas', 'Hoje', 'Amanhã', 'Próximos sete dias', 'Sem data']
+    : ['Atrasadas', 'Hoje', 'Amanhã', 'Próximos sete dias', 'Sem data', 'Concluídas recentemente']
+
+  return <div className="space-y-3">
+    <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="min-w-0 flex-1"><h2 className="font-black text-gray-950">Tarefas</h2><p className="text-xs text-gray-500">Organize retornos, ligações e atividades comerciais.</p></div>
+        <label className="relative min-w-0 flex-1 lg:max-w-sm"><Search className="pointer-events-none absolute left-3 top-3 text-gray-400" size={16} /><input className="field-input field-input-with-leading-icon" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Buscar tarefa ou contato" /></label>
+        <select className="field-input lg:max-w-44" value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as typeof statusFilter)}><option>Ativas</option><option>Todas</option><option>Pendente</option><option>Em andamento</option><option>Concluída</option><option>Cancelada</option></select>
+        <select className="field-input lg:max-w-40" value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)}><option value="">Todos os tipos</option>{taskTypes.map((type) => <option key={type}>{type}</option>)}</select>
+        <Button type="button" onClick={() => onCreate()}><Plus size={15} /> Nova tarefa</Button>
+      </div>
+    </section>
+    <div className="grid gap-3 xl:grid-cols-2">
+      {buckets.map((bucket) => {
+        const tasks = filteredTasks.filter((task) => taskBucket(task) === bucket)
+        if (!tasks.length && query) return null
+        return <section key={bucket} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between"><h3 className="font-black text-gray-950">{bucket}</h3><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{tasks.length}</span></div>
+          <div className="mt-3 space-y-2">{tasks.map((task) => {
+            const lead = task.leadId ? state.leads.find((item) => item.id === task.leadId) : undefined
+            const client = task.clientId ? state.clients.find((item) => item.id === task.clientId) : undefined
+            const responsible = task.responsibleUserId ? state.users.find((item) => item.id === task.responsibleUserId) : undefined
+            return <article key={task.id} className="rounded-lg border border-gray-200 p-3 transition hover:border-amber-300">
+              <button className="block w-full text-left" type="button" onClick={() => onEdit(task)}>
+                <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-gray-950">{task.title}</strong><StatusBadge>{task.status}</StatusBadge></div><p className="mt-1 text-xs text-gray-500">{task.taskType || 'Tarefa'} · {task.dueAt ? formatDateTime(task.dueAt) : 'Sem data'} · {task.priority}</p>{task.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-600">{task.description}</p> : null}<p className="mt-1 text-[0.68rem] text-gray-400">{lead ? displayName(lead) : client?.companyName || client?.fullName || 'Sem contato'} · {responsible?.name || 'Sem responsável'} · {task.durationMinutes || 30} min</p></div><SlidersHorizontal className="shrink-0 text-gray-400" size={16} /></div>
+              </button>
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
+                {task.status !== 'Concluída' ? <button className="text-xs font-bold text-emerald-700" type="button" onClick={() => onComplete(task)}><Check size={14} className="mr-1 inline" />Concluir</button> : <button className="text-xs font-bold text-blue-700" type="button" onClick={() => onReopen(task)}><Clock3 size={14} className="mr-1 inline" />Voltar para pendente</button>}
+                {task.status !== 'Cancelada' && task.status !== 'Concluída' ? <button className="text-xs font-bold text-gray-500" type="button" onClick={() => onCancel(task)}>Cancelar</button> : null}
+                <button className="text-xs font-bold text-red-600" type="button" onClick={() => onDelete(task)}><Trash2 size={13} className="mr-1 inline" />Excluir</button>
+                {lead ? <button className="ml-auto text-xs font-bold text-[#866800]" type="button" onClick={() => onOpenLead(lead)}>Abrir contato</button> : null}
+              </div>
+            </article>
+          })}{!tasks.length ? <p className="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">Nenhuma tarefa.</p> : null}</div>
+        </section>
+      })}
+    </div>
+  </div>
+}
+
+export function TaskView({ state, onOpenLead, onCreate, onEdit: _onEdit, onComplete, onReopen: _onReopen, onCancel, onDelete: _onDelete }: { state: AppState; onOpenLead: (lead: Lead) => void; onCreate: (lead?: Lead) => void; onEdit: (task: TaskItem) => void; onComplete: (task: TaskItem) => void; onReopen: (task: TaskItem) => void; onCancel: (task: TaskItem) => void; onDelete: (task: TaskItem) => void }) {
   const buckets = ['Atrasadas', 'Hoje', 'Amanhã', 'Próximos sete dias', 'Sem data', 'Concluídas recentemente']
   return <div className="space-y-3"><div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><div><h2 className="font-black text-gray-950">Tarefas dos contatos</h2><p className="text-xs text-gray-500">Próximas ações avulsas e operacionais.</p></div><Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onCreate()}><Plus size={15} /> Nova tarefa</Button></div><div className="grid gap-3 xl:grid-cols-2">{buckets.map((bucket) => {
     const tasks = state.tasks.filter((task) => task.status !== 'Cancelada' && taskBucket(task) === bucket).slice(0, bucket === 'Concluídas recentemente' ? 8 : undefined)
@@ -582,7 +660,7 @@ function TaskView({ state, onOpenLead, onCreate, onComplete, onCancel }: { state
   })}</div></div>
 }
 
-function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onCompleteTask, onCancelTask }: {
+function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onCancelTask, onDeleteTask }: {
   lead: Lead
   state: AppState
   onClose: () => void
@@ -598,8 +676,11 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   onMarkPaymentPaid: (payment: Payment) => void
   onCreateProject: (lead: Lead) => void
   onCreateTask: (lead?: Lead) => void
+  onEditTask: (task: TaskItem) => void
   onCompleteTask: (task: TaskItem) => void
+  onReopenTask: (task: TaskItem) => void
   onCancelTask: (task: TaskItem) => void
+  onDeleteTask: (task: TaskItem) => void
 }) {
   const [tab, setTab] = useState<DrawerTab>('overview')
   const [previewQuoteId, setPreviewQuoteId] = useState('')
@@ -741,6 +822,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
             </div>
           )
         })}</DrawerList> : null}
+        {tab === 'tasks' && tasks.length ? <section className="rounded-lg border border-gray-200 bg-gray-50 p-3"><h4 className="text-xs font-black uppercase tracking-wide text-gray-500">Gerenciar tarefas</h4><div className="mt-2 space-y-2">{tasks.map((task) => <div key={`manage-${task.id}`} className="flex items-center justify-between gap-2 rounded-md bg-white p-2"><button className="min-w-0 flex-1 truncate text-left text-xs font-bold text-gray-800 hover:underline" type="button" onClick={() => onEditTask(task)}>{task.title}</button><div className="flex shrink-0 items-center gap-1">{task.status === 'Concluída' ? <button className="rounded-md p-1.5 text-blue-700 hover:bg-blue-50" title="Voltar para pendente" type="button" onClick={() => onReopenTask(task)}><Clock3 size={14} /></button> : null}<button className="rounded-md p-1.5 text-gray-600 hover:bg-gray-100" title="Editar tarefa" type="button" onClick={() => onEditTask(task)}><SlidersHorizontal size={14} /></button><button className="rounded-md p-1.5 text-red-600 hover:bg-red-50" title="Excluir tarefa" type="button" onClick={() => onDeleteTask(task)}><Trash2 size={14} /></button></div></div>)}</div></section> : null}
       </div>
     </aside>
     {previewFile ? createPortal(

@@ -41,3 +41,33 @@ export const buildCommercialActionQueue = (leads: Lead[], state: Pick<AppState, 
     .map((lead) => ({ lead, priority: calculateCommercialPriority(lead, state, now) }))
     .filter(({ lead, priority }) => priority.overdueDays > 0 || !lead.nextContactAt || (lead.nextContactAt && new Date(lead.nextContactAt).getTime() - now.getTime() <= DAY_MS))
     .sort((a, b) => b.priority.score - a.priority.score || (a.lead.nextContactAt || '').localeCompare(b.lead.nextContactAt || ''))
+
+export const buildCommercialInsights = (leads: Lead[], state: Pick<AppState, 'leadInteractions'>, now = new Date()) => {
+  const visible = leads.filter((lead) => !lead.archived && !lead.deletedAt)
+  const wonStages = new Set(['Serviço confirmado', 'Serviço agendado', 'Convertido em cliente'])
+  const won = visible.filter((lead) => wonStages.has(lead.pipelineStage))
+  const contactedIds = new Set(state.leadInteractions.map((interaction) => interaction.leadId))
+  const stalled = visible.filter((lead) => {
+    if (lead.pipelineStage === 'Perdido' || wonStages.has(lead.pipelineStage)) return false
+    const lastMovement = new Date(lead.lastContactAt || lead.updatedAt || lead.createdAt)
+    return now.getTime() - lastMovement.getTime() >= 7 * DAY_MS
+  })
+  const sourceMap = new Map<string, { total: number; won: number }>()
+  for (const lead of visible) {
+    const current = sourceMap.get(lead.source) || { total: 0, won: 0 }
+    current.total += 1
+    if (wonStages.has(lead.pipelineStage)) current.won += 1
+    sourceMap.set(lead.source, current)
+  }
+  const sourceConversion = [...sourceMap].map(([source, values]) => ({
+    source,
+    ...values,
+    rate: Math.round(values.won / Math.max(1, values.total) * 100),
+  })).sort((a, b) => b.rate - a.rate || b.total - a.total)
+  return {
+    conversionRate: Math.round(won.length / Math.max(1, visible.length) * 100),
+    contactRate: Math.round(visible.filter((lead) => contactedIds.has(lead.id) || lead.lastContactAt).length / Math.max(1, visible.length) * 100),
+    stalled,
+    sourceConversion,
+  }
+}
