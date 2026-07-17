@@ -56,6 +56,11 @@
   box-shadow: var(--shadow-sm) !important;
 }
 
+.lead-hunter-toolbar {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-soft) 55%, var(--surface));
+}
+
 .panel-surface:hover,
 .metric-card:hover {
   border-color: var(--border) !important;

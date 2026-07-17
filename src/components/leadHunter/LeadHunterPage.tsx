@@ -398,29 +398,38 @@ export function LeadHunterPage({
               ) : undefined
             }
           >
-            <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-3 lg:flex-row lg:items-center">
-              <label className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
-                <input
-                  className="field-input w-full pl-10"
-                  value={resultQuery}
-                  onChange={(event) => setResultQuery(event.target.value)}
-                  placeholder="Buscar empresa, cidade, categoria ou serviço..."
-                />
+            <div className="lead-hunter-toolbar mb-4 grid gap-3 rounded-xl border p-3 lg:grid-cols-[minmax(18rem,1fr)_14rem_14rem]">
+              <label className="min-w-0 text-xs font-medium text-gray-500">
+                Localizar nos resultados
+                <span className="relative mt-1 block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    className="field-input w-full pl-10"
+                    value={resultQuery}
+                    onChange={(event) => setResultQuery(event.target.value)}
+                    placeholder="Empresa, cidade, categoria ou serviço"
+                  />
+                </span>
               </label>
-              <select className="field-input min-w-44" value={contactFilter} onChange={(event) => setContactFilter(event.target.value as typeof contactFilter)}>
-                <option value="all">Todos os contatos</option>
-                <option value="whatsapp">Com WhatsApp</option>
-                <option value="contactable">Com algum contato</option>
-                <option value="ai">Enriquecidos por IA</option>
-              </select>
-              <label className="relative">
-                <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <select className="field-input min-w-44 pl-9" value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)}>
-                  <option value="priority">Melhor oportunidade</option>
-                  <option value="score">Maior score</option>
-                  <option value="newest">Mais recente</option>
+              <label className="min-w-0 text-xs font-medium text-gray-500">
+                Canal disponível
+                <select className="field-input mt-1 w-full" value={contactFilter} onChange={(event) => setContactFilter(event.target.value as typeof contactFilter)}>
+                  <option value="all">Todos os contatos</option>
+                  <option value="whatsapp">Com WhatsApp</option>
+                  <option value="contactable">Com algum contato</option>
+                  <option value="ai">Enriquecidos por IA</option>
                 </select>
+              </label>
+              <label className="min-w-0 text-xs font-medium text-gray-500">
+                Ordenar por
+                <span className="relative mt-1 block">
+                  <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400" size={15} />
+                  <select className="field-input w-full pl-9" value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)}>
+                    <option value="priority">Melhor oportunidade</option>
+                    <option value="score">Maior score</option>
+                    <option value="newest">Mais recente</option>
+                  </select>
+                </span>
               </label>
             </div>
             {filtered.length ? (
@@ -535,15 +544,21 @@ export function LeadHunterPage({
                 ))}
               </div>
             ) : (
-              <div className="flex min-h-48 flex-col items-center justify-center text-center">
-                <Crosshair className="text-gray-300" size={36} />
+              <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 px-4 text-center">
+                <span className="rounded-2xl bg-amber-50 p-3 text-[#a98512]">
+                  <Crosshair size={30} />
+                </span>
                 <h3 className="mt-3 font-semibold text-gray-800">
-                  Nenhum resultado disponível
+                  Sua próxima oportunidade começa aqui
                 </h3>
                 <p className="mt-1 max-w-lg text-sm text-gray-500">
-                  Execute uma busca com um provedor oficial configurado. O Lead
-                  Hunter não gera estabelecimentos fictícios.
+                  Busque empresas reais na região selecionada. Os melhores
+                  candidatos serão priorizados automaticamente.
                 </p>
+                <Button className="mt-4" type="button" disabled={searching} onClick={runSearch}>
+                  {searching ? <RotateCw className="animate-spin" size={16} /> : <Search size={16} />}
+                  {searching ? "Buscando..." : "Buscar oportunidades"}
+                </Button>
               </div>
             )}
           </Panel>
