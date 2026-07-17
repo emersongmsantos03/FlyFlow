@@ -162,7 +162,7 @@ import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState 
 import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapProvider'
 import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
-import { buildGoogleBusinessUrl, leadContactPriority, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
+import { buildGoogleBusinessUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   isFirebaseConfigured,
@@ -4945,6 +4945,88 @@ function App() {
               onSaveSettings={(settings) => updateState((current) => ({ ...current, leadHunterSettings: settings }), 'Configurações do Lead Hunter salvas.')}
               onSaveCities={(cities) => updateState((current) => ({ ...current, leadHunterCities: cities }), 'Cidades do Lead Hunter atualizadas.')}
               onSaveCategories={(categories) => updateState((current) => ({ ...current, leadHunterCategories: categories }), 'Categorias do Lead Hunter atualizadas.')}
+              onCreateManual={(input) => {
+                const now = new Date().toISOString()
+                const category = (state.leadHunterCategories || []).find((item) => item.id === input.categoryId)
+                const city = (state.leadHunterCities || []).find((item) => item.id === input.cityId)
+                if (!category || !city) {
+                  setToast('Selecione uma cidade e uma categoria válidas.')
+                  return
+                }
+                const searchId = createId('lh-manual')
+                const prospectId = createId('lh-prospect')
+                const contactPoints = [input.whatsapp, input.phone, input.instagram].filter(Boolean).length
+                const score = Math.min(95, 60 + contactPoints * 8 + (input.googleMapsUrl ? 6 : 0))
+                const prospect = {
+                  id: prospectId,
+                  externalIds: {},
+                  name: input.name,
+                  normalizedName: normalizeLeadText(input.name),
+                  categoryId: category.id,
+                  categoryName: category.name,
+                  recommendedService: recommendLeadService(category.name),
+                  cityId: city.id,
+                  city: city.name,
+                  neighborhood: '',
+                  address: '',
+                  distanceKm: city.distanceFromBaseKm,
+                  phone: input.phone.trim(),
+                  whatsapp: input.whatsapp.trim(),
+                  email: '',
+                  instagram: input.instagram.trim(),
+                  website: '',
+                  googleMapsUrl: input.googleMapsUrl.trim(),
+                  sources: ['Cadastro manual'],
+                  sourceUrls: input.googleMapsUrl.trim() ? [input.googleMapsUrl.trim()] : [],
+                  score,
+                  scoreReasons: [
+                    { id: 'manual-test', label: 'Lead cadastrado manualmente para teste', points: 60 },
+                    ...(input.whatsapp ? [{ id: 'manual-whatsapp', label: 'WhatsApp informado', points: 10 }] : []),
+                    ...(input.instagram ? [{ id: 'manual-instagram', label: 'Instagram informado', points: 8 }] : []),
+                  ],
+                  status: 'Descoberto' as const,
+                  isNew: true,
+                  firstDiscoveredAt: now,
+                  lastDiscoveredAt: now,
+                  discoveryCount: 1,
+                  displayCount: 0,
+                  lastSearchId: searchId,
+                  changedSinceLastDisplay: false,
+                  discardedPermanently: false,
+                  aiSummary: 'Lead cadastrado manualmente para validar a apresentação e o fluxo comercial.',
+                  aiApproach: `Apresente ${recommendLeadService(category.name).toLocaleLowerCase('pt-BR')} e personalize a abordagem com um ponto real do negócio.`,
+                  notes: 'Cadastro manual de teste.',
+                  createdAt: now,
+                  updatedAt: now,
+                }
+                updateState((current) => ({
+                  ...current,
+                  leadHunterProspects: [prospect, ...(current.leadHunterProspects || [])],
+                  leadHunterSearches: [{
+                    id: searchId,
+                    mode: 'Manual' as const,
+                    cityIds: [city.id],
+                    categoryIds: [category.id],
+                    radiusKm: 0,
+                    neighborhood: '',
+                    onlyNew: false,
+                    includeEligibleKnown: false,
+                    minimumScore: 0,
+                    sources: ['Cadastro manual'],
+                    totalFound: 1,
+                    newCount: 1,
+                    repeatedCount: 0,
+                    duplicateCount: 0,
+                    cooldownBlockedCount: 0,
+                    errorCount: 0,
+                    estimatedCost: 0,
+                    tokenUsage: 0,
+                    durationMs: 0,
+                    userId: activeUserId,
+                    createdAt: now,
+                  }, ...(current.leadHunterSearches || [])],
+                }), 'Lead manual criado e adicionado ao topo do Lead Hunter.')
+              }}
               onImport={importLeadHunterProspects}
               onReject={(prospectId) => {
                 const now = new Date().toISOString()

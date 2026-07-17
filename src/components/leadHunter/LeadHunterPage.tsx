@@ -16,6 +16,7 @@ import {
   MapPinned,
   MessageCircle,
   Navigation,
+  Plus,
   Radar,
   RotateCw,
   Search,
@@ -69,6 +70,7 @@ export function LeadHunterPage({
   onSaveCities,
   onSaveCategories,
   onImport,
+  onCreateManual,
   onReject,
   onCreateRoute,
   onToggleVisited,
@@ -102,6 +104,15 @@ export function LeadHunterPage({
   onSaveCities: (cities: LeadHunterCity[]) => void;
   onSaveCategories: (categories: LeadHunterCategory[]) => void;
   onImport: (prospectIds: string[]) => void;
+  onCreateManual: (input: {
+    name: string;
+    categoryId: string;
+    cityId: string;
+    phone: string;
+    whatsapp: string;
+    instagram: string;
+    googleMapsUrl: string;
+  }) => void;
   onReject: (prospectId: string) => void;
   onCreateRoute: (input: {
     name: string;
@@ -125,6 +136,7 @@ export function LeadHunterPage({
   const [includeKnown, setIncludeKnown] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [openedLeadId, setOpenedLeadId] = useState("");
+  const [manualLeadOpen, setManualLeadOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [resultQuery, setResultQuery] = useState("");
   const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "contactable" | "ai">("all");
@@ -431,6 +443,12 @@ export function LeadHunterPage({
           </div>
           <Panel
             title="Pipeline de oportunidades"
+            action={
+              <Button variant="secondary" type="button" onClick={() => setManualLeadOpen(true)}>
+                <Plus size={16} />
+                Lead manual
+              </Button>
+            }
           >
             <div className="lead-hunter-toolbar mb-3 grid gap-2 rounded-xl border p-2 md:grid-cols-[minmax(0,1fr)_11rem_11rem]">
               <input
@@ -668,6 +686,17 @@ export function LeadHunterPage({
               onReject={onReject}
             />
           ) : null}
+          {manualLeadOpen ? (
+            <ManualLeadModal
+              cities={cities}
+              categories={categories}
+              onClose={() => setManualLeadOpen(false)}
+              onSave={(input) => {
+                onCreateManual(input);
+                setManualLeadOpen(false);
+              }}
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -746,6 +775,106 @@ export function LeadHunterPage({
           onSaveCategories={onSaveCategories}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ManualLeadModal({
+  cities,
+  categories,
+  onClose,
+  onSave,
+}: {
+  cities: LeadHunterCity[];
+  categories: LeadHunterCategory[];
+  onClose: () => void;
+  onSave: (input: {
+    name: string;
+    categoryId: string;
+    cityId: string;
+    phone: string;
+    whatsapp: string;
+    instagram: string;
+    googleMapsUrl: string;
+  }) => void;
+}) {
+  const activeCities = cities.filter((item) => item.active);
+  const activeCategories = categories.filter((item) => item.active);
+  const [form, setForm] = useState({
+    name: "",
+    categoryId: activeCategories[0]?.id || "",
+    cityId: activeCities[0]?.id || "",
+    phone: "",
+    whatsapp: "",
+    instagram: "",
+    googleMapsUrl: "",
+  });
+  const update = (field: keyof typeof form, value: string) =>
+    setForm((current) => ({ ...current, [field]: value }));
+  const canSave = Boolean(
+    form.name.trim() &&
+    form.categoryId &&
+    form.cityId &&
+    (form.whatsapp.trim() || form.phone.trim() || form.instagram.trim() || form.googleMapsUrl.trim()),
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+      <button className="absolute inset-0" type="button" aria-label="Fechar cadastro manual" onClick={onClose} />
+      <form
+        className="relative w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSave) onSave({ ...form, name: form.name.trim() });
+        }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-950">Criar lead manual</h2>
+            <p className="mt-1 text-sm text-gray-500">Cadastre um exemplo para testar o card, os detalhes e a importação para o Comercial.</p>
+          </div>
+          <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" type="button" aria-label="Fechar" onClick={onClose}><X size={19} /></button>
+        </div>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
+            Nome da empresa ou lead *
+            <input className="field-input mt-1 w-full" required value={form.name} onChange={(event) => update("name", event.currentTarget.value)} placeholder="Ex.: Pousada Vista Alegre" />
+          </label>
+          <label className="text-xs font-semibold text-gray-600">
+            Categoria *
+            <select className="field-input mt-1 w-full" required value={form.categoryId} onChange={(event) => update("categoryId", event.currentTarget.value)}>
+              {activeCategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold text-gray-600">
+            Cidade *
+            <select className="field-input mt-1 w-full" required value={form.cityId} onChange={(event) => update("cityId", event.currentTarget.value)}>
+              {activeCities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold text-gray-600">
+            WhatsApp
+            <input className="field-input mt-1 w-full" value={form.whatsapp} onChange={(event) => update("whatsapp", event.currentTarget.value)} placeholder="(41) 99999-9999" />
+          </label>
+          <label className="text-xs font-semibold text-gray-600">
+            Telefone
+            <input className="field-input mt-1 w-full" value={form.phone} onChange={(event) => update("phone", event.currentTarget.value)} placeholder="(41) 3333-3333" />
+          </label>
+          <label className="text-xs font-semibold text-gray-600">
+            Instagram
+            <input className="field-input mt-1 w-full" value={form.instagram} onChange={(event) => update("instagram", event.currentTarget.value)} placeholder="@empresa ou link do perfil" />
+          </label>
+          <label className="text-xs font-semibold text-gray-600">
+            Google Business
+            <input className="field-input mt-1 w-full" type="url" value={form.googleMapsUrl} onChange={(event) => update("googleMapsUrl", event.currentTarget.value)} placeholder="https://maps.google.com/..." />
+          </label>
+        </div>
+        <p className="mt-3 text-xs text-gray-400">Informe pelo menos um canal ou o link do Google Business.</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" disabled={!canSave}><Plus size={16} /> Criar lead de teste</Button>
+        </div>
+      </form>
     </div>
   );
 }
