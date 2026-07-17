@@ -4720,17 +4720,20 @@ function App() {
                 const activeCategories = (state.leadHunterCategories || []).filter((item) => item.active)
                 const publicSearchCategories = activeCategories.filter((item) =>
                   item.group !== 'Eventos' &&
-                  /hotel|pousada|restaurante|imobiliária|vinícola|resort|haras|pesqueiro|concessionária|shopping|academia|clínica|escola|indústria|logístico|galpão|energia solar|condomínio|fazenda|sítio|cooperativa|construtora|incorporadora|loteamento/i.test(item.name),
+                  /hotel|pousada|airbnb|chal[eé]|cabana|glamping|ref[uú]gio|temporada|restaurante|imobili[aá]ria|corretor|vin[ií]cola|resort|haras|pesqueiro|concession[aá]ria|shopping|academia|cl[ií]nica|escola|ind[uú]stria|log[ií]stico|galp[aã]o|energia solar|condom[ií]nio|fazenda|s[ií]tio|cooperativa|construtora|incorporadora|loteamento/i.test(item.name),
                 )
                 const categoryCoveragePriority = (name: string) => {
                   const normalized = normalizeLeadText(name)
-                  if (/^hotel$/.test(normalized)) return 100
-                  if (/restaurante/.test(normalized)) return 95
-                  if (/imobiliaria/.test(normalized)) return 90
-                  if (/construtora|incorporadora|loteamento/.test(normalized)) return 85
-                  if (/concessionaria|shopping|academia|clinica|escola/.test(normalized)) return 80
-                  if (/industria|logistic|galpao|energia solar/.test(normalized)) return 75
-                  if (/pousada|resort|vinicola|condominio/.test(normalized)) return 70
+                  if (/construtora|incorporadora|loteamento/.test(normalized)) return 110
+                  if (/energia solar/.test(normalized)) return 108
+                  if (/imobiliaria|corretor de imoveis|condominio/.test(normalized)) return 105
+                  if (/industria|logistic|galpao/.test(normalized)) return 100
+                  if (/fazenda|sitio|haras|cooperativa|pesqueiro/.test(normalized)) return 96
+                  if (/pousada|hotel fazenda|chale|cabana|glamping|refugio|casa de temporada|airbnb/.test(normalized)) return 94
+                  if (/vinicola|concessionaria/.test(normalized)) return 90
+                  if (/hotel|resort/.test(normalized)) return 78
+                  if (/shopping|academia|clinica|escola/.test(normalized)) return 70
+                  if (/restaurante/.test(normalized)) return 25
                   return 50
                 }
                 const candidateCities = filters.cityIds.length
@@ -4739,9 +4742,17 @@ function App() {
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
                   ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
-                  : [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
-                    .sort((a, b) => (categoryCoveragePriority(b.name) - b.searchCount * 5) - (categoryCoveragePriority(a.name) - a.searchCount * 5))
-                    .slice(0, 3)
+                  : (() => {
+                    const ranked = [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
+                      .sort((a, b) =>
+                        (categoryCoveragePriority(b.name) + b.weight * 2 - b.searchCount * 4) -
+                        (categoryCoveragePriority(a.name) + a.weight * 2 - a.searchCount * 4),
+                      )
+                    const mixed = ranked.filter((category, index, list) =>
+                      list.findIndex((candidate) => candidate.group === category.group) === index,
+                    ).slice(0, 3)
+                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 3)
+                  })()
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
                 try {
