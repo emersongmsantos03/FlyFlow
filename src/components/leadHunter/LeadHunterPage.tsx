@@ -12,12 +12,10 @@ import {
   Filter,
   Flag,
   History,
-  Globe2,
   Import,
   Map,
   MapPinned,
   MessageCircle,
-  Mail,
   Navigation,
   Radar,
   RotateCw,
@@ -25,7 +23,6 @@ import {
   Settings2,
   Target,
   Trophy,
-  Phone,
   X,
 } from "lucide-react";
 import type {
@@ -497,15 +494,15 @@ export function LeadHunterPage({
               </div>
             ) : null}
             {filtered.length ? (
-              <div className="grid gap-3 xl:grid-cols-2">
+              <div className="grid gap-2 xl:grid-cols-2">
                 {filtered.map((lead) => (
                   <article
                     key={lead.id}
-                    className={`group rounded-2xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${selectedIds.includes(lead.id) ? "border-amber-400 bg-amber-50/40 ring-2 ring-amber-100" : "border-gray-200 bg-white hover:border-amber-200"}`}
+                    className={`group rounded-xl border p-3 transition hover:border-amber-300 ${selectedIds.includes(lead.id) ? "border-amber-400 bg-amber-50/30 ring-1 ring-amber-200" : "border-gray-200 bg-white"}`}
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2.5">
                       <button
-                        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${selectedIds.includes(lead.id) ? "border-amber-500 bg-amber-400 text-black" : "border-gray-300"}`}
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selectedIds.includes(lead.id) ? "border-amber-500 bg-amber-400 text-black" : "border-gray-300"}`}
                         type="button"
                         aria-label={`Selecionar ${lead.name}`}
                         onClick={() =>
@@ -517,7 +514,7 @@ export function LeadHunterPage({
                         }
                       >
                         {selectedIds.includes(lead.id) ? (
-                          <Check size={15} />
+                          <Check size={13} />
                         ) : null}
                       </button>
                       <button
@@ -527,61 +524,57 @@ export function LeadHunterPage({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="flex flex-wrap gap-2">
-                              <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${opportunityTone(lead.score)}`}>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${opportunityTone(lead.score)}`}>
                                 {opportunityLevel(lead.score)}
                               </span>
-                              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600">{lead.recommendedService || lead.categoryName}</span>
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{lead.categoryName}</span>
                             </div>
-                            <h2 className="mt-2 font-semibold text-gray-950">
+                            <h2 className="mt-1.5 font-semibold text-gray-950">
                               {lead.name}
                             </h2>
-                            <p className="text-sm text-gray-500">
+                            <p className="mt-0.5 text-xs text-gray-500">
                               {lead.city}
                               {lead.neighborhood
                                 ? ` · ${lead.neighborhood}`
                                 : ""}
                               {typeof lead.distanceKm === "number" ? ` · ${lead.distanceKm} km` : ""}
                             </p>
-                            <p className="mt-1 line-clamp-2 text-xs text-gray-500">
+                            <p className="mt-0.5 line-clamp-1 text-xs text-gray-400">
                               {lead.address || "Endereço não informado na fonte pública"}
                             </p>
                           </div>
                           <div className="text-right">
-                            <strong className="text-lg text-gray-950">
+                            <strong className="text-base text-gray-950">
                               {lead.score}
                             </strong>
                             <p className="text-[10px] uppercase tracking-wide text-gray-400">potencial</p>
                           </div>
                         </div>
-                        <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-gray-500">
+                        <p className="mt-2 line-clamp-1 text-xs text-gray-500">
                           {lead.aiSummary || leadOpportunitySummary(lead)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-[#8a6d08]">
+                          {lead.recommendedService || "Vídeo institucional"}
                         </p>
                       </button>
                     </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                    <div className="mt-2.5 flex items-center gap-1.5 pl-7">
                       {lead.whatsapp ? (
-                        <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700" href={buildLeadWhatsAppUrl(lead)} target="_blank" rel="noreferrer" onClick={() => { if (!lead.leadId) onImport([lead.id]); }}>
-                          <MessageCircle size={15} /> WhatsApp
+                        <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" href={buildLeadWhatsAppUrl(lead)} target="_blank" rel="noreferrer" title="Abrir WhatsApp" onClick={() => { if (!lead.leadId) onImport([lead.id]); }}>
+                          <MessageCircle size={15} />
                         </a>
                       ) : null}
                       {lead.instagram ? (
-                        <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-fuchsia-600 to-orange-500 px-3 text-xs font-semibold text-white hover:opacity-90" href={buildInstagramUrl(lead.instagram)} target="_blank" rel="noreferrer">
-                          <AtSign size={15} /> Instagram
+                        <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100" href={buildInstagramUrl(lead.instagram)} target="_blank" rel="noreferrer" title="Abrir Instagram">
+                          <AtSign size={15} />
                         </a>
                       ) : null}
-                      {lead.phone ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={`tel:${lead.phone}`} title="Ligar"><Phone size={15} /></a> : null}
-                      {lead.email ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={`mailto:${lead.email}`} title="Enviar e-mail"><Mail size={15} /></a> : null}
-                      {lead.website ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={lead.website} target="_blank" rel="noreferrer" title="Abrir site"><Globe2 size={15} /></a> : null}
-                      {lead.googleMapsUrl ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={lead.googleMapsUrl} target="_blank" rel="noreferrer" title="Abrir mapa"><Map size={15} /></a> : null}
-                      <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={buildGoogleBusinessUrl(lead)} target="_blank" rel="noreferrer" title="Abrir perfil ou pesquisa da empresa no Google">
-                        <Map size={15} /> Perfil no Google
+                      <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100" href={buildGoogleBusinessUrl(lead)} target="_blank" rel="noreferrer" title="Abrir perfil no Google">
+                        <Map size={15} />
                       </a>
-                      {!lead.whatsapp && !lead.phone && !lead.email ? <span className="text-xs text-gray-400">Contato ainda não localizado</span> : null}
-                      <button className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50" type="button" onClick={() => { if (window.confirm(`Rejeitar ${lead.name} e impedir que apareça novamente?`)) onReject(lead.id); }}>
-                        <X size={15} /> Rejeitar
-                      </button>
-                      <button className="ml-auto text-xs font-semibold text-[#8a6d08] hover:underline" type="button" onClick={() => setOpenedLeadId(lead.id)}>Ver inteligência</button>
+                      {!lead.whatsapp && !lead.instagram ? <span className="text-[11px] text-gray-400">Contato nos detalhes</span> : null}
+                      <button className="ml-auto inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-semibold text-[#8a6d08] hover:bg-amber-50" type="button" onClick={() => setOpenedLeadId(lead.id)}>Detalhes →</button>
                     </div>
                   </article>
                 ))}
