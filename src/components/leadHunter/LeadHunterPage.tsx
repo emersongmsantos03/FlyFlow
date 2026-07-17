@@ -124,6 +124,7 @@ export function LeadHunterPage({
   const today = new Date().toISOString().slice(0, 10);
   const todaySearches = searches.filter((search) => search.createdAt.slice(0, 10) === today);
   const aiCallsToday = todaySearches.filter((search) => (search.tokenUsage || 0) > 0).length;
+  const effectiveDailyAiLimit = Math.min(5, settings.maxDailyCalls);
   const tokensToday = todaySearches.reduce((total, search) => total + (search.tokenUsage || 0), 0);
   const filtered = useMemo(
     () =>
@@ -166,6 +167,8 @@ export function LeadHunterPage({
         onlyNew,
         includeEligibleKnown: includeKnown,
       });
+      // Uma busca concluída deve revelar o lote, inclusive resultados já conhecidos.
+      setOnlyNew(false);
     } finally {
       setSearching(false);
     }
@@ -231,7 +234,7 @@ export function LeadHunterPage({
             </div>
             <div className="grid shrink-0 grid-cols-2 gap-2 text-center">
               <div className="rounded-lg border border-emerald-200 bg-white/50 px-3 py-2">
-                <strong className="block text-base">{aiCallsToday}/{settings.maxDailyCalls}</strong>
+                <strong className="block text-base">{aiCallsToday}/{effectiveDailyAiLimit}</strong>
                 <span className="text-[10px] uppercase tracking-wide text-emerald-700">IA hoje</span>
               </div>
               <div className="rounded-lg border border-emerald-200 bg-white/50 px-3 py-2">
@@ -571,15 +574,32 @@ export function LeadHunterPage({
                   <Crosshair size={30} />
                 </span>
                 <h3 className="mt-3 font-semibold text-gray-800">
-                  Sua próxima oportunidade começa aqui
+                  {prospects.length ? `${prospects.length} lead(s) oculto(s) pelos filtros` : "Sua próxima oportunidade começa aqui"}
                 </h3>
                 <p className="mt-1 max-w-lg text-sm text-gray-500">
-                  Busque empresas reais na região selecionada. Os melhores
-                  candidatos serão priorizados automaticamente.
+                  {prospects.length
+                    ? "Os dados estão salvos. Limpe os filtros para exibir todos os resultados encontrados."
+                    : "Busque empresas reais na região selecionada. Os melhores candidatos serão priorizados automaticamente."}
                 </p>
-                <Button className="mt-4" type="button" disabled={searching} onClick={runSearch}>
-                  {searching ? <RotateCw className="animate-spin" size={16} /> : <Search size={16} />}
-                  {searching ? "Buscando..." : "Buscar oportunidades"}
+                <Button
+                  className="mt-4"
+                  type="button"
+                  disabled={searching}
+                  onClick={() => {
+                    if (prospects.length) {
+                      setOnlyNew(false);
+                      setMinimumScore(0);
+                      setCityId("");
+                      setCategoryId("");
+                      setContactFilter("all");
+                      setResultQuery("");
+                      return;
+                    }
+                    void runSearch();
+                  }}
+                >
+                  {searching ? <RotateCw className="animate-spin" size={16} /> : prospects.length ? <Filter size={16} /> : <Search size={16} />}
+                  {searching ? "Buscando..." : prospects.length ? "Mostrar todos os leads" : "Buscar oportunidades"}
                 </Button>
               </div>
             )}
