@@ -4711,7 +4711,7 @@ function App() {
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
                   const aiCallsToday = (state.leadHunterSearches || []).filter((search) => search.createdAt.slice(0, 10) === now.slice(0, 10) && search.tokenUsage > 0).length
-                  const effectiveDailyAiLimit = Math.min(5, state.leadHunterSettings?.maxDailyCalls || 5)
+                  const effectiveDailyAiLimit = state.leadHunterSettings?.maxDailyCalls || 50
                   const aiBudgetAvailable = aiCallsToday < effectiveDailyAiLimit
                   if (isOpenAILeadEnrichmentConfigured && aiBudgetAvailable) {
                     try {

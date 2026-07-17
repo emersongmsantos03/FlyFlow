@@ -124,7 +124,7 @@ export function LeadHunterPage({
   const today = new Date().toISOString().slice(0, 10);
   const todaySearches = searches.filter((search) => search.createdAt.slice(0, 10) === today);
   const aiCallsToday = todaySearches.filter((search) => (search.tokenUsage || 0) > 0).length;
-  const effectiveDailyAiLimit = Math.min(5, settings.maxDailyCalls);
+  const effectiveDailyAiLimit = settings.maxDailyCalls;
   const tokensToday = todaySearches.reduce((total, search) => total + (search.tokenUsage || 0), 0);
   const filtered = useMemo(
     () =>
