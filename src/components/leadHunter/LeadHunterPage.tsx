@@ -876,16 +876,16 @@ function LeadDetail({
             </div>
           </details>
         </section>
-        {lead.whatsapp ? (
+        {lead.whatsapp || lead.instagram ? (
           <section className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="font-semibold text-gray-950">Contato seguro pelo WhatsApp</h3>
+                <h3 className="font-semibold text-gray-950">Contato seguro</h3>
                 <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                  Revise a mensagem e confirme o envio no WhatsApp oficial. O FlyFlow não armazena sua sessão, senha ou QR Code.
+                  Revise a mensagem. No WhatsApp ela será preenchida; no Instagram ela será copiada para você colar na conversa.
                 </p>
               </div>
-              <MessageCircle className="shrink-0 text-emerald-600" size={20} />
+              <MessageCircle className="shrink-0 text-gray-500" size={20} />
             </div>
             <textarea
               className="mt-3 min-h-32 w-full resize-y rounded-lg border border-gray-200 bg-white p-3 text-sm leading-relaxed text-gray-800 outline-none focus:border-amber-400"
@@ -894,7 +894,7 @@ function LeadDetail({
               aria-label="Mensagem para WhatsApp"
             />
             <div className="mt-3 flex flex-wrap gap-2">
-              <a
+              {lead.whatsapp ? <a
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                 href={buildLeadWhatsAppUrl(lead, whatsAppDraft)}
                 target="_blank"
@@ -903,7 +903,20 @@ function LeadDetail({
               >
                 <ExternalLink size={16} />
                 Abrir no WhatsApp e salvar no Comercial
-              </a>
+              </a> : null}
+              {lead.instagram ? <a
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100"
+                href={buildInstagramUrl(lead.instagram)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => {
+                  void navigator.clipboard.writeText(whatsAppDraft);
+                  onImport(lead.id);
+                }}
+              >
+                <AtSign size={16} />
+                Copiar e abrir Instagram
+              </a> : null}
               <button
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
                 type="button"
