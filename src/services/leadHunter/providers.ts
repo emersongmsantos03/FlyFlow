@@ -23,6 +23,17 @@ export interface LeadSearchProvider {
   search(request: LeadSearchRequest, signal?: AbortSignal): Promise<LeadSearchProviderResult>
 }
 
+export interface LeadEnrichmentResult {
+  id: string
+  contactName?: string
+  phone?: string
+  whatsapp?: string
+  email?: string
+  website?: string
+  instagram?: string
+  sourceUrls: string[]
+}
+
 export interface LeadRouteProvider {
   calculate(input: { origin: string; stops: Array<{ id: string; address: string; latitude?: number; longitude?: number }> }, signal?: AbortSignal): Promise<{ orderedIds: string[]; distanceKm: number; durationMinutes: number; mapsUrl: string }>
 }

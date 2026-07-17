@@ -231,7 +231,33 @@ VITE_FIREBASE_MEASUREMENT_ID=
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_GOOGLE_MAPS_API_KEY=
+VITE_LEAD_HUNTER_API_URL=
 ```
+
+### OpenAI no Lead Hunter
+
+A chave da OpenAI fica somente na Firebase Function. Nunca use `VITE_OPENAI_API_KEY`.
+
+```bash
+cd functions
+npm install
+cd ..
+firebase functions:secrets:set OPENAI_API_KEY
+```
+
+Informe a chave nova quando solicitado. Depois publique a função e configure no frontend:
+
+```bash
+firebase deploy --only functions:leadApi
+```
+
+```bash
+VITE_LEAD_HUNTER_API_URL=https://southamerica-east1-flyflow-a97ab.cloudfunctions.net/leadApi
+```
+
+O OpenStreetMap continua sendo a fonte inicial gratuita. A OpenAI pesquisa contatos
+públicos para até dez resultados por lote e mantém campos vazios quando não encontra
+evidência confiável.
 
 Para usar busca de endereços e mapas, habilite na mesma chave do Google Cloud:
 

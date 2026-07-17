@@ -1,10 +1,26 @@
 import type { LeadSearchProvider, LeadSearchProviderResult, LeadSearchRequest } from './providers'
+import { leadContactPriority, recommendLeadService } from './LeadOpportunityService'
 
 type OsmElement = { type: 'node' | 'way' | 'relation'; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
+type NominatimResult = {
+  osm_type: 'node' | 'way' | 'relation'
+  osm_id: number
+  lat: string
+  lon: string
+  name?: string
+  display_name: string
+  type?: string
+  address?: Record<string, string>
+  extratags?: Record<string, string>
+  namedetails?: Record<string, string>
+}
 
-const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
+const ENDPOINTS = [
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+]
 const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:v2:'
+const CACHE_PREFIX = 'flyflow:osm-leads:v3:'
 const CITY_COORDINATES: Record<string, [number, number]> = {
   curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
   'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
@@ -38,14 +54,27 @@ const locateCity = async (city: string, signal?: AbortSignal): Promise<[number, 
 const filtersFor = (categories: string[]) => {
   const names = categories.map(normalize).join(' ')
   const filters: string[] = []
-  if (/hotel|pousada|resort|hosped|airbnb|temporada|chale|cabana|refugio|glamping/.test(names)) filters.push('["tourism"~"hotel|guest_house|hostel|motel|chalet|camp_site|resort|apartment"]')
-  if (/evento|clube/.test(names)) filters.push('["amenity"~"events_venue|community_centre"]', '["leisure"~"sports_centre|resort"]')
+  if (/hotel/.test(names)) filters.push('["tourism"="hotel"]')
+  if (/pousada|hosped/.test(names)) filters.push('["tourism"="guest_house"]')
+  if (/airbnb|temporada/.test(names)) filters.push('["tourism"="apartment"]')
+  if (/chale|cabana|refugio|glamping/.test(names)) filters.push('["tourism"="chalet"]', '["tourism"="camp_site"]')
+  if (/resort/.test(names)) filters.push('["tourism"="resort"]')
+  if (/evento/.test(names)) filters.push('["amenity"="events_venue"]')
+  if (/clube/.test(names)) filters.push('["leisure"="sports_centre"]')
   if (/vinicola/.test(names)) filters.push('["craft"="winery"]', '["shop"="wine"]')
   if (/restaurante/.test(names)) filters.push('["amenity"="restaurant"]')
   if (/haras/.test(names)) filters.push('["leisure"="horse_riding"]', '["sport"="equestrian"]')
   if (/pesqueiro/.test(names)) filters.push('["leisure"="fishing"]')
-  if (/imobili|corretor|construtora|incorporadora|loteamento|condominio/.test(names)) filters.push('["office"~"estate_agent|property_management|construction_company"]', '["craft"="builder"]')
-  return [...new Set(filters.length ? filters : ['["tourism"~"hotel|guest_house|chalet|camp_site|resort|apartment"]', '["amenity"="events_venue"]'])]
+  if (/imobili|corretor/.test(names)) filters.push('["office"="estate_agent"]')
+  if (/construtora|incorporadora|loteamento|condominio/.test(names)) filters.push('["office"="construction_company"]', '["craft"="builder"]')
+  if (/concessionaria/.test(names)) filters.push('["shop"="car"]')
+  if (/shopping/.test(names)) filters.push('["shop"="mall"]')
+  if (/academia/.test(names)) filters.push('["leisure"="fitness_centre"]')
+  if (/clinica/.test(names)) filters.push('["amenity"="clinic"]')
+  if (/escola/.test(names)) filters.push('["amenity"="school"]')
+  if (/industria|galpao|logistic/.test(names)) filters.push('["landuse"="industrial"]')
+  if (/energia solar/.test(names)) filters.push('["craft"="solar_panel_installer"]')
+  return [...new Set(filters.length ? filters : ['["tourism"="hotel"]', '["tourism"="guest_house"]'])]
 }
 
 const categoryFor = (tags: Record<string, string>, requested: string[]) => {
@@ -83,11 +112,78 @@ export const mapOsmElement = (element: OsmElement, city: string, requestedCatego
   const score = Math.max(0, Math.min(100, 35 + scoreReasons.reduce((total, reason) => total + reason.points, 0)))
   return {
     id: `osm-${element.type}-${element.id}`, externalIds: { openstreetmap: osmId }, name, normalizedName: normalize(name),
-    categoryName: categoryFor(tags, requestedCategories), city, neighborhood: clean(tags['addr:suburb'] || tags['addr:neighbourhood'] || ''), address,
+    categoryName: categoryFor(tags, requestedCategories), recommendedService: recommendLeadService(categoryFor(tags, requestedCategories)), city, neighborhood: clean(tags['addr:suburb'] || tags['addr:neighbourhood'] || ''), address,
     latitude, longitude, phone, whatsapp, email: first(tags, 'contact:email', 'email'), instagram, website,
     googleMapsUrl: latitude != null && longitude != null ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}` : '',
     sources: ['OpenStreetMap'], sourceUrls: [`https://www.openstreetmap.org/${osmId}`], score, scoreReasons,
   }
+}
+
+const mapNominatimResult = (result: NominatimResult, city: string, requestedCategories: string[]): LeadSearchProviderResult['leads'][number] | null => {
+  const tags = result.extratags || {}
+  const addressTags = result.address || {}
+  const name = clean(result.name || result.namedetails?.name || result.display_name.split(',')[0] || '')
+  if (!name) return null
+  const latitude = Number(result.lat)
+  const longitude = Number(result.lon)
+  const phone = first(tags, 'contact:phone', 'phone', 'contact:mobile', 'mobile')
+  const whatsapp = first(tags, 'contact:whatsapp', 'whatsapp')
+  const website = first(tags, 'contact:website', 'website', 'url')
+  const instagram = first(tags, 'contact:instagram', 'instagram')
+  const email = first(tags, 'contact:email', 'email')
+  const osmId = `${result.osm_type}/${result.osm_id}`
+  const address = clean([
+    addressTags.road || addressTags.pedestrian,
+    addressTags.house_number,
+    addressTags.suburb || addressTags.neighbourhood,
+  ].filter(Boolean).join(', '))
+  const hasContact = Boolean(phone || whatsapp || email)
+  return {
+    id: `osm-${result.osm_type}-${result.osm_id}`,
+    externalIds: { openstreetmap: osmId },
+    name,
+    normalizedName: normalize(name),
+    categoryName: requestedCategories[0] || 'Empresa',
+    recommendedService: recommendLeadService(requestedCategories[0] || 'Empresa'),
+    city,
+    neighborhood: clean(addressTags.suburb || addressTags.neighbourhood || ''),
+    address,
+    latitude,
+    longitude,
+    phone,
+    whatsapp,
+    email,
+    instagram,
+    website,
+    googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`,
+    sources: ['OpenStreetMap / Nominatim'],
+    sourceUrls: [`https://www.openstreetmap.org/${osmId}`],
+    score: hasContact ? 75 : website || instagram ? 70 : 60,
+    scoreReasons: [
+      { id: 'public-source', label: 'Empresa confirmada em fonte pública', points: 60, evidence: `OpenStreetMap ${osmId}` },
+      ...(hasContact ? [{ id: 'direct-contact', label: 'Contato direto disponível', points: 15 }] : []),
+      ...(!hasContact && (website || instagram) ? [{ id: 'digital-presence', label: 'Presença digital disponível', points: 10 }] : []),
+    ],
+  }
+}
+
+const searchNominatim = async (city: string, categories: string[], limit: number, signal?: AbortSignal): Promise<LeadSearchProviderResult['leads']> => {
+  const category = clean(categories[0] || 'hotel', 80)
+  const url = new URL('https://nominatim.openstreetmap.org/search')
+  url.searchParams.set('q', `${category} ${city}, Paraná, Brasil`)
+  url.searchParams.set('format', 'jsonv2')
+  url.searchParams.set('addressdetails', '1')
+  url.searchParams.set('extratags', '1')
+  url.searchParams.set('namedetails', '1')
+  url.searchParams.set('countrycodes', 'br')
+  url.searchParams.set('limit', String(Math.min(Math.max(limit, 10), 30)))
+  const response = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }, signal })
+  if (!response.ok) throw new Error(`Nominatim respondeu ${response.status}`)
+  const data = await response.json() as NominatimResult[]
+  return data.map((item) => mapNominatimResult(item, city, categories))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
+    .slice(0, limit)
 }
 
 export class OpenStreetMapLeadProvider implements LeadSearchProvider {
@@ -103,14 +199,29 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
       const parsed = JSON.parse(cached) as { at: number; result: LeadSearchProviderResult }
       if (Date.now() - parsed.at < CACHE_TTL) return { ...parsed.result, warnings: [...parsed.result.warnings, 'Resultado reutilizado do cache de 24 horas.'] }
     }
+    try {
+      const leads = await searchNominatim(city, categories, request.limit, signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000))
+      if (leads.length) {
+        const result: LeadSearchProviderResult = {
+          leads,
+          sources: ['OpenStreetMap / Nominatim'],
+          estimatedCost: 0,
+          warnings: [],
+        }
+        localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
+        return result
+      }
+    } catch {
+      if (signal?.aborted) throw new Error('A busca foi cancelada antes de terminar.')
+    }
     const filters = filtersFor(categories)
     const [latitude, longitude] = await locateCity(city, signal)
-    const radiusMeters = Math.round(Math.min(Math.max(request.radiusKm, 2), 70) * 1000)
-    const query = `[out:json][timeout:12];(${filters.map((filter) => `nwr${filter}(around:${radiusMeters},${latitude},${longitude});`).join('')});out center ${Math.min(Math.max(request.limit * 3, 30), 100)};`
+    const radiusMeters = Math.round(Math.min(Math.max(request.radiusKm, 2), 20) * 1000)
+    const query = `[out:json][timeout:18];(${filters.map((filter) => `nwr${filter}(around:${radiusMeters},${latitude},${longitude});`).join('')});out center ${Math.min(Math.max(request.limit * 3, 30), 80)};`
     let lastError: unknown
     for (const endpoint of ENDPOINTS) {
       try {
-        const attemptSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(14_000)]) : AbortSignal.timeout(14_000)
+        const attemptSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000)
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: `data=${encodeURIComponent(query)}`, signal: attemptSignal })
         if (!response.ok) throw new Error(`Overpass respondeu ${response.status}`)
         const data = await response.json() as { elements?: OsmElement[] }

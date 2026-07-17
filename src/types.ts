@@ -448,9 +448,11 @@ export interface LeadHunterProspect {
   id: string
   externalIds: Record<string, string>
   name: string
+  contactName?: string
   normalizedName: string
   categoryId: string
   categoryName: string
+  recommendedService?: ServiceType
   cityId?: string
   city: string
   neighborhood: string

@@ -1,118 +1,1294 @@
-import { useMemo, useState } from 'react'
-import { AlertCircle, CalendarDays, Check, Clock3, Crosshair, ExternalLink, Filter, Flag, History, Import, Map, MapPinned, MessageCircle, Navigation, Radar, RotateCw, Search, Settings2, Sparkles, Target, X } from 'lucide-react'
-import type { LeadHunterCategory, LeadHunterCity, LeadHunterProspect, LeadHunterRoute, LeadHunterSettings } from '../../types'
-import { Button, Panel, StatusBadge } from '../ui'
-import { leadScoreLabel } from '../../services/leadHunter/LeadScoringService'
-import { buildGoogleMapsRouteUrl, recommendDailyMission } from '../../services/leadHunter/LeadRouteService'
+import { useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CalendarDays,
+  Check,
+  Clock3,
+  Crosshair,
+  ExternalLink,
+  Filter,
+  Flag,
+  History,
+  Import,
+  Map,
+  MapPinned,
+  MessageCircle,
+  Navigation,
+  Radar,
+  RotateCw,
+  Search,
+  Settings2,
+  Sparkles,
+  Target,
+  X,
+} from "lucide-react";
+import type {
+  LeadHunterCategory,
+  LeadHunterCity,
+  LeadHunterProspect,
+  LeadHunterRoute,
+  LeadHunterSettings,
+} from "../../types";
+import { Button, Panel, StatusBadge } from "../ui";
+import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
+import { leadContactPriority } from "../../services/leadHunter/LeadOpportunityService";
+import {
+  buildGoogleMapsRouteUrl,
+  recommendDailyMission,
+} from "../../services/leadHunter/LeadRouteService";
 
-type View = 'results' | 'routes' | 'mission' | 'history' | 'settings'
+type View = "results" | "routes" | "mission" | "history" | "settings";
 
-export function LeadHunterPage({ cities, categories, prospects, searches, routes, settings, providerReady, onSearch, onSaveSettings, onSaveCities, onSaveCategories, onImport, onCreateRoute, onToggleVisited }: {
-  cities: LeadHunterCity[]
-  categories: LeadHunterCategory[]
-  prospects: LeadHunterProspect[]
-  searches: Array<{ id: string; createdAt: string; totalFound: number; newCount: number; cityIds: string[]; categoryIds: string[]; errorCount: number }>
-  routes: LeadHunterRoute[]
-  settings: LeadHunterSettings
-  providerReady: boolean
-  onSearch: (filters: { mode: 'Manual' | 'Rotação automática'; cityIds: string[]; categoryIds: string[]; radiusKm: number; minimumScore: number; onlyNew: boolean; includeEligibleKnown: boolean }) => Promise<void> | void
-  onSaveSettings: (settings: LeadHunterSettings) => void
-  onSaveCities: (cities: LeadHunterCity[]) => void
-  onSaveCategories: (categories: LeadHunterCategory[]) => void
-  onImport: (prospectIds: string[]) => void
-  onCreateRoute: (input: { name: string; startAddress: string; targetCity: string; prospectIds: string[]; googleMapsUrl: string; plannedFor?: string }) => void
-  onToggleVisited: (routeId: string, prospectId: string) => void
+export function LeadHunterPage({
+  cities,
+  categories,
+  prospects,
+  searches,
+  routes,
+  settings,
+  providerReady,
+  onSearch,
+  onSaveSettings,
+  onSaveCities,
+  onSaveCategories,
+  onImport,
+  onCreateRoute,
+  onToggleVisited,
+}: {
+  cities: LeadHunterCity[];
+  categories: LeadHunterCategory[];
+  prospects: LeadHunterProspect[];
+  searches: Array<{
+    id: string;
+    createdAt: string;
+    totalFound: number;
+    newCount: number;
+    cityIds: string[];
+    categoryIds: string[];
+    errorCount: number;
+  }>;
+  routes: LeadHunterRoute[];
+  settings: LeadHunterSettings;
+  providerReady: boolean;
+  onSearch: (filters: {
+    mode: "Manual" | "Rotação automática";
+    cityIds: string[];
+    categoryIds: string[];
+    radiusKm: number;
+    minimumScore: number;
+    onlyNew: boolean;
+    includeEligibleKnown: boolean;
+  }) => Promise<void> | void;
+  onSaveSettings: (settings: LeadHunterSettings) => void;
+  onSaveCities: (cities: LeadHunterCity[]) => void;
+  onSaveCategories: (categories: LeadHunterCategory[]) => void;
+  onImport: (prospectIds: string[]) => void;
+  onCreateRoute: (input: {
+    name: string;
+    startAddress: string;
+    targetCity: string;
+    prospectIds: string[];
+    googleMapsUrl: string;
+    plannedFor?: string;
+  }) => void;
+  onToggleVisited: (routeId: string, prospectId: string) => void;
 }) {
-  const [view, setView] = useState<View>('results')
-  const [mode, setMode] = useState<'Manual' | 'Rotação automática'>('Rotação automática')
-  const [cityId, setCityId] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [radiusKm, setRadiusKm] = useState(settings.radiusKm)
-  const [minimumScore, setMinimumScore] = useState(60)
-  const [onlyNew, setOnlyNew] = useState(true)
-  const [includeKnown, setIncludeKnown] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [openedLeadId, setOpenedLeadId] = useState('')
-  const [searching, setSearching] = useState(false)
-  const filtered = useMemo(() => prospects.filter((lead) => (!cityId || lead.cityId === cityId) && (!categoryId || lead.categoryId === categoryId) && lead.score >= minimumScore && (!onlyNew || lead.isNew)), [categoryId, cityId, minimumScore, onlyNew, prospects])
+  const [view, setView] = useState<View>("results");
+  const [mode, setMode] = useState<"Manual" | "Rotação automática">(
+    "Rotação automática",
+  );
+  const [cityId, setCityId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [radiusKm, setRadiusKm] = useState(settings.radiusKm);
+  const [minimumScore, setMinimumScore] = useState(60);
+  const [onlyNew, setOnlyNew] = useState(true);
+  const [includeKnown, setIncludeKnown] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [openedLeadId, setOpenedLeadId] = useState("");
+  const [searching, setSearching] = useState(false);
+  const filtered = useMemo(
+    () =>
+      prospects
+        .filter(
+          (lead) =>
+            (!cityId || lead.cityId === cityId) &&
+            (!categoryId || lead.categoryId === categoryId) &&
+            lead.score >= minimumScore &&
+            (!onlyNew || lead.isNew),
+        )
+        .sort((a, b) => leadContactPriority(b) - leadContactPriority(a)),
+    [categoryId, cityId, minimumScore, onlyNew, prospects],
+  );
   const runSearch = async () => {
-    if (searching) return
-    setSearching(true)
-    try { await onSearch({ mode, cityIds: cityId ? [cityId] : [], categoryIds: categoryId ? [categoryId] : [], radiusKm, minimumScore, onlyNew, includeEligibleKnown: includeKnown }) } finally { setSearching(false) }
-  }
+    if (searching) return;
+    setSearching(true);
+    try {
+      await onSearch({
+        mode,
+        cityIds: cityId ? [cityId] : [],
+        categoryIds: categoryId ? [categoryId] : [],
+        radiusKm,
+        minimumScore,
+        onlyNew,
+        includeEligibleKnown: includeKnown,
+      });
+    } finally {
+      setSearching(false);
+    }
+  };
 
-  return <div className="lead-hunter-page space-y-4">
-    <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
-        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9a7900]">Prospecção inteligente</p><h1 className="mt-1 text-2xl font-semibold text-gray-950">Lead Hunter</h1><p className="mt-1 max-w-2xl text-sm text-gray-500">Encontre oportunidades sem repetir estabelecimentos, com score, cooldown e integração ao Comercial.</p></div>
-        <div className="flex flex-wrap gap-2">{([['results', 'Resultados', Radar], ['routes', 'Rotas', MapPinned], ['mission', 'Missão do Dia', Flag], ['history', 'Histórico', History], ['settings', 'Configurações', Settings2]] as const).map(([id, label, Icon]) => <Button key={id} variant={view === id ? 'primary' : 'secondary'} type="button" onClick={() => setView(id)}><Icon size={16} />{label}</Button>)}</div>
-      </div>
-      {providerReady ? <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"><AlertCircle className="mt-0.5 shrink-0" size={18} /><div><strong>Busca gratuita com dados públicos ativada</strong><p className="mt-0.5 text-emerald-800">Resultados reais do OpenStreetMap, sem GPT e sem custo por busca. A cobertura de telefone, site e endereço depende do cadastro público. <a className="font-semibold underline" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© colaboradores do OpenStreetMap</a>.</p></div></div> : null}
-    </section>
+  return (
+    <div className="lead-hunter-page space-y-4">
+      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9a7900]">
+              Prospecção inteligente
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold text-gray-950">
+              Lead Hunter
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              Encontre oportunidades sem repetir estabelecimentos, com score,
+              cooldown e integração ao Comercial.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["results", "Resultados", Radar],
+                ["routes", "Rotas", MapPinned],
+                ["mission", "Missão do Dia", Flag],
+                ["history", "Histórico", History],
+                ["settings", "Configurações", Settings2],
+              ] as const
+            ).map(([id, label, Icon]) => (
+              <Button
+                key={id}
+                variant={view === id ? "primary" : "secondary"}
+                type="button"
+                onClick={() => setView(id)}
+              >
+                <Icon size={16} />
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        {providerReady ? (
+          <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <AlertCircle className="mt-0.5 shrink-0" size={18} />
+            <div>
+              <strong>Busca de empresas e contatos públicos ativada</strong>
+              <p className="mt-0.5 text-emerald-800">
+                O OpenStreetMap encontra empresas reais; com o backend
+                configurado, a OpenAI tenta completar responsável, telefone,
+                WhatsApp e e-mail sem inventar campos ausentes.{" "}
+                <a
+                  className="font-semibold underline"
+                  href="https://www.openstreetmap.org/copyright"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  © colaboradores do OpenStreetMap
+                </a>
+                .
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </section>
 
-    {view === 'results' ? <>
-      <Panel title="Filtros da busca">
+      {view === "results" ? (
+        <>
+          <Panel title="Filtros da busca">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <label className="text-xs font-medium text-gray-600">
+                Modo
+                <select
+                  className="field-input mt-1"
+                  value={mode}
+                  onChange={(event) =>
+                    setMode(event.target.value as typeof mode)
+                  }
+                >
+                  <option>Rotação automática</option>
+                  <option>Manual</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-gray-600">
+                Cidade
+                <select
+                  className="field-input mt-1"
+                  value={cityId}
+                  onChange={(event) => setCityId(event.target.value)}
+                  disabled={mode === "Rotação automática"}
+                >
+                  <option value="">Todas as cidades ativas</option>
+                  {cities
+                    .filter((city) => city.active)
+                    .map((city) => (
+                      <option key={city.id} value={city.id}>
+                        {city.name} · {city.distanceFromBaseKm} km
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="text-xs font-medium text-gray-600">
+                Categoria
+                <select
+                  className="field-input mt-1"
+                  value={categoryId}
+                  onChange={(event) => setCategoryId(event.target.value)}
+                >
+                  <option value="">Distribuição automática</option>
+                  {categories
+                    .filter((category) => category.active)
+                    .map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name} · {category.priority}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="text-xs font-medium text-gray-600">
+                Raio: {radiusKm} km
+                <input
+                  className="mt-3 w-full accent-[#c9a227]"
+                  type="range"
+                  min="20"
+                  max="100"
+                  step="5"
+                  value={radiusKm}
+                  onChange={(event) => setRadiusKm(Number(event.target.value))}
+                />
+              </label>
+              <label className="text-xs font-medium text-gray-600">
+                Score mínimo
+                <select
+                  className="field-input mt-1"
+                  value={minimumScore}
+                  onChange={(event) =>
+                    setMinimumScore(Number(event.target.value))
+                  }
+                >
+                  {[0, 40, 60, 75, 90].map((score) => (
+                    <option key={score} value={score}>
+                      {score}+
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={onlyNew}
+                  onChange={(event) => setOnlyNew(event.target.checked)}
+                />{" "}
+                Apenas inéditos
+              </label>
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeKnown}
+                  onChange={(event) => setIncludeKnown(event.target.checked)}
+                />{" "}
+                Incluir antigos elegíveis
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  type="button"
+                  disabled={searching}
+                  onClick={runSearch}
+                >
+                  {searching ? (
+                    <RotateCw className="animate-spin" size={16} />
+                  ) : (
+                    <Search size={16} />
+                  )}
+                  {searching ? "Buscando dados reais..." : "Buscar leads"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  disabled={searching}
+                  onClick={() => {
+                    setCityId("");
+                    setCategoryId("");
+                    setOnlyNew(true);
+                    setIncludeKnown(false);
+                    setMinimumScore(60);
+                  }}
+                >
+                  <Filter size={16} />
+                </Button>
+              </div>
+            </div>
+          </Panel>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["Encontrados", filtered.length, Target],
+              [
+                "Inéditos",
+                filtered.filter((item) => item.isNew).length,
+                Sparkles,
+              ],
+              [
+                "Reapresentados",
+                filtered.filter((item) => !item.isNew).length,
+                RotateCw,
+              ],
+              [
+                "Cidades ativas",
+                cities.filter((item) => item.active).length,
+                Map,
+              ],
+            ].map(([label, value, Icon]) => {
+              const MetricIcon = Icon as typeof Target;
+              return (
+                <div
+                  key={String(label)}
+                  className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+                >
+                  <MetricIcon className="text-[#a98512]" size={18} />
+                  <p className="mt-3 text-xs font-medium text-gray-500">
+                    {label as string}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-950">
+                    {value as number}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <Panel
+            title="Resultados qualificados"
+            action={
+              selectedIds.length ? (
+                <Button type="button" onClick={() => onImport(selectedIds)}>
+                  <Import size={16} />
+                  Importar {selectedIds.length}
+                </Button>
+              ) : undefined
+            }
+          >
+            {filtered.length ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {filtered.map((lead) => (
+                  <article
+                    key={lead.id}
+                    className={`rounded-xl border p-4 ${selectedIds.includes(lead.id) ? "border-amber-400 bg-amber-50/40" : "border-gray-200"}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <button
+                        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${selectedIds.includes(lead.id) ? "border-amber-500 bg-amber-400 text-black" : "border-gray-300"}`}
+                        type="button"
+                        aria-label={`Selecionar ${lead.name}`}
+                        onClick={() =>
+                          setSelectedIds((current) =>
+                            current.includes(lead.id)
+                              ? current.filter((id) => id !== lead.id)
+                              : [...current, lead.id],
+                          )
+                        }
+                      >
+                        {selectedIds.includes(lead.id) ? (
+                          <Check size={15} />
+                        ) : null}
+                      </button>
+                      <button
+                        className="min-w-0 flex-1 text-left"
+                        type="button"
+                        onClick={() => setOpenedLeadId(lead.id)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap gap-2">
+                              <StatusBadge>
+                                {lead.isNew ? "Novo" : "Já encontrado"}
+                              </StatusBadge>
+                              <StatusBadge>{lead.categoryName}</StatusBadge>
+                              {lead.recommendedService ? (
+                                <StatusBadge>{lead.recommendedService}</StatusBadge>
+                              ) : null}
+                              {lead.whatsapp ? (
+                                <StatusBadge>WhatsApp disponível</StatusBadge>
+                              ) : null}
+                            </div>
+                            <h2 className="mt-2 font-semibold text-gray-950">
+                              {lead.name}
+                            </h2>
+                            <p className="text-sm text-gray-500">
+                              {lead.city}
+                              {lead.neighborhood
+                                ? ` · ${lead.neighborhood}`
+                                : ""}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <strong className="text-xl text-gray-950">
+                              {lead.score}
+                            </strong>
+                            <p className="text-xs text-gray-500">
+                              {leadScoreLabel(lead.score)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
+                          <span>{lead.sources.join(", ")}</span>
+                          <span>·</span>
+                          <span>Exibido {lead.displayCount}x</span>
+                        </div>
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="flex min-h-48 flex-col items-center justify-center text-center">
+                <Crosshair className="text-gray-300" size={36} />
+                <h3 className="mt-3 font-semibold text-gray-800">
+                  Nenhum resultado disponível
+                </h3>
+                <p className="mt-1 max-w-lg text-sm text-gray-500">
+                  Execute uma busca com um provedor oficial configurado. O Lead
+                  Hunter não gera estabelecimentos fictícios.
+                </p>
+              </div>
+            )}
+          </Panel>
+          {openedLeadId ? (
+            <LeadDetail
+              lead={prospects.find((lead) => lead.id === openedLeadId)}
+              onClose={() => setOpenedLeadId("")}
+              onImport={(id) => onImport([id])}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {view === "history" ? (
+        <Panel title="Histórico de buscas">
+          {searches.length ? (
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Região</th>
+                    <th>Encontrados</th>
+                    <th>Inéditos</th>
+                    <th>Erros</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searches.map((search) => (
+                    <tr key={search.id}>
+                      <td>
+                        {new Date(search.createdAt).toLocaleString("pt-BR")}
+                      </td>
+                      <td>
+                        {search.cityIds
+                          .map(
+                            (id) => cities.find((city) => city.id === id)?.name,
+                          )
+                          .filter(Boolean)
+                          .join(", ") || "Rotação automática"}
+                      </td>
+                      <td>{search.totalFound}</td>
+                      <td>{search.newCount}</td>
+                      <td>{search.errorCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex min-h-40 flex-col items-center justify-center text-center">
+              <Clock3 className="text-gray-300" size={32} />
+              <p className="mt-2 text-sm text-gray-500">
+                Nenhuma busca realizada.
+              </p>
+            </div>
+          )}
+        </Panel>
+      ) : null}
+
+      {view === "routes" ? (
+        <RoutesPanel
+          prospects={prospects}
+          routes={routes}
+          selectedIds={selectedIds}
+          onCreateRoute={onCreateRoute}
+          onToggleVisited={onToggleVisited}
+        />
+      ) : null}
+      {view === "mission" ? (
+        <DailyMissionPanel
+          cities={cities}
+          prospects={prospects}
+          routes={routes}
+          onCreateRoute={onCreateRoute}
+        />
+      ) : null}
+
+      {view === "settings" ? (
+        <LeadHunterSettingsPanel
+          cities={cities}
+          categories={categories}
+          settings={settings}
+          onSave={onSaveSettings}
+          onSaveCities={onSaveCities}
+          onSaveCategories={onSaveCategories}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function LeadDetail({
+  lead,
+  onClose,
+  onImport,
+}: {
+  lead?: LeadHunterProspect;
+  onClose: () => void;
+  onImport: (id: string) => void;
+}) {
+  if (!lead) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/35"
+      role="dialog"
+      aria-modal="true"
+    >
+      <button
+        className="absolute inset-0"
+        type="button"
+        aria-label="Fechar detalhes"
+        onClick={onClose}
+      />
+      <aside className="relative h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase text-amber-700">
+              Lead Hunter
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-gray-950">
+              {lead.name}
+            </h2>
+            <p className="text-sm text-gray-500">
+              {lead.categoryName} · {lead.city}
+            </p>
+          </div>
+          <button
+            className="rounded-lg p-2 hover:bg-gray-100"
+            type="button"
+            aria-label="Fechar"
+            onClick={onClose}
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Lead Score</p>
+            <strong className="text-2xl">{lead.score}</strong>
+            <p className="text-xs text-gray-500">
+              {leadScoreLabel(lead.score)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Descoberta</p>
+            <strong className="text-sm">
+              {new Date(lead.firstDiscoveredAt).toLocaleDateString("pt-BR")}
+            </strong>
+            <p className="text-xs text-gray-500">
+              Encontrado {lead.discoveryCount}x
+            </p>
+          </div>
+        </div>
+        <section className="mt-5">
+          <h3 className="font-semibold">Contato e localização</h3>
+          <dl className="mt-2 space-y-2 rounded-xl border border-gray-200 p-3 text-sm">
+            {[
+              ["Serviço recomendado", lead.recommendedService],
+              ["Telefone", lead.phone],
+              ["WhatsApp", lead.whatsapp],
+              ["E-mail", lead.email],
+              ["Instagram", lead.instagram],
+              ["Site", lead.website],
+              ["Endereço", lead.address],
+            ].map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-3">
+                <dt className="text-gray-500">{label}</dt>
+                <dd className="break-all text-right font-medium">
+                  {value || "Não encontrado"}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+        <section className="mt-5">
+          <h3 className="font-semibold">Composição do score</h3>
+          <div className="mt-2 space-y-2">
+            {lead.scoreReasons.length ? (
+              lead.scoreReasons.map((reason) => (
+                <div
+                  key={reason.id}
+                  className="flex justify-between gap-3 rounded-lg bg-gray-50 p-3 text-sm"
+                >
+                  <span>{reason.label}</span>
+                  <strong
+                    className={
+                      reason.points >= 0 ? "text-emerald-700" : "text-red-700"
+                    }
+                  >
+                    {reason.points > 0 ? "+" : ""}
+                    {reason.points}
+                  </strong>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500">
+                Análise ainda não realizada.
+              </p>
+            )}
+          </div>
+        </section>
+        <section className="mt-5">
+          <h3 className="font-semibold">Fontes</h3>
+          <p className="mt-2 text-sm text-gray-600">
+            {lead.sources.join(", ") || "Não informado"}
+          </p>
+        </section>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Button type="button" onClick={() => onImport(lead.id)}>
+            <Import size={16} />
+            Salvar e adicionar ao Comercial
+          </Button>
+          {lead.whatsapp ? (
+            <a
+              className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold"
+              href={`https://wa.me/${lead.whatsapp.replace(/\D/g, "")}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <MessageCircle size={16} />
+              WhatsApp
+            </a>
+          ) : null}
+          {lead.googleMapsUrl ? (
+            <a
+              className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold"
+              href={lead.googleMapsUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={16} />
+              Mapa
+            </a>
+          ) : null}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function RoutesPanel({
+  prospects,
+  routes,
+  selectedIds,
+  onCreateRoute,
+  onToggleVisited,
+}: {
+  prospects: LeadHunterProspect[];
+  routes: LeadHunterRoute[];
+  selectedIds: string[];
+  onCreateRoute: (input: {
+    name: string;
+    startAddress: string;
+    targetCity: string;
+    prospectIds: string[];
+    googleMapsUrl: string;
+    plannedFor?: string;
+  }) => void;
+  onToggleVisited: (routeId: string, prospectId: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [startAddress, setStartAddress] = useState("Curitiba, PR");
+  const [plannedFor, setPlannedFor] = useState("");
+  const selected = prospects.filter((lead) => selectedIds.includes(lead.id));
+  const submit = () => {
+    if (!selected.length) return;
+    const targetCity = selected[0]?.city || "";
+    onCreateRoute({
+      name: name.trim() || `Rota ${targetCity}`,
+      startAddress,
+      targetCity,
+      prospectIds: selected.map((lead) => lead.id),
+      googleMapsUrl: buildGoogleMapsRouteUrl(startAddress, selected),
+      plannedFor,
+    });
+    setName("");
+  };
+  return (
+    <div className="space-y-4">
+      <Panel title="Criar rota com os leads selecionados">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="text-xs font-medium text-gray-600">Modo<select className="field-input mt-1" value={mode} onChange={(event) => setMode(event.target.value as typeof mode)}><option>Rotação automática</option><option>Manual</option></select></label>
-          <label className="text-xs font-medium text-gray-600">Cidade<select className="field-input mt-1" value={cityId} onChange={(event) => setCityId(event.target.value)} disabled={mode === 'Rotação automática'}><option value="">Todas as cidades ativas</option>{cities.filter((city) => city.active).map((city) => <option key={city.id} value={city.id}>{city.name} · {city.distanceFromBaseKm} km</option>)}</select></label>
-          <label className="text-xs font-medium text-gray-600">Categoria<select className="field-input mt-1" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="">Distribuição automática</option>{categories.filter((category) => category.active).map((category) => <option key={category.id} value={category.id}>{category.name} · {category.priority}</option>)}</select></label>
-          <label className="text-xs font-medium text-gray-600">Raio: {radiusKm} km<input className="mt-3 w-full accent-[#c9a227]" type="range" min="20" max="100" step="5" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))} /></label>
-          <label className="text-xs font-medium text-gray-600">Score mínimo<select className="field-input mt-1" value={minimumScore} onChange={(event) => setMinimumScore(Number(event.target.value))}>{[0, 40, 60, 75, 90].map((score) => <option key={score} value={score}>{score}+</option>)}</select></label>
-          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm"><input type="checkbox" checked={onlyNew} onChange={(event) => setOnlyNew(event.target.checked)} /> Apenas inéditos</label>
-          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm"><input type="checkbox" checked={includeKnown} onChange={(event) => setIncludeKnown(event.target.checked)} /> Incluir antigos elegíveis</label>
-          <div className="flex gap-2"><Button className="flex-1" type="button" disabled={searching} onClick={runSearch}>{searching ? <RotateCw className="animate-spin" size={16} /> : <Search size={16} />}{searching ? 'Buscando dados reais...' : 'Buscar leads'}</Button><Button variant="secondary" type="button" disabled={searching} onClick={() => { setCityId(''); setCategoryId(''); setOnlyNew(true); setIncludeKnown(false); setMinimumScore(60) }}><Filter size={16} /></Button></div>
+          <label className="text-xs font-medium text-gray-600">
+            Nome da rota
+            <input
+              className="field-input mt-1"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Ex.: Rota Itaperuçu"
+            />
+          </label>
+          <label className="text-xs font-medium text-gray-600">
+            Ponto de partida
+            <input
+              className="field-input mt-1"
+              value={startAddress}
+              onChange={(event) => setStartAddress(event.target.value)}
+            />
+          </label>
+          <label className="text-xs font-medium text-gray-600">
+            Data planejada
+            <input
+              className="field-input mt-1"
+              type="date"
+              value={plannedFor}
+              onChange={(event) => setPlannedFor(event.target.value)}
+            />
+          </label>
+          <div className="flex items-end">
+            <Button
+              className="w-full"
+              type="button"
+              disabled={!selected.length}
+              onClick={submit}
+            >
+              <Navigation size={16} />
+              Criar rota ({selected.length})
+            </Button>
+          </div>
+        </div>
+        {!selected.length ? (
+          <p className="mt-3 text-sm text-gray-500">
+            Selecione leads na aba Resultados antes de criar uma rota.
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-gray-500">
+            A ordem inicial prioriza o score. Distância e tempo exatos dependem
+            do Google Routes.
+          </p>
+        )}
+      </Panel>
+      <Panel title="Rotas salvas">
+        {routes.length ? (
+          <div className="grid gap-3 xl:grid-cols-2">
+            {routes.map((route) => {
+              const routeLeads = route.prospectIds
+                .map((id) => prospects.find((lead) => lead.id === id))
+                .filter((lead): lead is LeadHunterProspect => Boolean(lead));
+              return (
+                <article
+                  key={route.id}
+                  className="rounded-xl border border-gray-200 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-950">
+                        {route.name}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        {route.targetCity} · {route.visitedProspectIds.length}/
+                        {route.prospectIds.length} visitados
+                      </p>
+                    </div>
+                    <StatusBadge>{route.status}</StatusBadge>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {routeLeads.map((lead, index) => (
+                      <label
+                        key={lead.id}
+                        className="flex items-center gap-3 rounded-lg bg-gray-50 p-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={route.visitedProspectIds.includes(lead.id)}
+                          onChange={() => onToggleVisited(route.id, lead.id)}
+                        />
+                        <span className="font-medium">
+                          {index + 1}. {lead.name}
+                        </span>
+                        <span className="ml-auto text-gray-500">
+                          {lead.score}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {route.googleMapsUrl ? (
+                    <a
+                      className="app-button app-button-secondary mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold"
+                      href={route.googleMapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Map size={16} />
+                      Abrir no Google Maps
+                    </a>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="py-12 text-center text-sm text-gray-500">
+            Nenhuma rota salva.
+          </p>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function DailyMissionPanel({
+  cities,
+  prospects,
+  routes,
+  onCreateRoute,
+}: {
+  cities: LeadHunterCity[];
+  prospects: LeadHunterProspect[];
+  routes: LeadHunterRoute[];
+  onCreateRoute: (input: {
+    name: string;
+    startAddress: string;
+    targetCity: string;
+    prospectIds: string[];
+    googleMapsUrl: string;
+    plannedFor?: string;
+  }) => void;
+}) {
+  const [preferredCity, setPreferredCity] = useState("");
+  const [startAddress, setStartAddress] = useState("Curitiba, PR");
+  const [maxVisits, setMaxVisits] = useState(8);
+  const recommendation = recommendDailyMission(
+    cities,
+    prospects,
+    routes,
+    preferredCity,
+  );
+  const missionLeads = recommendation?.leads.slice(0, maxVisits) || [];
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
+      <Panel title="Planejar a missão">
+        <div className="space-y-3">
+          <label className="text-xs font-medium text-gray-600">
+            Cidade para onde você vai
+            <input
+              className="field-input mt-1"
+              value={preferredCity}
+              onChange={(event) => setPreferredCity(event.target.value)}
+              placeholder="Ex.: Itaperuçu"
+            />
+          </label>
+          <label className="text-xs font-medium text-gray-600">
+            Ponto inicial
+            <input
+              className="field-input mt-1"
+              value={startAddress}
+              onChange={(event) => setStartAddress(event.target.value)}
+            />
+          </label>
+          <label className="text-xs font-medium text-gray-600">
+            Máximo de visitas
+            <input
+              className="field-input mt-1"
+              type="number"
+              min="1"
+              max="20"
+              value={maxVisits}
+              onChange={(event) => setMaxVisits(Number(event.target.value))}
+            />
+          </label>
+          <p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">
+            A recomendação considera leads inéditos, score, distância, buscas
+            anteriores e rotas recentes. Não exibe tempo ou custo sem dados
+            oficiais.
+          </p>
         </div>
       </Panel>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
-        ['Encontrados', filtered.length, Target], ['Inéditos', filtered.filter((item) => item.isNew).length, Sparkles], ['Reapresentados', filtered.filter((item) => !item.isNew).length, RotateCw], ['Cidades ativas', cities.filter((item) => item.active).length, Map],
-      ].map(([label, value, Icon]) => { const MetricIcon = Icon as typeof Target; return <div key={String(label)} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><MetricIcon className="text-[#a98512]" size={18} /><p className="mt-3 text-xs font-medium text-gray-500">{label as string}</p><p className="mt-1 text-2xl font-semibold text-gray-950">{value as number}</p></div> })}</div>
-      <Panel title="Resultados qualificados" action={selectedIds.length ? <Button type="button" onClick={() => onImport(selectedIds)}><Import size={16} />Importar {selectedIds.length}</Button> : undefined}>
-        {filtered.length ? <div className="grid gap-3 xl:grid-cols-2">{filtered.map((lead) => <article key={lead.id} className={`rounded-xl border p-4 ${selectedIds.includes(lead.id) ? 'border-amber-400 bg-amber-50/40' : 'border-gray-200'}`}><div className="flex items-start gap-3"><button className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${selectedIds.includes(lead.id) ? 'border-amber-500 bg-amber-400 text-black' : 'border-gray-300'}`} type="button" aria-label={`Selecionar ${lead.name}`} onClick={() => setSelectedIds((current) => current.includes(lead.id) ? current.filter((id) => id !== lead.id) : [...current, lead.id])}>{selectedIds.includes(lead.id) ? <Check size={15} /> : null}</button><button className="min-w-0 flex-1 text-left" type="button" onClick={() => setOpenedLeadId(lead.id)}><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap gap-2"><StatusBadge>{lead.isNew ? 'Novo' : 'Já encontrado'}</StatusBadge><StatusBadge>{lead.categoryName}</StatusBadge></div><h2 className="mt-2 font-semibold text-gray-950">{lead.name}</h2><p className="text-sm text-gray-500">{lead.city}{lead.neighborhood ? ` · ${lead.neighborhood}` : ''}</p></div><div className="text-right"><strong className="text-xl text-gray-950">{lead.score}</strong><p className="text-xs text-gray-500">{leadScoreLabel(lead.score)}</p></div></div><div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500"><span>{lead.sources.join(', ')}</span><span>·</span><span>Exibido {lead.displayCount}x</span></div></button></div></article>)}</div> : <div className="flex min-h-48 flex-col items-center justify-center text-center"><Crosshair className="text-gray-300" size={36} /><h3 className="mt-3 font-semibold text-gray-800">Nenhum resultado disponível</h3><p className="mt-1 max-w-lg text-sm text-gray-500">Execute uma busca com um provedor oficial configurado. O Lead Hunter não gera estabelecimentos fictícios.</p></div>}
+      <Panel title="Sugestão do dia">
+        {recommendation ? (
+          <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase text-amber-700">
+                  Cidade recomendada
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold">
+                  {recommendation.city.name}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {recommendation.city.distanceFromBaseKm} km da base · score
+                  médio {recommendation.averageScore.toFixed(0)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <StatusBadge>{recommendation.newCount} inéditos</StatusBadge>
+                <StatusBadge>{missionLeads.length} paradas</StatusBadge>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {missionLeads.map((lead, index) => (
+                <div
+                  key={lead.id}
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 p-3"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-xs font-semibold">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <strong className="block truncate text-sm">
+                      {lead.name}
+                    </strong>
+                    <span className="text-xs text-gray-500">
+                      {lead.categoryName} · score {lead.score}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button
+              className="mt-4"
+              type="button"
+              onClick={() =>
+                onCreateRoute({
+                  name: `Missão ${recommendation.city.name}`,
+                  startAddress,
+                  targetCity: recommendation.city.name,
+                  prospectIds: missionLeads.map((lead) => lead.id),
+                  googleMapsUrl: buildGoogleMapsRouteUrl(
+                    startAddress,
+                    missionLeads,
+                  ),
+                  plannedFor: new Date().toISOString().slice(0, 10),
+                })
+              }
+            >
+              <CalendarDays size={16} />
+              Criar rota da missão
+            </Button>
+          </div>
+        ) : (
+          <div className="flex min-h-56 flex-col items-center justify-center text-center">
+            <Flag className="text-gray-300" size={36} />
+            <h3 className="mt-3 font-semibold">
+              Ainda não há leads qualificados
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              A Missão do Dia será gerada quando existirem resultados reais no
+              Lead Hunter.
+            </p>
+          </div>
+        )}
       </Panel>
-      {openedLeadId ? <LeadDetail lead={prospects.find((lead) => lead.id === openedLeadId)} onClose={() => setOpenedLeadId('')} onImport={(id) => onImport([id])} /> : null}
-    </> : null}
-
-    {view === 'history' ? <Panel title="Histórico de buscas">{searches.length ? <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Data</th><th>Região</th><th>Encontrados</th><th>Inéditos</th><th>Erros</th></tr></thead><tbody>{searches.map((search) => <tr key={search.id}><td>{new Date(search.createdAt).toLocaleString('pt-BR')}</td><td>{search.cityIds.map((id) => cities.find((city) => city.id === id)?.name).filter(Boolean).join(', ') || 'Rotação automática'}</td><td>{search.totalFound}</td><td>{search.newCount}</td><td>{search.errorCount}</td></tr>)}</tbody></table></div> : <div className="flex min-h-40 flex-col items-center justify-center text-center"><Clock3 className="text-gray-300" size={32} /><p className="mt-2 text-sm text-gray-500">Nenhuma busca realizada.</p></div>}</Panel> : null}
-
-    {view === 'routes' ? <RoutesPanel prospects={prospects} routes={routes} selectedIds={selectedIds} onCreateRoute={onCreateRoute} onToggleVisited={onToggleVisited} /> : null}
-    {view === 'mission' ? <DailyMissionPanel cities={cities} prospects={prospects} routes={routes} onCreateRoute={onCreateRoute} /> : null}
-
-    {view === 'settings' ? <LeadHunterSettingsPanel cities={cities} categories={categories} settings={settings} onSave={onSaveSettings} onSaveCities={onSaveCities} onSaveCategories={onSaveCategories} /> : null}
-  </div>
+    </div>
+  );
 }
 
-function LeadDetail({ lead, onClose, onImport }: { lead?: LeadHunterProspect; onClose: () => void; onImport: (id: string) => void }) {
-  if (!lead) return null
-  return <div className="fixed inset-0 z-50 flex justify-end bg-black/35" role="dialog" aria-modal="true"><button className="absolute inset-0" type="button" aria-label="Fechar detalhes" onClick={onClose} /><aside className="relative h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-amber-700">Lead Hunter</p><h2 className="mt-1 text-xl font-semibold text-gray-950">{lead.name}</h2><p className="text-sm text-gray-500">{lead.categoryName} · {lead.city}</p></div><button className="rounded-lg p-2 hover:bg-gray-100" type="button" aria-label="Fechar" onClick={onClose}><X size={20} /></button></div><div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-xl bg-gray-50 p-3"><p className="text-xs text-gray-500">Lead Score</p><strong className="text-2xl">{lead.score}</strong><p className="text-xs text-gray-500">{leadScoreLabel(lead.score)}</p></div><div className="rounded-xl bg-gray-50 p-3"><p className="text-xs text-gray-500">Descoberta</p><strong className="text-sm">{new Date(lead.firstDiscoveredAt).toLocaleDateString('pt-BR')}</strong><p className="text-xs text-gray-500">Encontrado {lead.discoveryCount}x</p></div></div><section className="mt-5"><h3 className="font-semibold">Contato e localização</h3><dl className="mt-2 space-y-2 rounded-xl border border-gray-200 p-3 text-sm">{[['Telefone', lead.phone], ['WhatsApp', lead.whatsapp], ['E-mail', lead.email], ['Instagram', lead.instagram], ['Site', lead.website], ['Endereço', lead.address]].map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-gray-500">{label}</dt><dd className="break-all text-right font-medium">{value || 'Não encontrado'}</dd></div>)}</dl></section><section className="mt-5"><h3 className="font-semibold">Composição do score</h3><div className="mt-2 space-y-2">{lead.scoreReasons.length ? lead.scoreReasons.map((reason) => <div key={reason.id} className="flex justify-between gap-3 rounded-lg bg-gray-50 p-3 text-sm"><span>{reason.label}</span><strong className={reason.points >= 0 ? 'text-emerald-700' : 'text-red-700'}>{reason.points > 0 ? '+' : ''}{reason.points}</strong></div>) : <p className="text-sm text-gray-500">Análise ainda não realizada.</p>}</div></section><section className="mt-5"><h3 className="font-semibold">Fontes</h3><p className="mt-2 text-sm text-gray-600">{lead.sources.join(', ') || 'Não informado'}</p></section><div className="mt-6 flex flex-wrap gap-2"><Button type="button" onClick={() => onImport(lead.id)}><Import size={16} />Salvar e adicionar ao Comercial</Button>{lead.whatsapp ? <a className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold" href={`https://wa.me/${lead.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"><MessageCircle size={16} />WhatsApp</a> : null}{lead.googleMapsUrl ? <a className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold" href={lead.googleMapsUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />Mapa</a> : null}</div></aside></div>
-}
-
-function RoutesPanel({ prospects, routes, selectedIds, onCreateRoute, onToggleVisited }: { prospects: LeadHunterProspect[]; routes: LeadHunterRoute[]; selectedIds: string[]; onCreateRoute: (input: { name: string; startAddress: string; targetCity: string; prospectIds: string[]; googleMapsUrl: string; plannedFor?: string }) => void; onToggleVisited: (routeId: string, prospectId: string) => void }) {
-  const [name, setName] = useState('')
-  const [startAddress, setStartAddress] = useState('Curitiba, PR')
-  const [plannedFor, setPlannedFor] = useState('')
-  const selected = prospects.filter((lead) => selectedIds.includes(lead.id))
-  const submit = () => {
-    if (!selected.length) return
-    const targetCity = selected[0]?.city || ''
-    onCreateRoute({ name: name.trim() || `Rota ${targetCity}`, startAddress, targetCity, prospectIds: selected.map((lead) => lead.id), googleMapsUrl: buildGoogleMapsRouteUrl(startAddress, selected), plannedFor })
-    setName('')
-  }
-  return <div className="space-y-4"><Panel title="Criar rota com os leads selecionados"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><label className="text-xs font-medium text-gray-600">Nome da rota<input className="field-input mt-1" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Rota Itaperuçu" /></label><label className="text-xs font-medium text-gray-600">Ponto de partida<input className="field-input mt-1" value={startAddress} onChange={(event) => setStartAddress(event.target.value)} /></label><label className="text-xs font-medium text-gray-600">Data planejada<input className="field-input mt-1" type="date" value={plannedFor} onChange={(event) => setPlannedFor(event.target.value)} /></label><div className="flex items-end"><Button className="w-full" type="button" disabled={!selected.length} onClick={submit}><Navigation size={16} />Criar rota ({selected.length})</Button></div></div>{!selected.length ? <p className="mt-3 text-sm text-gray-500">Selecione leads na aba Resultados antes de criar uma rota.</p> : <p className="mt-3 text-sm text-gray-500">A ordem inicial prioriza o score. Distância e tempo exatos dependem do Google Routes.</p>}</Panel><Panel title="Rotas salvas">{routes.length ? <div className="grid gap-3 xl:grid-cols-2">{routes.map((route) => { const routeLeads = route.prospectIds.map((id) => prospects.find((lead) => lead.id === id)).filter((lead): lead is LeadHunterProspect => Boolean(lead)); return <article key={route.id} className="rounded-xl border border-gray-200 p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-gray-950">{route.name}</h3><p className="text-sm text-gray-500">{route.targetCity} · {route.visitedProspectIds.length}/{route.prospectIds.length} visitados</p></div><StatusBadge>{route.status}</StatusBadge></div><div className="mt-3 space-y-2">{routeLeads.map((lead, index) => <label key={lead.id} className="flex items-center gap-3 rounded-lg bg-gray-50 p-2 text-sm"><input type="checkbox" checked={route.visitedProspectIds.includes(lead.id)} onChange={() => onToggleVisited(route.id, lead.id)} /><span className="font-medium">{index + 1}. {lead.name}</span><span className="ml-auto text-gray-500">{lead.score}</span></label>)}</div>{route.googleMapsUrl ? <a className="app-button app-button-secondary mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold" href={route.googleMapsUrl} target="_blank" rel="noreferrer"><Map size={16} />Abrir no Google Maps</a> : null}</article> })}</div> : <p className="py-12 text-center text-sm text-gray-500">Nenhuma rota salva.</p>}</Panel></div>
-}
-
-function DailyMissionPanel({ cities, prospects, routes, onCreateRoute }: { cities: LeadHunterCity[]; prospects: LeadHunterProspect[]; routes: LeadHunterRoute[]; onCreateRoute: (input: { name: string; startAddress: string; targetCity: string; prospectIds: string[]; googleMapsUrl: string; plannedFor?: string }) => void }) {
-  const [preferredCity, setPreferredCity] = useState('')
-  const [startAddress, setStartAddress] = useState('Curitiba, PR')
-  const [maxVisits, setMaxVisits] = useState(8)
-  const recommendation = recommendDailyMission(cities, prospects, routes, preferredCity)
-  const missionLeads = recommendation?.leads.slice(0, maxVisits) || []
-  return <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]"><Panel title="Planejar a missão"><div className="space-y-3"><label className="text-xs font-medium text-gray-600">Cidade para onde você vai<input className="field-input mt-1" value={preferredCity} onChange={(event) => setPreferredCity(event.target.value)} placeholder="Ex.: Itaperuçu" /></label><label className="text-xs font-medium text-gray-600">Ponto inicial<input className="field-input mt-1" value={startAddress} onChange={(event) => setStartAddress(event.target.value)} /></label><label className="text-xs font-medium text-gray-600">Máximo de visitas<input className="field-input mt-1" type="number" min="1" max="20" value={maxVisits} onChange={(event) => setMaxVisits(Number(event.target.value))} /></label><p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">A recomendação considera leads inéditos, score, distância, buscas anteriores e rotas recentes. Não exibe tempo ou custo sem dados oficiais.</p></div></Panel><Panel title="Sugestão do dia">{recommendation ? <div><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-amber-700">Cidade recomendada</p><h2 className="mt-1 text-2xl font-semibold">{recommendation.city.name}</h2><p className="text-sm text-gray-500">{recommendation.city.distanceFromBaseKm} km da base · score médio {recommendation.averageScore.toFixed(0)}</p></div><div className="flex gap-2"><StatusBadge>{recommendation.newCount} inéditos</StatusBadge><StatusBadge>{missionLeads.length} paradas</StatusBadge></div></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{missionLeads.map((lead, index) => <div key={lead.id} className="flex items-center gap-3 rounded-xl border border-gray-200 p-3"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-xs font-semibold">{index + 1}</span><div className="min-w-0"><strong className="block truncate text-sm">{lead.name}</strong><span className="text-xs text-gray-500">{lead.categoryName} · score {lead.score}</span></div></div>)}</div><Button className="mt-4" type="button" onClick={() => onCreateRoute({ name: `Missão ${recommendation.city.name}`, startAddress, targetCity: recommendation.city.name, prospectIds: missionLeads.map((lead) => lead.id), googleMapsUrl: buildGoogleMapsRouteUrl(startAddress, missionLeads), plannedFor: new Date().toISOString().slice(0, 10) })}><CalendarDays size={16} />Criar rota da missão</Button></div> : <div className="flex min-h-56 flex-col items-center justify-center text-center"><Flag className="text-gray-300" size={36} /><h3 className="mt-3 font-semibold">Ainda não há leads qualificados</h3><p className="mt-1 text-sm text-gray-500">A Missão do Dia será gerada quando existirem resultados reais no Lead Hunter.</p></div>}</Panel></div>
-}
-
-function LeadHunterSettingsPanel({ cities, categories, settings, onSave, onSaveCities, onSaveCategories }: { cities: LeadHunterCity[]; categories: LeadHunterCategory[]; settings: LeadHunterSettings; onSave: (settings: LeadHunterSettings) => void; onSaveCities: (cities: LeadHunterCity[]) => void; onSaveCategories: (categories: LeadHunterCategory[]) => void }) {
-  const [draft, setDraft] = useState(settings)
-  const [newCity, setNewCity] = useState('')
-  const [newCategory, setNewCategory] = useState('')
-  const timestamp = () => new Date().toISOString()
-  return <div className="grid gap-4 xl:grid-cols-2"><Panel title="Limites e cooldown"><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-medium text-gray-600">Resultados por busca<input className="field-input mt-1" type="number" min="1" max="100" value={draft.maxResultsPerSearch} onChange={(event) => setDraft({ ...draft, maxResultsPerSearch: Number(event.target.value) })} /></label><label className="text-xs font-medium text-gray-600">Mínimo de inéditos (%)<input className="field-input mt-1" type="number" min="0" max="100" value={draft.minimumNewLeadPercentage} onChange={(event) => setDraft({ ...draft, minimumNewLeadPercentage: Number(event.target.value) })} /></label>{Object.entries(draft.cooldownDays).map(([key, value]) => <label key={key} className="text-xs font-medium text-gray-600">Cooldown {key}<input className="field-input mt-1" type="number" min="0" value={value} onChange={(event) => setDraft({ ...draft, cooldownDays: { ...draft.cooldownDays, [key]: Number(event.target.value) } })} /></label>)}<Button className="sm:col-span-2" type="button" onClick={() => onSave({ ...draft, updatedAt: timestamp() })}><Settings2 size={16} />Salvar configurações</Button></div></Panel><Panel title="Cidades"><form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); const name = newCity.trim(); if (!name) return; onSaveCities([...cities, { id: `lh-city-${Date.now()}`, name, state: 'PR', distanceFromBaseKm: 0, active: true, searchCount: 0, discoveredCount: 0, newLeadCount: 0, createdAt: timestamp(), updatedAt: timestamp() }]); setNewCity('') }}><input className="field-input" value={newCity} onChange={(event) => setNewCity(event.target.value)} placeholder="Adicionar cidade" /><Button type="submit">Adicionar</Button></form><div className="mt-3 max-h-80 space-y-2 overflow-y-auto">{cities.map((city) => <div key={city.id} className="grid grid-cols-[1fr_5rem_auto] items-center gap-2 rounded-lg border border-gray-200 p-2"><input className="min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium focus:border-gray-300" value={city.name} onChange={(event) => onSaveCities(cities.map((item) => item.id === city.id ? { ...item, name: event.target.value, updatedAt: timestamp() } : item))} /><input className="field-input min-h-8 px-2 py-1 text-sm" type="number" min="0" value={city.distanceFromBaseKm} onChange={(event) => onSaveCities(cities.map((item) => item.id === city.id ? { ...item, distanceFromBaseKm: Number(event.target.value), updatedAt: timestamp() } : item))} /><button className={`rounded-full px-2 py-1 text-xs font-semibold ${city.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`} type="button" onClick={() => onSaveCities(cities.map((item) => item.id === city.id ? { ...item, active: !item.active, updatedAt: timestamp() } : item))}>{city.active ? 'Ativa' : 'Inativa'}</button></div>)}</div></Panel><Panel title="Categorias"><form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); const name = newCategory.trim(); if (!name) return; onSaveCategories([...categories, { id: `lh-category-${Date.now()}`, name, group: 'Outras', priority: 'Média', weight: 5, active: true, searchTerms: [name], searchCount: 0, discoveredCount: 0, newLeadCount: 0, createdAt: timestamp(), updatedAt: timestamp() }]); setNewCategory('') }}><input className="field-input" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Adicionar categoria" /><Button type="submit">Adicionar</Button></form><div className="mt-3 max-h-80 space-y-2 overflow-y-auto">{categories.map((category) => <div key={category.id} className="grid grid-cols-[1fr_7rem_auto] items-center gap-2 rounded-lg border border-gray-200 p-2"><input className="min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium focus:border-gray-300" value={category.name} onChange={(event) => onSaveCategories(categories.map((item) => item.id === category.id ? { ...item, name: event.target.value, searchTerms: [event.target.value], updatedAt: timestamp() } : item))} /><select className="field-input min-h-8 px-2 py-1 text-xs" value={category.priority} onChange={(event) => onSaveCategories(categories.map((item) => item.id === category.id ? { ...item, priority: event.target.value as LeadHunterCategory['priority'], updatedAt: timestamp() } : item))}><option>Máxima</option><option>Alta</option><option>Média</option><option>Baixa</option></select><button className={`rounded-full px-2 py-1 text-xs font-semibold ${category.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`} type="button" onClick={() => onSaveCategories(categories.map((item) => item.id === category.id ? { ...item, active: !item.active, updatedAt: timestamp() } : item))}>{category.active ? 'Ativa' : 'Inativa'}</button></div>)}</div></Panel></div>
+function LeadHunterSettingsPanel({
+  cities,
+  categories,
+  settings,
+  onSave,
+  onSaveCities,
+  onSaveCategories,
+}: {
+  cities: LeadHunterCity[];
+  categories: LeadHunterCategory[];
+  settings: LeadHunterSettings;
+  onSave: (settings: LeadHunterSettings) => void;
+  onSaveCities: (cities: LeadHunterCity[]) => void;
+  onSaveCategories: (categories: LeadHunterCategory[]) => void;
+}) {
+  const [draft, setDraft] = useState(settings);
+  const [newCity, setNewCity] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const timestamp = () => new Date().toISOString();
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <Panel title="Limites e cooldown">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-medium text-gray-600">
+            Resultados por busca
+            <input
+              className="field-input mt-1"
+              type="number"
+              min="1"
+              max="100"
+              value={draft.maxResultsPerSearch}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  maxResultsPerSearch: Number(event.target.value),
+                })
+              }
+            />
+          </label>
+          <label className="text-xs font-medium text-gray-600">
+            Mínimo de inéditos (%)
+            <input
+              className="field-input mt-1"
+              type="number"
+              min="0"
+              max="100"
+              value={draft.minimumNewLeadPercentage}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  minimumNewLeadPercentage: Number(event.target.value),
+                })
+              }
+            />
+          </label>
+          {Object.entries(draft.cooldownDays).map(([key, value]) => (
+            <label key={key} className="text-xs font-medium text-gray-600">
+              Cooldown {key}
+              <input
+                className="field-input mt-1"
+                type="number"
+                min="0"
+                value={value}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    cooldownDays: {
+                      ...draft.cooldownDays,
+                      [key]: Number(event.target.value),
+                    },
+                  })
+                }
+              />
+            </label>
+          ))}
+          <Button
+            className="sm:col-span-2"
+            type="button"
+            onClick={() => onSave({ ...draft, updatedAt: timestamp() })}
+          >
+            <Settings2 size={16} />
+            Salvar configurações
+          </Button>
+        </div>
+      </Panel>
+      <Panel title="Cidades">
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const name = newCity.trim();
+            if (!name) return;
+            onSaveCities([
+              ...cities,
+              {
+                id: `lh-city-${Date.now()}`,
+                name,
+                state: "PR",
+                distanceFromBaseKm: 0,
+                active: true,
+                searchCount: 0,
+                discoveredCount: 0,
+                newLeadCount: 0,
+                createdAt: timestamp(),
+                updatedAt: timestamp(),
+              },
+            ]);
+            setNewCity("");
+          }}
+        >
+          <input
+            className="field-input"
+            value={newCity}
+            onChange={(event) => setNewCity(event.target.value)}
+            placeholder="Adicionar cidade"
+          />
+          <Button type="submit">Adicionar</Button>
+        </form>
+        <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+          {cities.map((city) => (
+            <div
+              key={city.id}
+              className="grid grid-cols-[1fr_5rem_auto] items-center gap-2 rounded-lg border border-gray-200 p-2"
+            >
+              <input
+                className="min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium focus:border-gray-300"
+                value={city.name}
+                onChange={(event) =>
+                  onSaveCities(
+                    cities.map((item) =>
+                      item.id === city.id
+                        ? {
+                            ...item,
+                            name: event.target.value,
+                            updatedAt: timestamp(),
+                          }
+                        : item,
+                    ),
+                  )
+                }
+              />
+              <input
+                className="field-input min-h-8 px-2 py-1 text-sm"
+                type="number"
+                min="0"
+                value={city.distanceFromBaseKm}
+                onChange={(event) =>
+                  onSaveCities(
+                    cities.map((item) =>
+                      item.id === city.id
+                        ? {
+                            ...item,
+                            distanceFromBaseKm: Number(event.target.value),
+                            updatedAt: timestamp(),
+                          }
+                        : item,
+                    ),
+                  )
+                }
+              />
+              <button
+                className={`rounded-full px-2 py-1 text-xs font-semibold ${city.active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}
+                type="button"
+                onClick={() =>
+                  onSaveCities(
+                    cities.map((item) =>
+                      item.id === city.id
+                        ? {
+                            ...item,
+                            active: !item.active,
+                            updatedAt: timestamp(),
+                          }
+                        : item,
+                    ),
+                  )
+                }
+              >
+                {city.active ? "Ativa" : "Inativa"}
+              </button>
+            </div>
+          ))}
+        </div>
+      </Panel>
+      <Panel title="Categorias">
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const name = newCategory.trim();
+            if (!name) return;
+            onSaveCategories([
+              ...categories,
+              {
+                id: `lh-category-${Date.now()}`,
+                name,
+                group: "Outras",
+                priority: "Média",
+                weight: 5,
+                active: true,
+                searchTerms: [name],
+                searchCount: 0,
+                discoveredCount: 0,
+                newLeadCount: 0,
+                createdAt: timestamp(),
+                updatedAt: timestamp(),
+              },
+            ]);
+            setNewCategory("");
+          }}
+        >
+          <input
+            className="field-input"
+            value={newCategory}
+            onChange={(event) => setNewCategory(event.target.value)}
+            placeholder="Adicionar categoria"
+          />
+          <Button type="submit">Adicionar</Button>
+        </form>
+        <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+          {categories.map((category) => (
+            <div
+              key={category.id}
+              className="grid grid-cols-[1fr_7rem_auto] items-center gap-2 rounded-lg border border-gray-200 p-2"
+            >
+              <input
+                className="min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium focus:border-gray-300"
+                value={category.name}
+                onChange={(event) =>
+                  onSaveCategories(
+                    categories.map((item) =>
+                      item.id === category.id
+                        ? {
+                            ...item,
+                            name: event.target.value,
+                            searchTerms: [event.target.value],
+                            updatedAt: timestamp(),
+                          }
+                        : item,
+                    ),
+                  )
+                }
+              />
+              <select
+                className="field-input min-h-8 px-2 py-1 text-xs"
+                value={category.priority}
+                onChange={(event) =>
+                  onSaveCategories(
+                    categories.map((item) =>
+                      item.id === category.id
+                        ? {
+                            ...item,
+                            priority: event.target
+                              .value as LeadHunterCategory["priority"],
+                            updatedAt: timestamp(),
+                          }
+                        : item,
+                    ),
+                  )
+                }
+              >
+                <option>Máxima</option>
+                <option>Alta</option>
+                <option>Média</option>
+                <option>Baixa</option>
+              </select>
+              <button
+                className={`rounded-full px-2 py-1 text-xs font-semibold ${category.active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}
+                type="button"
+                onClick={() =>
+                  onSaveCategories(
+                    categories.map((item) =>
+                      item.id === category.id
+                        ? {
+                            ...item,
+                            active: !item.active,
+                            updatedAt: timestamp(),
+                          }
+                        : item,
+                    ),
+                  )
+                }
+              >
+                {category.active ? "Ativa" : "Inativa"}
+              </button>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
 }

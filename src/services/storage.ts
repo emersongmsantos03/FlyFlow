@@ -188,7 +188,12 @@ export const normalizeAppState = (state: AppState): AppState => {
     clients: normalizedClients,
     companies: state.companies || [],
     leadHunterCities: state.leadHunterCities?.length ? state.leadHunterCities : createDefaultLeadHunterCities(),
-    leadHunterCategories: state.leadHunterCategories?.length ? state.leadHunterCategories : createDefaultLeadHunterCategories(),
+    leadHunterCategories: (() => {
+      const defaults = createDefaultLeadHunterCategories()
+      const current = state.leadHunterCategories || []
+      const currentIds = new Set(current.map((category) => category.id))
+      return [...current, ...defaults.filter((category) => !currentIds.has(category.id))]
+    })(),
     leadHunterProspects: state.leadHunterProspects || [],
     leadHunterSearches: state.leadHunterSearches || [],
     leadHunterRoutes: state.leadHunterRoutes || [],

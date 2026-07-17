@@ -25,6 +25,11 @@ const categoryDefinitions: Array<[string, string, LeadHunterCategory['priority']
   ['Pesqueiro', 'Rural', 'Alta', 7], ['Haras', 'Rural', 'Alta', 7], ['Clube', 'Eventos', 'Alta', 7], ['Condomínio', 'Imobiliário', 'Alta', 7],
   ['Loteamento', 'Imobiliário', 'Alta', 8], ['Construtora', 'Imobiliário', 'Alta', 8], ['Incorporadora', 'Imobiliário', 'Alta', 8],
   ['Imobiliária', 'Imobiliário', 'Alta', 8], ['Corretor de imóveis', 'Imobiliário', 'Alta', 7],
+  ['Concessionária de veículos', 'Comércio', 'Alta', 8], ['Shopping center', 'Comércio', 'Alta', 8],
+  ['Academia', 'Comércio', 'Média', 6], ['Clínica', 'Comércio', 'Média', 6], ['Escola particular', 'Comércio', 'Média', 6],
+  ['Indústria', 'Empresarial', 'Alta', 8], ['Centro logístico', 'Empresarial', 'Alta', 8], ['Galpão', 'Empresarial', 'Alta', 8],
+  ['Empresa de energia solar', 'Técnico', 'Máxima', 10], ['Condomínio residencial', 'Imobiliário', 'Alta', 8],
+  ['Fazenda', 'Rural', 'Máxima', 10], ['Sítio', 'Rural', 'Alta', 8], ['Cooperativa agrícola', 'Rural', 'Alta', 8],
 ]
 
 export const createDefaultLeadHunterCategories = (): LeadHunterCategory[] => categoryDefinitions.map(([name, group, priority, weight]) => ({
