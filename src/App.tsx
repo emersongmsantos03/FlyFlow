@@ -162,7 +162,7 @@ import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState 
 import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapProvider'
 import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
-import { leadContactPriority, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
+import { buildGoogleBusinessUrl, leadContactPriority, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   isFirebaseConfigured,
@@ -1691,6 +1691,16 @@ function App() {
       const importedLinks = new Map<string, { contactId: string; leadId: string }>()
       const normalizePhone = (value = '') => value.replace(/\D/g, '')
       for (const prospect of (current.leadHunterProspects || []).filter((item) => prospectIds.includes(item.id))) {
+        const completeProspect = {
+          ...prospect,
+          googleMapsUrl: prospect.googleMapsUrl || buildGoogleBusinessUrl(prospect),
+          sourceUrls: [...new Set([
+            ...(prospect.sourceUrls || []),
+            prospect.website,
+            prospect.instagram,
+            prospect.googleMapsUrl || buildGoogleBusinessUrl(prospect),
+          ].filter(Boolean))],
+        }
         const intelligenceNotes = [
           `Descoberto pelo Lead Hunter. Score inicial: ${prospect.score}.`,
           `Serviço recomendado: ${prospect.recommendedService || 'Vídeo institucional'}.`,
@@ -1742,7 +1752,7 @@ function App() {
           serviceInterest: prospect.recommendedService || 'Vídeo institucional' as const,
           pipelineStage: 'Entrada' as const, temperature: prospect.score >= 75 ? 'Quente' as const : prospect.score >= 60 ? 'Morno' as const : 'Frio' as const,
           estimatedValue: 0, probability: Math.min(prospect.score, 90), entryDate: dateInput(), notes: intelligenceNotes,
-          leadHunterData: { ...prospect },
+          leadHunterData: completeProspect,
           responsibleUserId: activeUserId, archived: false, tags: ['Lead Hunter', prospect.categoryName], createdAt: now, updatedAt: now,
         }
         if (!existingLead) {
@@ -1760,7 +1770,7 @@ function App() {
             serviceInterest: prospect.recommendedService || item.serviceInterest,
             probability: Math.max(item.probability, Math.min(prospect.score, 90)),
             notes: item.notes.includes('Análise da IA:') ? item.notes : [item.notes, intelligenceNotes].filter(Boolean).join('\n\n'),
-            leadHunterData: { ...prospect },
+            leadHunterData: completeProspect,
             tags: [...new Set([...item.tags, 'Lead Hunter', prospect.categoryName])],
             updatedAt: now,
           } : item)

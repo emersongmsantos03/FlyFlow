@@ -979,6 +979,27 @@ button:disabled {
   padding: 0.4rem;
 }
 
+.crm-lead-link {
+  display: inline-flex;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.crm-lead-link:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 48%, var(--border));
+  background: var(--surface-soft);
+  color: var(--text-primary);
+}
+
 @media (min-width: 1024px) {
   .crm-scroll-button {
     display: flex;
