@@ -388,11 +388,13 @@ interface BankTransferFormValues {
 }
 
 interface ReceiptFormValues {
-  receiptUrl: string
-  fileName: string
-  fileType: string
-  fileSize?: number
-  status: NonNullable<import('./types').ProjectFile['receiptStatus']>
+  receipts: Array<{
+    receiptUrl: string
+    fileName: string
+    fileType: string
+    fileSize?: number
+    status: NonNullable<import('./types').ProjectFile['receiptStatus']>
+  }>
 }
 
 type AppointmentFormDefaults = Partial<AppointmentFormValues>
@@ -2404,27 +2406,25 @@ function App() {
       (current) => {
         const payment = current.payments.find((item) => item.id === paymentId)
         const project = payment?.projectId ? current.projects.find((item) => item.id === payment.projectId) : undefined
-        const existingFile = current.files.find((file) => file.paymentId === paymentId)
+        const newReceipts = values.receipts.filter((receipt) => receipt.receiptUrl)
+        const latestReceipt = newReceipts.at(-1)
+        const createdFiles = payment ? newReceipts.map((receipt) => ({ id: createId('file'), projectId: payment.projectId, clientId: payment.clientId, leadId: payment.leadId ?? project?.leadId, quoteId: payment.quoteId ?? project?.quoteId, paymentId, fileName: receipt.fileName || `Comprovante - ${payment.paymentType}`, fileType: receipt.fileType || 'payment-receipt', fileSize: receipt.fileSize, fileUrl: receipt.receiptUrl, description: 'Comprovante financeiro vinculado.', clientVisible: false, uploadedBy: activeUserId, receiptStatus: receipt.status, verifiedAt: receipt.status === 'Conferido' ? now : undefined, verifiedBy: receipt.status === 'Conferido' ? activeUserId : undefined, createdAt: now })) : []
         return {
         ...current,
         payments: current.payments.map((paymentItem) =>
           paymentItem.id === paymentId
             ? {
                 ...paymentItem,
-                receiptUrl: values.receiptUrl || undefined,
+                receiptUrl: latestReceipt?.receiptUrl || paymentItem.receiptUrl,
                 updatedAt: now,
               }
             : paymentItem,
         ),
-        files: !payment || !values.receiptUrl
-          ? existingFile ? current.files.map((file) => file.id === existingFile.id ? { ...file, deletedAt: now, deletedBy: activeUserId, deletionReason: 'Comprovante removido pelo usuário.' } : file) : current.files
-          : existingFile
-            ? current.files.map((file) => file.id === existingFile.id ? { ...file, fileName: values.fileName || file.fileName, fileType: values.fileType || file.fileType, fileSize: values.fileSize, fileUrl: values.receiptUrl, receiptStatus: values.status, uploadedBy: activeUserId, verifiedAt: values.status === 'Conferido' ? now : undefined, verifiedBy: values.status === 'Conferido' ? activeUserId : undefined, deletedAt: undefined, deletedBy: undefined, deletionReason: undefined } : file)
-            : [{ id: createId('file'), projectId: payment.projectId, clientId: payment.clientId, leadId: payment.leadId ?? project?.leadId, quoteId: payment.quoteId ?? project?.quoteId, paymentId, fileName: values.fileName || `Comprovante - ${payment.paymentType}`, fileType: values.fileType || 'payment-receipt', fileSize: values.fileSize, fileUrl: values.receiptUrl, description: 'Comprovante financeiro vinculado.', clientVisible: false, uploadedBy: activeUserId, receiptStatus: values.status, verifiedAt: values.status === 'Conferido' ? now : undefined, verifiedBy: values.status === 'Conferido' ? activeUserId : undefined, createdAt: now }, ...current.files],
-        statusHistory: payment ? [createStatusHistory('Pagamento', paymentId, values.receiptUrl ? values.status === 'Conferido' ? 'Comprovante conferido' : 'Comprovante anexado' : 'Comprovante removido', values.receiptUrl ? `${values.fileName || 'Comprovante'} · ${values.status}.` : 'Comprovante removido logicamente.', activeUserId, payment.status, payment.status, now), ...current.statusHistory] : current.statusHistory,
+        files: [...createdFiles, ...current.files],
+        statusHistory: payment && newReceipts.length ? [createStatusHistory('Pagamento', paymentId, 'Comprovantes anexados', `${newReceipts.length} novo(s) comprovante(s).`, activeUserId, payment.status, payment.status, now), ...current.statusHistory] : current.statusHistory,
       }
       },
-      values.receiptUrl ? 'Comprovante salvo e integrado às áreas relacionadas.' : 'Comprovante removido logicamente.',
+      values.receipts.length ? `${values.receipts.length} comprovante(s) adicionado(s).` : 'Nenhum novo comprovante adicionado.',
     )
     setModal(null)
     setSelectedReceiptPaymentId('')
@@ -9271,26 +9271,19 @@ function ReceiptForm({
   onSubmit: (paymentId: string, values: ReceiptFormValues) => void
   onCancel: () => void
 }) {
-  const existingFile = state.files.find((file) => file.paymentId === payment.id && !file.deletedAt)
-  const [receiptUrl, setReceiptUrl] = useState(payment.receiptUrl || existingFile?.fileUrl || existingFile?.externalLink || '')
-  const [fileName, setFileName] = useState(existingFile?.fileName ?? '')
-  const [fileType, setFileType] = useState(existingFile?.fileType ?? 'payment-receipt')
-  const [fileSize, setFileSize] = useState(existingFile?.fileSize)
-  const [status, setStatus] = useState<ReceiptFormValues['status']>(existingFile?.receiptStatus ?? 'Anexado')
-  const [previewOpen, setPreviewOpen] = useState(false)
+  const existingFiles = state.files.filter((file) => file.paymentId === payment.id && !file.deletedAt)
+  const legacyReceipt = payment.receiptUrl && !existingFiles.some((file) => file.fileUrl === payment.receiptUrl || file.externalLink === payment.receiptUrl) ? { id: 'legacy', fileName: 'Comprovante anterior', fileUrl: payment.receiptUrl, receiptStatus: 'Anexado' as const } : undefined
+  const [receipts, setReceipts] = useState<ReceiptFormValues['receipts']>([])
+  const [linkUrl, setLinkUrl] = useState('')
+  const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null)
   const client = state.clients.find((item) => item.id === payment.clientId)
   const project = state.projects.find((item) => item.id === payment.projectId)
 
-  const attachFile = async (file?: File) => {
-    if (!file) return
+  const attachFiles = async (files: FileList | null) => {
+    if (!files) return
     const allowed = ['application/pdf', 'image/jpeg', 'image/png']
-    if (!allowed.includes(file.type)) return
-    const dataUrl = await readFileAsDataUrl(file)
-    setReceiptUrl(dataUrl)
-    setFileName(file.name)
-    setFileType(file.type)
-    setFileSize(file.size)
-    setStatus('Anexado')
+    const next = await Promise.all(Array.from(files).filter((file) => allowed.includes(file.type)).map(async (file) => ({ receiptUrl: await readFileAsDataUrl(file), fileName: file.name, fileType: file.type, fileSize: file.size, status: 'Anexado' as const })))
+    setReceipts((current) => [...current, ...next])
   }
 
   return (
@@ -9299,7 +9292,7 @@ function ReceiptForm({
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault()
-        onSubmit(payment.id, { receiptUrl, fileName, fileType, fileSize, status })
+        onSubmit(payment.id, { receipts })
       }}
     >
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -9315,36 +9308,26 @@ function ReceiptForm({
         <input
           className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[#d4af37] file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-black"
           type="file"
+          multiple
           accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-          onChange={(event) => void attachFile(event.currentTarget.files?.[0])}
+          onChange={(event) => void attachFiles(event.currentTarget.files)}
         />
       </InputField>
-      {fileName ? <p className="text-sm font-bold text-gray-500">{fileName}{fileSize ? ` · ${(fileSize / 1024).toFixed(1)} KB` : ''}</p> : null}
 
       <InputField label="Ou link do comprovante">
-        <input className="field-input" placeholder="https://..." value={receiptUrl.startsWith('data:') ? '' : receiptUrl} onChange={(event) => setReceiptUrl(event.target.value)} />
+        <div className="flex gap-2"><input className="field-input" placeholder="https://..." value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} /><Button variant="secondary" type="button" onClick={() => { if (!linkUrl.trim()) return; setReceipts((current) => [...current, { receiptUrl: linkUrl.trim(), fileName: `Comprovante ${existingFiles.length + current.length + 1}`, fileType: 'payment-receipt', status: 'Anexado' }]); setLinkUrl('') }}>Adicionar link</Button></div>
       </InputField>
 
-      {receiptUrl ? (
-        <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <div className="flex items-center justify-between gap-3"><strong className="text-sm text-gray-950">Status do comprovante</strong><StatusBadge>{status}</StatusBadge></div>
-          <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" type="button" onClick={() => setPreviewOpen(true)}><Eye size={16} /> Visualizar comprovante</Button>
-          <Button type="button" onClick={() => downloadUrl(receiptUrl, fileName || 'comprovante')}><Download size={16} /> Baixar comprovante</Button>
-          <Button variant="secondary" type="button" onClick={() => setStatus('Conferido')}>Marcar conferido</Button>
-          <Button variant="secondary" type="button" onClick={() => setStatus('Recusado')}>Recusar</Button>
-          <Button variant="secondary" type="button" onClick={() => setStatus('Substituir')}>Solicitar substituição</Button>
-          <Button variant="ghost" type="button" onClick={() => { setReceiptUrl(''); setFileName(''); setFileSize(undefined) }}>Excluir</Button>
-          </div>
-        </div>
-      ) : null}
+      <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3"><div className="flex items-center justify-between"><strong className="text-sm text-gray-950">Comprovantes existentes</strong><StatusBadge>{existingFiles.length + (legacyReceipt ? 1 : 0)}</StatusBadge></div>{[...existingFiles, ...(legacyReceipt ? [legacyReceipt] : [])].map((file) => { const url = file.fileUrl || ('externalLink' in file ? file.externalLink : '') || ''; return <div key={file.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white p-2"><div><strong className="text-sm text-gray-800">{file.fileName}</strong><span className="ml-2 text-xs text-gray-500">{file.receiptStatus || 'Anexado'}</span></div><div className="flex gap-1"><Button className="min-h-8 px-2 py-1 text-xs" variant="secondary" type="button" onClick={() => setPreview({ url, fileName: file.fileName })}><Eye size={13} /> Ver</Button><Button className="min-h-8 px-2 py-1 text-xs" variant="secondary" type="button" onClick={() => downloadUrl(url, file.fileName)}><Download size={13} /> Baixar</Button></div></div> })}{!existingFiles.length && !legacyReceipt ? <p className="text-sm text-gray-500">Nenhum comprovante anexado ainda.</p> : null}</div>
+
+      {receipts.length ? <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3"><div className="flex items-center justify-between"><strong className="text-sm text-amber-900">Novos comprovantes</strong><StatusBadge>{receipts.length}</StatusBadge></div>{receipts.map((receipt, index) => <div key={`${receipt.fileName}-${index}`} className="flex items-center justify-between gap-2 rounded-lg bg-white p-2 text-sm"><span className="truncate font-bold text-gray-700">{receipt.fileName}{receipt.fileSize ? ` · ${(receipt.fileSize / 1024).toFixed(1)} KB` : ''}</span><Button className="min-h-8 px-2 py-1 text-xs" variant="ghost" type="button" onClick={() => setReceipts((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</Button></div>)}</div> : null}
 
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit">Salvar comprovante</Button>
+        <Button disabled={!receipts.length} type="submit">Adicionar {receipts.length || ''} comprovante(s)</Button>
       </div>
     </form>
-    {previewOpen && receiptUrl ? <ReceiptPreviewModal url={receiptUrl} fileName={fileName || 'Comprovante'} onClose={() => setPreviewOpen(false)} /> : null}
+    {preview ? <ReceiptPreviewModal url={preview.url} fileName={preview.fileName} onClose={() => setPreview(null)} /> : null}
     </>
   )
 }
