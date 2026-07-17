@@ -4671,6 +4671,17 @@ function App() {
                   item.group !== 'Eventos' &&
                   /hotel|pousada|restaurante|imobiliária|vinícola|resort|haras|pesqueiro|concessionária|shopping|academia|clínica|escola|indústria|logístico|galpão|energia solar|condomínio|fazenda|sítio|cooperativa|construtora|incorporadora|loteamento/i.test(item.name),
                 )
+                const categoryCoveragePriority = (name: string) => {
+                  const normalized = normalizeLeadText(name)
+                  if (/^hotel$/.test(normalized)) return 100
+                  if (/restaurante/.test(normalized)) return 95
+                  if (/imobiliaria/.test(normalized)) return 90
+                  if (/construtora|incorporadora|loteamento/.test(normalized)) return 85
+                  if (/concessionaria|shopping|academia|clinica|escola/.test(normalized)) return 80
+                  if (/industria|logistic|galpao|energia solar/.test(normalized)) return 75
+                  if (/pousada|resort|vinicola|condominio/.test(normalized)) return 70
+                  return 50
+                }
                 const candidateCities = filters.cityIds.length
                   ? activeCities.filter((item) => filters.cityIds.includes(item.id)).slice(0, 1)
                   : [...activeCities].sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm).slice(0, 3)
@@ -4678,7 +4689,7 @@ function App() {
                 const selectedCategories = filters.categoryIds.length
                   ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
                   : [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
-                    .sort((a, b) => b.weight - a.weight || a.searchCount - b.searchCount)
+                    .sort((a, b) => (categoryCoveragePriority(b.name) - b.searchCount * 5) - (categoryCoveragePriority(a.name) - a.searchCount * 5))
                     .slice(0, 3)
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
@@ -4689,9 +4700,12 @@ function App() {
                   const resultsPerSearch = Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 10)
                   let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
                   for (const fallbackCity of candidateCities.slice(1)) {
-                    if (result.leads.length) break
-                    city = fallbackCity
-                    result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
+                    if (result.leads.length >= 10) break
+                    const fallbackResult = await provider.search({ cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
+                    if (fallbackResult.leads.length > result.leads.length) {
+                      city = fallbackCity
+                      result = fallbackResult
+                    }
                   }
                   window.clearTimeout(timeout)
                   let tokenUsage = 0

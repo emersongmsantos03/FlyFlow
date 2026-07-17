@@ -113,7 +113,7 @@ export function LeadHunterPage({
   const [categoryId, setCategoryId] = useState("");
   const [radiusKm, setRadiusKm] = useState(settings.radiusKm);
   const [minimumScore, setMinimumScore] = useState(60);
-  const [onlyNew, setOnlyNew] = useState(true);
+  const [onlyNew, setOnlyNew] = useState(false);
   const [includeKnown, setIncludeKnown] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [openedLeadId, setOpenedLeadId] = useState("");
@@ -360,7 +360,7 @@ export function LeadHunterPage({
                   onClick={() => {
                     setCityId("");
                     setCategoryId("");
-                    setOnlyNew(true);
+                    setOnlyNew(false);
                     setIncludeKnown(false);
                     setMinimumScore(60);
                   }}
