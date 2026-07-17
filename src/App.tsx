@@ -1712,19 +1712,57 @@ function App() {
           notes: intelligenceNotes,
           tags: ['Lead Hunter', prospect.categoryName], archived: false, createdAt: now, updatedAt: now,
         }
-        if (!existingContact) clients = [contact, ...clients]
-        const existingLead = leads.find((lead) => lead.contactId === contact.id)
+        if (!existingContact) {
+          clients = [contact, ...clients]
+        } else {
+          clients = clients.map((item) => item.id === existingContact.id ? {
+            ...item,
+            fullName: item.fullName || prospect.contactName || prospect.name,
+            phone: item.phone || prospect.phone,
+            whatsapp: item.whatsapp || prospect.whatsapp,
+            email: item.email || prospect.email,
+            instagram: item.instagram || prospect.instagram,
+            neighborhood: item.neighborhood || prospect.neighborhood,
+            address: item.address || prospect.address,
+            city: item.city || prospect.city,
+            notes: item.notes.includes('Lead Hunter') ? item.notes : [item.notes, intelligenceNotes].filter(Boolean).join('\n\n'),
+            tags: [...new Set([...item.tags, 'Lead Hunter', prospect.categoryName])],
+            updatedAt: now,
+          } : item)
+        }
+        const resolvedContact = clients.find((item) => item.id === contact.id) || contact
+        const existingLead = leads.find((lead) => lead.contactId === resolvedContact.id)
         const lead = existingLead || {
-          id: createId('lead'), contactId: contact.id, fullName: contact.fullName, companyName: contact.companyName,
-          phone: contact.phone, whatsapp: contact.whatsapp, email: contact.email, instagram: contact.instagram, city: contact.city,
-          neighborhood: contact.neighborhood || '', address: contact.address, source: 'Lead Hunter' as const,
+          id: createId('lead'), contactId: resolvedContact.id, fullName: resolvedContact.fullName, companyName: resolvedContact.companyName,
+          phone: resolvedContact.phone, whatsapp: resolvedContact.whatsapp, email: resolvedContact.email, instagram: resolvedContact.instagram, city: resolvedContact.city,
+          neighborhood: resolvedContact.neighborhood || '', address: resolvedContact.address, source: 'Lead Hunter' as const,
           serviceInterest: prospect.recommendedService || 'Vídeo institucional' as const,
           pipelineStage: 'Entrada' as const, temperature: prospect.score >= 75 ? 'Quente' as const : prospect.score >= 60 ? 'Morno' as const : 'Frio' as const,
           estimatedValue: 0, probability: Math.min(prospect.score, 90), entryDate: dateInput(), notes: intelligenceNotes,
+          leadHunterData: { ...prospect },
           responsibleUserId: activeUserId, archived: false, tags: ['Lead Hunter', prospect.categoryName], createdAt: now, updatedAt: now,
         }
-        if (!existingLead) leads = [lead, ...leads]
-        importedLinks.set(prospect.id, { contactId: contact.id, leadId: lead.id })
+        if (!existingLead) {
+          leads = [lead, ...leads]
+        } else {
+          leads = leads.map((item) => item.id === existingLead.id ? {
+            ...item,
+            phone: item.phone || prospect.phone,
+            whatsapp: item.whatsapp || prospect.whatsapp,
+            email: item.email || prospect.email,
+            instagram: item.instagram || prospect.instagram,
+            city: item.city || prospect.city,
+            neighborhood: item.neighborhood || prospect.neighborhood,
+            address: item.address || prospect.address,
+            serviceInterest: prospect.recommendedService || item.serviceInterest,
+            probability: Math.max(item.probability, Math.min(prospect.score, 90)),
+            notes: item.notes.includes('Análise da IA:') ? item.notes : [item.notes, intelligenceNotes].filter(Boolean).join('\n\n'),
+            leadHunterData: { ...prospect },
+            tags: [...new Set([...item.tags, 'Lead Hunter', prospect.categoryName])],
+            updatedAt: now,
+          } : item)
+        }
+        importedLinks.set(prospect.id, { contactId: resolvedContact.id, leadId: lead.id })
       }
       return {
         ...current, clients, leads,

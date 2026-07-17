@@ -10,15 +10,19 @@ import {
   CircleDollarSign,
   Clock3,
   Download,
+  ExternalLink,
   Eye,
   FileText,
+  Globe2,
   LayoutGrid,
   Mail,
+  MapPin,
   MessageCircle,
   Paperclip,
   Phone,
   Plus,
   Search,
+  Sparkles,
   SlidersHorizontal,
   Table2,
   Trash2,
@@ -27,6 +31,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
+import { buildInstagramUrl } from '../../services/leadHunter/LeadOpportunityService'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
@@ -576,6 +581,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   const tasks = state.tasks.filter((task) => task.leadId === lead.id && task.status !== 'Cancelada').sort((a, b) => a.dueAt.localeCompare(b.dueAt))
   const quoteForDeposit = quotes.find((quote) => ['Aprovada', 'Aguardando entrada', 'Entrada recebida'].includes(quote.status))
   const receiptTarget = payments.find((payment) => !payment.receiptUrl && !files.some((file) => file.paymentId === payment.id)) ?? payments[0]
+  const leadHunterData = lead.leadHunterData || state.leadHunterProspects?.find((prospect) => prospect.leadId === lead.id)
   const timeline = [
     ...state.leadInteractions.filter((item) => item.leadId === lead.id).map((item) => ({ id: item.id, at: item.interactionDate, title: item.interactionType, description: item.description })),
     ...state.statusHistory.filter((item) => (item.entityType === 'Contato' && item.entityId === lead.id) || quotes.some((quote) => item.entityType === 'Proposta' && item.entityId === quote.id) || projects.some((project) => item.entityType === 'Projeto' && item.entityId === project.id)).map((item) => ({ id: item.id, at: item.createdAt, title: item.action, description: item.details })),
@@ -603,6 +609,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
       <div className="space-y-4 p-4">
         {tab === 'overview' ? <>
           <div className="grid grid-cols-2 gap-2">{[['Valor potencial', formatCurrency(lead.estimatedValue)], ['Próxima ação', lead.nextContactAt ? formatDateTime(lead.nextContactAt) : 'Não definida'], ['Serviço', lead.serviceInterest], ['Origem', lead.source]].map(([label, value]) => <div key={label} className="rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">{label}</p><p className="mt-1 text-sm font-black text-gray-950">{value}</p></div>)}</div>
+          {leadHunterData ? <LeadHunterIntelligence data={leadHunterData} /> : null}
           <section><h3 className="text-sm font-black text-gray-950">Ações principais</h3><div className="mt-2 grid gap-2 sm:grid-cols-2"><Button type="button" onClick={() => onRegisterInteraction(lead, 'Contato realizado')}><MessageCircle size={16} /> Registrar atividade</Button><Button variant="secondary" type="button" onClick={() => onCreateTask(lead)}><CheckCircle2 size={16} /> Criar tarefa</Button><Button variant="secondary" type="button" onClick={() => onScheduleReturn(lead)}><CalendarDays size={16} /> Agendar retorno</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal('', lead.id)}><FileText size={16} /> Gerar proposta</Button>{quoteForDeposit ? <Button variant="secondary" type="button" onClick={() => onRegisterDeposit(quoteForDeposit)}><CircleDollarSign size={16} /> Registrar entrada</Button> : null}{receiptTarget ? <Button variant="secondary" type="button" onClick={() => receiptTarget.receiptUrl ? setPreviewFile({ fileName: `${receiptTarget.paymentType} comprovante`, url: receiptTarget.receiptUrl, mode: getFilePreviewMode(receiptTarget.receiptUrl) }) : onAttachReceipt(receiptTarget)}><Paperclip size={16} /> {receiptTarget.receiptUrl ? 'Ver comprovante' : 'Anexar comprovante'}</Button> : null}{lead.pipelineStage === 'Serviço confirmado' && !currentProject(state, lead.id) ? <Button className="sm:col-span-2" type="button" onClick={() => onCreateProject(lead)}><Briefcase size={16} /> Criar projeto</Button> : null}</div></section>
           <section><h3 className="text-sm font-black text-gray-950">Contato</h3><dl className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-gray-500">Telefone</dt><dd className="font-bold text-gray-950">{lead.whatsapp || lead.phone || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">E-mail</dt><dd className="break-all text-right font-bold text-gray-950">{lead.email || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">Local</dt><dd className="text-right font-bold text-gray-950">{lead.city || 'Não informado'}</dd></div></dl></section>
         </> : null}
@@ -720,6 +727,36 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
       document.body,
     ) : null}
   </>
+}
+
+function LeadHunterIntelligence({ data }: { data: NonNullable<Lead['leadHunterData']> }) {
+  return <details className="group overflow-hidden rounded-xl border border-amber-200 bg-amber-50">
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3">
+      <span className="flex items-center gap-2 text-sm font-black text-amber-950"><Sparkles size={17} /> Inteligência do Lead Hunter</span>
+      <span className="text-xs font-bold text-amber-800">Score {data.score} · clique para abrir</span>
+    </summary>
+    <div className="space-y-4 border-t border-amber-200 bg-white p-3 text-sm">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">Categoria</p><strong className="mt-1 block">{data.categoryName}</strong></div>
+        <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">Serviço indicado</p><strong className="mt-1 block">{data.recommendedService || 'Não definido'}</strong></div>
+      </div>
+      {data.aiSummary || data.aiApproach ? <div className="space-y-3 rounded-lg border border-amber-100 bg-amber-50/60 p-3">
+        {data.aiSummary ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Análise da IA</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiSummary}</p></div> : null}
+        {data.aiApproach ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Abordagem sugerida</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiApproach}</p></div> : null}
+      </div> : null}
+      <div className="flex flex-wrap gap-2">
+        {data.whatsapp ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" href={whatsappLink(data.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={14} /> WhatsApp</a> : null}
+        {data.instagram ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-fuchsia-200 px-3 text-xs font-bold text-fuchsia-700" href={buildInstagramUrl(data.instagram)} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Instagram</a> : null}
+        {data.website ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={data.website} target="_blank" rel="noreferrer"><Globe2 size={14} /> Site</a> : null}
+        {data.googleMapsUrl ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={data.googleMapsUrl} target="_blank" rel="noreferrer"><MapPin size={14} /> Google Maps</a> : null}
+      </div>
+      <dl className="space-y-2 rounded-lg border border-gray-200 p-3">
+        {[['Responsável', data.contactName], ['Telefone', data.phone], ['WhatsApp', data.whatsapp], ['E-mail', data.email], ['Instagram', data.instagram], ['Endereço', data.address], ['Avaliação', data.googleRating ? `${data.googleRating} (${data.googleReviewCount || 0} avaliações)` : 'Não encontrada'], ['Encontrado em', new Date(data.firstDiscoveredAt).toLocaleDateString('pt-BR')]].map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-gray-500">{label}</dt><dd className="break-all text-right font-bold text-gray-900">{value || 'Não informado'}</dd></div>)}
+      </dl>
+      {data.scoreReasons.length ? <div><h4 className="text-xs font-black uppercase text-gray-500">Motivos do score</h4><div className="mt-2 space-y-2">{data.scoreReasons.map((reason) => <div key={reason.id} className="rounded-lg bg-gray-50 p-2"><div className="flex justify-between gap-3"><span>{reason.label}</span><strong className={reason.points >= 0 ? 'text-emerald-700' : 'text-red-700'}>{reason.points > 0 ? '+' : ''}{reason.points}</strong></div>{reason.evidence ? <p className="mt-1 text-xs text-gray-500">{reason.evidence}</p> : null}</div>)}</div></div> : null}
+      <div><h4 className="text-xs font-black uppercase text-gray-500">Fontes verificáveis</h4><div className="mt-2 space-y-2">{data.sourceUrls.length ? data.sourceUrls.map((url, index) => <a key={`${url}-${index}`} className="flex items-center gap-2 break-all rounded-lg border border-gray-200 p-2 text-xs font-bold text-blue-700 hover:bg-blue-50" href={url} target="_blank" rel="noreferrer"><ExternalLink className="shrink-0" size={14} /> {url}</a>) : <p className="text-xs text-gray-500">{data.sources.join(', ') || 'Nenhuma fonte registrada.'}</p>}</div></div>
+    </div>
+  </details>
 }
 
 function DrawerList({ children, empty }: { children: ReactNode; empty: string }) {

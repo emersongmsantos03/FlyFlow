@@ -339,6 +339,7 @@ export interface Lead {
   nextContactAt?: string
   lossReason?: string
   notes: string
+  leadHunterData?: LeadHunterProspect
   responsibleUserId: string
   archived: boolean
   archivedAt?: string
