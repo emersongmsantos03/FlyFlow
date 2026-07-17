@@ -425,14 +425,6 @@ export function LeadHunterPage({
           </div>
           <Panel
             title="Pipeline de oportunidades"
-            action={
-              selectedIds.length ? (
-                <Button type="button" onClick={() => onImport(selectedIds)}>
-                  <Import size={16} />
-                  Importar {selectedIds.length}
-                </Button>
-              ) : undefined
-            }
           >
             <div className="lead-hunter-toolbar mb-3 grid gap-2 rounded-xl border p-2 md:grid-cols-[minmax(0,1fr)_11rem_11rem]">
               <input
@@ -463,9 +455,9 @@ export function LeadHunterPage({
               ))}
             </div>
             {filtered.length ? (
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-gray-50/70 p-2">
                 <button
-                  className="text-xs font-semibold text-gray-600 hover:text-gray-950"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-gray-700 transition hover:bg-white hover:text-gray-950"
                   type="button"
                   onClick={() => {
                     const visibleIds = filtered.map((lead) => lead.id);
@@ -473,9 +465,50 @@ export function LeadHunterPage({
                     setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : [...new Set([...selectedIds, ...visibleIds])]);
                   }}
                 >
-                  {filtered.every((lead) => selectedIds.includes(lead.id)) ? "Desmarcar visíveis" : "Selecionar visíveis"}
+                  <span className={`flex h-5 w-5 items-center justify-center rounded border ${filtered.every((lead) => selectedIds.includes(lead.id)) ? "border-[#c89b20] bg-[#e4bd45] text-[#17140b]" : "border-gray-300 bg-white"}`}>
+                    {filtered.every((lead) => selectedIds.includes(lead.id)) ? <Check size={13} /> : null}
+                  </span>
+                  {filtered.every((lead) => selectedIds.includes(lead.id)) ? "Desmarcar todos" : "Marcar todos"}
                 </button>
-                <span className="text-xs text-gray-500">{filtered.length} oportunidade(s) ordenada(s) por potencial</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="mr-1 text-xs text-gray-500">
+                    {selectedIds.length ? `${selectedIds.length} selecionado(s)` : `${filtered.length} oportunidades`}
+                  </span>
+                  <button
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    type="button"
+                    disabled={!selectedIds.length}
+                    onClick={() => {
+                      onImport(selectedIds);
+                      setSelectedIds([]);
+                    }}
+                  >
+                    <Check size={15} /> Aceitar selecionados
+                  </button>
+                  <button
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    type="button"
+                    disabled={!selectedIds.length}
+                    onClick={() => {
+                      if (!window.confirm(`Rejeitar ${selectedIds.length} lead(s) selecionado(s) e impedir que apareçam novamente?`)) return;
+                      selectedIds.forEach(onReject);
+                      setSelectedIds([]);
+                    }}
+                  >
+                    <X size={15} /> Rejeitar selecionados
+                  </button>
+                  <button
+                    className="inline-flex h-9 items-center rounded-lg px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm(`Rejeitar todos os ${filtered.length} leads visíveis e impedir que apareçam novamente?`)) return;
+                      filtered.forEach((lead) => onReject(lead.id));
+                      setSelectedIds([]);
+                    }}
+                  >
+                    Rejeitar todos
+                  </button>
+                </div>
               </div>
             ) : null}
             {filtered.length ? (
@@ -483,11 +516,11 @@ export function LeadHunterPage({
                 {filtered.map((lead) => (
                   <article
                     key={lead.id}
-                    className={`group rounded-xl border p-3 transition hover:border-amber-300 ${selectedIds.includes(lead.id) ? "border-amber-400 bg-amber-50/30 ring-1 ring-amber-200" : "border-gray-200 bg-white"}`}
+                    className={`group rounded-xl border p-3 transition hover:border-[#d6bd72] ${selectedIds.includes(lead.id) ? "border-[#d2aa35] bg-[#fffbef] ring-1 ring-[#ead999]" : "border-gray-200 bg-white"}`}
                   >
                     <div className="flex items-start gap-2.5">
                       <button
-                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selectedIds.includes(lead.id) ? "border-amber-500 bg-amber-400 text-black" : "border-gray-300"}`}
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selectedIds.includes(lead.id) ? "border-[#c89b20] bg-[#e4bd45] text-[#17140b]" : "border-gray-300"}`}
                         type="button"
                         aria-label={`Selecionar ${lead.name}`}
                         onClick={() =>
@@ -556,7 +589,31 @@ export function LeadHunterPage({
                         <Map size={14} /> Google Business
                       </a>
                       {!lead.whatsapp && !lead.instagram ? <span className="text-[11px] text-gray-400">Contato nos detalhes</span> : null}
-                      <button className="ml-auto inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-semibold text-[#8a6d08] hover:bg-amber-50" type="button" onClick={() => setOpenedLeadId(lead.id)}>Detalhes →</button>
+                      <div className="ml-auto flex items-center gap-1">
+                        <button
+                          className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                          type="button"
+                          title="Aceitar e enviar ao Comercial"
+                          onClick={() => {
+                            onImport([lead.id]);
+                            setSelectedIds((current) => current.filter((id) => id !== lead.id));
+                          }}
+                        >
+                          <Check size={14} /> Aceitar
+                        </button>
+                        <button
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50"
+                          type="button"
+                          title="Rejeitar lead"
+                          aria-label={`Rejeitar ${lead.name}`}
+                          onClick={() => {
+                            if (window.confirm(`Rejeitar ${lead.name} e impedir que apareça novamente?`)) onReject(lead.id);
+                          }}
+                        >
+                          <X size={15} />
+                        </button>
+                        <button className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-[#8a6d08] hover:bg-amber-50" type="button" onClick={() => setOpenedLeadId(lead.id)}>Detalhes →</button>
+                      </div>
                     </div>
                   </article>
                 ))}
