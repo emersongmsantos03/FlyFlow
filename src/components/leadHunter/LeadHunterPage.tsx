@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowUpDown,
+  AtSign,
   Bot,
   CalendarDays,
   Check,
@@ -38,6 +39,7 @@ import type {
 import { Button, Panel, StatusBadge } from "../ui";
 import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
 import {
+  buildInstagramUrl,
   buildLeadWhatsAppUrl,
   leadContactPriority,
   leadOpportunitySummary,
@@ -512,6 +514,9 @@ export function LeadHunterPage({
                               {lead.whatsapp ? (
                                 <StatusBadge>WhatsApp disponível</StatusBadge>
                               ) : null}
+                              {lead.instagram ? (
+                                <StatusBadge>Instagram disponível</StatusBadge>
+                              ) : null}
                             </div>
                             <h2 className="mt-2 font-semibold text-gray-950">
                               {lead.name}
@@ -540,7 +545,7 @@ export function LeadHunterPage({
                           </div>
                         ) : null}
                         <p className="mt-2 text-xs leading-relaxed text-gray-500">
-                          {leadOpportunitySummary(lead)}
+                          {lead.aiSummary || leadOpportunitySummary(lead)}
                         </p>
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100">
                           <div className={`h-full rounded-full ${lead.score >= 75 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${lead.score}%` }} />
@@ -556,6 +561,11 @@ export function LeadHunterPage({
                       {lead.whatsapp ? (
                         <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700" href={buildLeadWhatsAppUrl(lead)} target="_blank" rel="noreferrer" onClick={() => { if (!lead.leadId) onImport([lead.id]); }}>
                           <MessageCircle size={15} /> WhatsApp
+                        </a>
+                      ) : null}
+                      {lead.instagram ? (
+                        <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-fuchsia-600 to-orange-500 px-3 text-xs font-semibold text-white hover:opacity-90" href={buildInstagramUrl(lead.instagram)} target="_blank" rel="noreferrer">
+                          <AtSign size={15} /> Instagram
                         </a>
                       ) : null}
                       {lead.phone ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={`tel:${lead.phone}`} title="Ligar"><Phone size={15} /></a> : null}
@@ -777,6 +787,24 @@ function LeadDetail({
           </dl>
         </section>
         <section className="mt-5">
+          <details className="rounded-xl border border-amber-200 bg-amber-50 p-3" open={Boolean(lead.aiSummary || lead.aiApproach)}>
+            <summary className="cursor-pointer font-semibold text-amber-900">
+              Comentários e abordagem sugerida
+            </summary>
+            <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-700">
+              <div>
+                <strong className="block text-xs uppercase tracking-wide text-amber-800">Leitura da oportunidade</strong>
+                <p className="mt-1">{lead.aiSummary || leadOpportunitySummary(lead)}</p>
+              </div>
+              <div>
+                <strong className="block text-xs uppercase tracking-wide text-amber-800">Como iniciar o contato</strong>
+                <p className="mt-1">{lead.aiApproach || `Apresente ${lead.recommendedService || "um serviço visual com drone"} e cite um ponto específico do negócio para demonstrar que a abordagem foi personalizada.`}</p>
+              </div>
+              {lead.notes ? <p className="border-t border-amber-200 pt-2 text-xs text-gray-500">{lead.notes}</p> : null}
+            </div>
+          </details>
+        </section>
+        <section className="mt-5">
           <h3 className="font-semibold">Composição do score</h3>
           <div className="mt-2 space-y-2">
             {lead.scoreReasons.length ? (
@@ -823,6 +851,17 @@ function LeadDetail({
             >
               <MessageCircle size={16} />
               WhatsApp
+            </a>
+          ) : null}
+          {lead.instagram ? (
+            <a
+              className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold"
+              href={buildInstagramUrl(lead.instagram)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <AtSign size={16} />
+              Instagram
             </a>
           ) : null}
           {lead.googleMapsUrl ? (

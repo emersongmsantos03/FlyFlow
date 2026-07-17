@@ -13,8 +13,21 @@ export const recommendLeadService = (categoryName: string): ServiceType => {
   return 'Vídeo institucional'
 }
 
-export const leadContactPriority = (lead: Partial<Pick<LeadHunterProspect, 'whatsapp' | 'phone' | 'email' | 'website' | 'score'>>) =>
-  (lead.whatsapp ? 10_000 : 0) + (lead.phone ? 2_000 : 0) + (lead.email ? 500 : 0) + (lead.website ? 100 : 0) + (lead.score || 0)
+export const leadContactPriority = (lead: Partial<Pick<LeadHunterProspect, 'whatsapp' | 'phone' | 'email' | 'instagram' | 'website' | 'score'>>) =>
+  (lead.whatsapp && lead.instagram ? 30_000 : 0) +
+  (lead.whatsapp ? 12_000 : 0) +
+  (lead.instagram ? 8_000 : 0) +
+  (lead.phone ? 2_000 : 0) +
+  (lead.email ? 500 : 0) +
+  (lead.website ? 100 : 0) +
+  (lead.score || 0)
+
+export const buildInstagramUrl = (instagram: string) => {
+  const value = instagram.trim()
+  if (/^https?:\/\//i.test(value)) return value
+  const handle = value.replace(/^@/, '').replace(/^instagram\.com\//i, '').split(/[/?#]/)[0]
+  return `https://www.instagram.com/${handle}/`
+}
 
 export const leadOpportunitySummary = (lead: LeadHunterProspect) => {
   if (lead.whatsapp && lead.score >= 75) return 'Alta chance de contato: oportunidade qualificada com WhatsApp direto.'

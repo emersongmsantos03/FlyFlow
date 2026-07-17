@@ -10,6 +10,7 @@ type InputLead = {
   name: string
   city: string
   categoryName: string
+  recommendedService?: string
   address?: string
   phone?: string
   whatsapp?: string
@@ -76,9 +77,11 @@ const schema = {
           email: { type: 'string' },
           website: { type: 'string' },
           instagram: { type: 'string' },
+          aiSummary: { type: 'string' },
+          aiApproach: { type: 'string' },
           sourceUrls: { type: 'array', items: { type: 'string' } },
         },
-        required: ['id', 'contactName', 'phone', 'whatsapp', 'email', 'website', 'instagram', 'sourceUrls'],
+        required: ['id', 'contactName', 'phone', 'whatsapp', 'email', 'website', 'instagram', 'aiSummary', 'aiApproach', 'sourceUrls'],
       },
     },
   },
@@ -109,6 +112,7 @@ export default {
       name: clean(lead.name, 160),
       city: clean(lead.city, 100),
       categoryName: clean(lead.categoryName, 100),
+      recommendedService: clean(lead.recommendedService, 120),
       address: clean(lead.address),
       phone: clean(lead.phone, 60),
       whatsapp: clean(lead.whatsapp, 60),
@@ -132,7 +136,9 @@ export default {
         instructions: [
           'Enriqueça leads B2B brasileiros usando somente informações públicas verificáveis.',
           'Pesquise cada empresa por nome, cidade, endereço e site.',
-          'Priorize WhatsApp público, telefone, e-mail e o nome de proprietário, gerente ou responsável comercial.',
+          'Priorize WhatsApp público, telefone, e-mail, Instagram oficial e o nome de proprietário, gerente ou responsável comercial.',
+          'Em aiSummary, escreva em português uma observação comercial objetiva de até 240 caracteres: por que vale abordar, qual serviço de drone é mais aderente e uma evidência pública.',
+          'Em aiApproach, escreva em português uma sugestão prática e personalizada de primeiro contato de até 240 caracteres.',
           'Nunca invente dados. Deixe vazio quando não houver evidência confiável.',
           'Não use bases vazadas nem retorne dados pessoais sensíveis.',
           'sourceUrls deve comprovar os dados retornados.',
@@ -161,6 +167,8 @@ export default {
       email: clean(lead.email, 160),
       website: clean(lead.website, 240),
       instagram: clean(lead.instagram, 160),
+      aiSummary: clean(lead.aiSummary, 300),
+      aiApproach: clean(lead.aiApproach, 300),
       sourceUrls: Array.isArray(lead.sourceUrls) ? lead.sourceUrls.map((item) => clean(item, 400)).filter((item) => /^https?:\/\//i.test(item)).slice(0, 8) : [],
     }))
     return json({ leads: enriched, tokenUsage: openaiBody.usage?.total_tokens || 0 }, 200, origin)

@@ -162,6 +162,7 @@ import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState 
 import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapProvider'
 import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
+import { leadContactPriority } from './services/leadHunter/LeadOpportunityService'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   isFirebaseConfigured,
@@ -1690,6 +1691,15 @@ function App() {
       const importedLinks = new Map<string, { contactId: string; leadId: string }>()
       const normalizePhone = (value = '') => value.replace(/\D/g, '')
       for (const prospect of (current.leadHunterProspects || []).filter((item) => prospectIds.includes(item.id))) {
+        const intelligenceNotes = [
+          `Descoberto pelo Lead Hunter. Score inicial: ${prospect.score}.`,
+          `Serviço recomendado: ${prospect.recommendedService || 'Vídeo institucional'}.`,
+          prospect.aiSummary ? `Análise da IA: ${prospect.aiSummary}` : '',
+          prospect.aiApproach ? `Abordagem sugerida: ${prospect.aiApproach}` : '',
+          prospect.instagram ? `Instagram: ${prospect.instagram}` : '',
+          prospect.whatsapp ? `WhatsApp: ${prospect.whatsapp}` : '',
+          `Fontes: ${prospect.sources.join(', ') || 'não informadas'}.`,
+        ].filter(Boolean).join('\n')
         const existingContact = clients.find((contact) =>
           (normalizePhone(prospect.whatsapp || prospect.phone) && normalizePhone(prospect.whatsapp || prospect.phone) === normalizePhone(contact.whatsapp || contact.phone)) ||
           (prospect.email && prospect.email.toLowerCase() === contact.email.toLowerCase()) ||
@@ -1699,7 +1709,7 @@ function App() {
           id: createId('client'), fullName: prospect.contactName || prospect.name, companyName: prospect.name, jobTitle: '', document: '', phone: prospect.phone,
           whatsapp: prospect.whatsapp, email: prospect.email, instagram: prospect.instagram, neighborhood: prospect.neighborhood,
           postalCode: '', address: prospect.address, city: prospect.city, source: 'Lead Hunter' as const,
-          notes: `Descoberto pelo Lead Hunter. Score inicial: ${prospect.score}. Fontes: ${prospect.sources.join(', ') || 'não informadas'}.`,
+          notes: intelligenceNotes,
           tags: ['Lead Hunter', prospect.categoryName], archived: false, createdAt: now, updatedAt: now,
         }
         if (!existingContact) clients = [contact, ...clients]
@@ -1710,7 +1720,7 @@ function App() {
           neighborhood: contact.neighborhood || '', address: contact.address, source: 'Lead Hunter' as const,
           serviceInterest: prospect.recommendedService || 'Vídeo institucional' as const,
           pipelineStage: 'Entrada' as const, temperature: prospect.score >= 75 ? 'Quente' as const : prospect.score >= 60 ? 'Morno' as const : 'Frio' as const,
-          estimatedValue: 0, probability: Math.min(prospect.score, 90), entryDate: dateInput(), notes: `Importado do Lead Hunter com score ${prospect.score}.`,
+          estimatedValue: 0, probability: Math.min(prospect.score, 90), entryDate: dateInput(), notes: intelligenceNotes,
           responsibleUserId: activeUserId, archived: false, tags: ['Lead Hunter', prospect.categoryName], createdAt: now, updatedAt: now,
         }
         if (!existingLead) leads = [lead, ...leads]
@@ -4699,14 +4709,18 @@ function App() {
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 10)
                   let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
+                  const combinedLeads = new Map(result.leads.map((lead) => [lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`, lead]))
+                  const combinedSources = new Set(result.sources)
                   for (const fallbackCity of candidateCities.slice(1)) {
-                    if (result.leads.length >= 10) break
+                    if (combinedLeads.size >= resultsPerSearch) break
                     const fallbackResult = await provider.search({ cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
-                    if (fallbackResult.leads.length > result.leads.length) {
-                      city = fallbackCity
-                      result = fallbackResult
-                    }
+                    fallbackResult.sources.forEach((source) => combinedSources.add(source))
+                    fallbackResult.leads.forEach((lead) => {
+                      const key = lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
+                      if (!combinedLeads.has(key)) combinedLeads.set(key, lead)
+                    })
                   }
+                  result = { ...result, leads: [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a)).slice(0, resultsPerSearch), sources: [...combinedSources] }
                   window.clearTimeout(timeout)
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
@@ -4739,8 +4753,7 @@ function App() {
                           Boolean(osmId && item.externalIds.openstreetmap === osmId) ||
                           (item.normalizedName === normalizedName && normalizeLeadText(item.city) === normalizedCity),
                         )
-                        // Quem já possui WhatsApp está pronto para contato e não precisa consumir IA.
-                        return !alreadyKnown && !raw.whatsapp
+                        return !alreadyKnown
                       }).sort((a, b) => enrichmentPriority(b) - enrichmentPriority(a))
                         .slice(0, 3).map((raw) => ({
                         externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '',
@@ -4772,6 +4785,8 @@ function App() {
                         email: enrichment.email || raw.email,
                         website: enrichment.website || raw.website,
                         instagram: enrichment.instagram || raw.instagram,
+                        aiSummary: enrichment.aiSummary || raw.aiSummary,
+                        aiApproach: enrichment.aiApproach || raw.aiApproach,
                         sources: [...new Set([...(raw.sources || []), 'OpenAI Web Search'])],
                         sourceUrls: [...new Set([...(raw.sourceUrls || []), ...enrichment.sourceUrls])],
                       } : raw
@@ -4779,12 +4794,13 @@ function App() {
                       const duplicate = findLeadDuplicates(raw, existingProspects, current.clients, current.leads)[0]
                       if (duplicate && duplicate.id !== existing?.id) duplicateCount += 1
                       const category = selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.categoryName)) || selectedCategories[0]
+                      const leadCity = activeCities.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.city)) || city
                       if (existing) {
                         repeatedCount += 1
-                        return { ...existing, ...enrichedRaw, categoryId: category.id, cityId: city.id, isNew: false, possibleDuplicateId: duplicate?.id, discoveryCount: existing.discoveryCount + 1, lastDiscoveredAt: now, lastSearchId: searchId, updatedAt: now }
+                        return { ...existing, ...enrichedRaw, categoryId: category.id, cityId: leadCity.id, isNew: false, possibleDuplicateId: duplicate?.id, discoveryCount: existing.discoveryCount + 1, lastDiscoveredAt: now, lastSearchId: searchId, updatedAt: now }
                       }
                       newCount += 1
-                      return { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], score: 50, scoreReasons: [], ...enrichedRaw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: city.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
+                      return { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], score: 50, scoreReasons: [], ...enrichedRaw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
                     })
                     const incomingIds = new Set(incoming.map((item) => item.id))
                     return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => item.id === city.id ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.length, newLeadCount: item.newLeadCount + newCount, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: [city.id], categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: isOpenAILeadEnrichmentConfigured ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }

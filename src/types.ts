@@ -490,6 +490,8 @@ export interface LeadHunterProspect {
   changedSinceLastDisplay: boolean
   reappearanceReason?: string
   discardedPermanently: boolean
+  aiSummary?: string
+  aiApproach?: string
   notes: string
   createdAt: string
   updatedAt: string

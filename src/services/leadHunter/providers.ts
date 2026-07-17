@@ -31,6 +31,8 @@ export interface LeadEnrichmentResult {
   email?: string
   website?: string
   instagram?: string
+  aiSummary?: string
+  aiApproach?: string
   sourceUrls: string[]
 }
 
