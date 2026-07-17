@@ -61,6 +61,7 @@ import {
 } from 'recharts'
 import { Button, InputField, MetricCard, Modal, Panel, StatusBadge, Tag, Toast } from './components/ui'
 import { CrmPage, type CrmView } from './components/crm/CrmPage'
+import { LeadHunterPage } from './components/leadHunter/LeadHunterPage'
 import {
   buildLeadSourceSeries,
   buildMonthlySeries,
@@ -217,6 +218,7 @@ type Page =
   | 'dashboard'
   | 'leads'
   | 'clients'
+  | 'leadHunter'
   | 'projects'
   | 'agenda'
   | 'quotes'
@@ -494,6 +496,7 @@ const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboar
   { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { page: 'leads', label: 'Comercial', icon: Handshake },
   { page: 'clients', label: 'Contatos', icon: ContactRound },
+  { page: 'leadHunter', label: 'Lead Hunter', icon: Search },
   { page: 'projects', label: 'Projetos', icon: Briefcase },
   { page: 'agenda', label: 'Agenda', icon: CalendarDays },
   { page: 'quotes', label: 'Propostas', icon: FileText },
@@ -4601,6 +4604,26 @@ function App() {
               onOpenModal={setModal}
               onGenerateProposal={openProposalGenerator}
               onEditContact={(client) => { setSelectedClientId(client.id); setModal('client') }}
+            />
+          ) : null}
+          {page === 'leadHunter' && state.leadHunterSettings ? (
+            <LeadHunterPage
+              cities={state.leadHunterCities || []}
+              categories={state.leadHunterCategories || []}
+              prospects={state.leadHunterProspects || []}
+              searches={state.leadHunterSearches || []}
+              settings={state.leadHunterSettings}
+              providerReady={Boolean((import.meta.env.VITE_LEAD_HUNTER_API_URL as string | undefined)?.trim())}
+              onSearch={(filters) => {
+                const now = new Date().toISOString()
+                const providerReady = Boolean((import.meta.env.VITE_LEAD_HUNTER_API_URL as string | undefined)?.trim())
+                if (!providerReady) {
+                  updateState((current) => ({ ...current, leadHunterSearches: [{ id: createId('lh-search'), ...filters, neighborhood: '', sources: [], totalFound: 0, newCount: 0, repeatedCount: 0, duplicateCount: 0, cooldownBlockedCount: 0, errorCount: 1, estimatedCost: 0, tokenUsage: 0, durationMs: 0, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }), 'Busca não executada: configure o provedor oficial no backend.')
+                  return
+                }
+                setToast('A integração do provedor será ativada na etapa de backend seguro.')
+              }}
+              onSaveSettings={(settings) => updateState((current) => ({ ...current, leadHunterSettings: settings }), 'Configurações do Lead Hunter salvas.')}
             />
           ) : null}
           {page === 'projects' ? (

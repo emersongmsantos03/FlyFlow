@@ -403,6 +403,132 @@ export interface Company {
   updatedAt: string
 }
 
+export type LeadHunterPriority = 'Máxima' | 'Alta' | 'Média' | 'Baixa'
+export type LeadHunterStatus = 'Descoberto' | 'Analisado' | 'Importado' | 'Contatado' | 'Adiado' | 'Descartado' | 'Bloqueado'
+
+export interface LeadHunterCity {
+  id: string
+  name: string
+  state: string
+  distanceFromBaseKm: number
+  active: boolean
+  blockedUntil?: string
+  lastSearchedAt?: string
+  searchCount: number
+  discoveredCount: number
+  newLeadCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadHunterCategory {
+  id: string
+  name: string
+  group: string
+  priority: LeadHunterPriority
+  weight: number
+  active: boolean
+  searchTerms: string[]
+  searchCount: number
+  discoveredCount: number
+  newLeadCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadScoreReason {
+  id: string
+  label: string
+  points: number
+  evidence?: string
+}
+
+export interface LeadHunterProspect {
+  id: string
+  externalIds: Record<string, string>
+  name: string
+  normalizedName: string
+  categoryId: string
+  categoryName: string
+  cityId?: string
+  city: string
+  neighborhood: string
+  address: string
+  latitude?: number
+  longitude?: number
+  distanceKm?: number
+  phone: string
+  whatsapp: string
+  email: string
+  instagram: string
+  website: string
+  googleMapsUrl: string
+  googleRating?: number
+  googleReviewCount?: number
+  photoUrl?: string
+  sources: string[]
+  sourceUrls: string[]
+  score: number
+  scoreReasons: LeadScoreReason[]
+  status: LeadHunterStatus
+  isNew: boolean
+  possibleDuplicateId?: string
+  contactId?: string
+  leadId?: string
+  firstDiscoveredAt: string
+  lastDiscoveredAt: string
+  lastAnalyzedAt?: string
+  lastDisplayedAt?: string
+  lastContactAt?: string
+  nextDisplayAllowedAt?: string
+  discoveryCount: number
+  displayCount: number
+  lastSearchId?: string
+  changedSinceLastDisplay: boolean
+  reappearanceReason?: string
+  discardedPermanently: boolean
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadHunterSearch {
+  id: string
+  mode: 'Manual' | 'Rotação automática'
+  cityIds: string[]
+  categoryIds: string[]
+  radiusKm: number
+  neighborhood: string
+  onlyNew: boolean
+  includeEligibleKnown: boolean
+  minimumScore: number
+  sources: string[]
+  totalFound: number
+  newCount: number
+  repeatedCount: number
+  duplicateCount: number
+  cooldownBlockedCount: number
+  errorCount: number
+  estimatedCost: number
+  tokenUsage: number
+  durationMs: number
+  userId: string
+  createdAt: string
+}
+
+export interface LeadHunterSettings {
+  radiusKm: number
+  maxResultsPerSearch: number
+  maxAnalysesPerBatch: number
+  maxDailyCalls: number
+  minimumNewLeadPercentage: number
+  maximumReappearances: number
+  cooldownDays: Record<'discovered' | 'analyzed' | 'contactedNoReply' | 'refused' | 'strongRefusal' | 'visited', number>
+  scoringWeights: Record<string, number>
+  categoryDistribution: Record<string, number>
+  updatedAt: string
+}
+
 export interface ServiceCatalogItem {
   id: string
   name: ServiceType
@@ -813,6 +939,11 @@ export interface AppState {
   leadInteractions: LeadInteraction[]
   clients: Client[]
   companies?: Company[]
+  leadHunterCities?: LeadHunterCity[]
+  leadHunterCategories?: LeadHunterCategory[]
+  leadHunterProspects?: LeadHunterProspect[]
+  leadHunterSearches?: LeadHunterSearch[]
+  leadHunterSettings?: LeadHunterSettings
   services: ServiceCatalogItem[]
   projects: Project[]
   projectChecklistItems: ProjectChecklistItem[]

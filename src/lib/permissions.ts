@@ -47,6 +47,7 @@ export const canOpenPage = (user: User | undefined, page: string) => {
     dashboard: 'viewDashboard',
     leads: 'manageLeads',
     clients: 'manageClients',
+    leadHunter: 'manageLeads',
     projects: 'manageProjects',
     agenda: 'manageAgenda',
     quotes: 'manageQuotes',

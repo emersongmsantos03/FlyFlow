@@ -14,7 +14,7 @@ export const Button = ({
 }) => (
   <button
     className={clsx(
-      'app-button focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition',
+      'app-button focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition',
       variant === 'primary' && 'app-button-primary bg-[#171717] text-white hover:bg-black',
       variant === 'secondary' && 'app-button-secondary border border-gray-300 bg-white text-gray-900 hover:bg-gray-50',
       variant === 'ghost' && 'app-button-ghost text-gray-700 hover:bg-gray-100',
@@ -105,7 +105,7 @@ export const MetricCard = ({
         <p className="text-xs font-bold uppercase text-gray-500">{label}</p>
         <div
           className={clsx(
-            'mt-2 text-2xl font-black tracking-normal',
+            'mt-2 text-2xl font-semibold tracking-normal',
             tone === 'positive' && 'text-emerald-700',
             tone === 'warning' && 'text-amber-700',
             tone === 'danger' && 'text-red-700',
@@ -144,7 +144,7 @@ export const Panel = ({
 }) => (
   <section className={clsx('panel-surface rounded-2xl border border-gray-200 bg-white shadow-sm', className)}>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3.5">
-      <h2 className="text-base font-black text-gray-950">{title}</h2>
+      <h2 className="text-base font-semibold text-gray-950">{title}</h2>
       {action}
     </div>
     <div className="p-4">{children}</div>
@@ -171,7 +171,7 @@ export const Modal = ({
       size === 'xl' && 'max-w-6xl',
     )}>
       <div className="modal-header sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-        <h2 className="text-base font-black tracking-tight text-gray-950 sm:text-lg">{title}</h2>
+        <h2 className="text-base font-semibold tracking-tight text-gray-950 sm:text-lg">{title}</h2>
         <button
           aria-label="Fechar"
           className="focus-ring flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100"
@@ -196,7 +196,7 @@ export const EmptyState = ({
   action?: ReactNode
 }) => (
   <div className="flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-    <h3 className="text-base font-black text-gray-950">{title}</h3>
+    <h3 className="text-base font-semibold text-gray-950">{title}</h3>
     <p className="mt-1 max-w-md text-sm text-gray-500">{description}</p>
     {action ? <div className="mt-4">{action}</div> : null}
   </div>

@@ -17,6 +17,10 @@ const ARRAY_SECTION_KEYS = [
   'leadInteractions',
   'clients',
   'companies',
+  'leadHunterCities',
+  'leadHunterCategories',
+  'leadHunterProspects',
+  'leadHunterSearches',
   'services',
   'projects',
   'projectChecklistItems',
@@ -172,6 +176,15 @@ const loadGranularAppState = async (fallback: AppState, workspaceUpdatedAt?: unk
     }
   }
 
+  const hunterSettingsSnapshot = await getDoc(recordReference('leadHunterSettings', 'current'))
+  if (hunterSettingsSnapshot.exists()) {
+    const data = hunterSettingsSnapshot.data() as Partial<StoredRecord>
+    if (data.value && typeof data.value === 'object') {
+      next.leadHunterSettings = data.value as AppState['leadHunterSettings']
+      recordCache.set(recordCacheKey('leadHunterSettings', 'current'), JSON.stringify({ value: data.value, position: 0 }))
+    }
+  }
+
   if (workspaceUpdatedAt && typeof workspaceUpdatedAt === 'object' && 'toDate' in workspaceUpdatedAt) {
     const timestamp = workspaceUpdatedAt as { toDate?: () => Date }
     if (typeof timestamp.toDate === 'function') next.updatedAt = timestamp.toDate().toISOString()
@@ -297,6 +310,14 @@ export const saveFirebaseAppState = async (state: AppState) => {
       payload: settingsPayload,
       serialized: settingsSerialized,
     })
+  }
+
+  if (state.leadHunterSettings) {
+    const hunterSettingsPayload: StoredRecord = { value: state.leadHunterSettings, position: 0 }
+    const hunterSettingsSerialized = JSON.stringify(hunterSettingsPayload)
+    const hunterSettingsCacheKey = recordCacheKey('leadHunterSettings', 'current')
+    currentRecords.set(hunterSettingsCacheKey, hunterSettingsSerialized)
+    if (recordCache.get(hunterSettingsCacheKey) !== hunterSettingsSerialized) operations.push({ kind: 'set', section: 'leadHunterSettings', id: 'current', payload: hunterSettingsPayload, serialized: hunterSettingsSerialized })
   }
 
   recordCache.forEach((_serialized, cacheKey) => {

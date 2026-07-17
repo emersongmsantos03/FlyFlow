@@ -1,6 +1,7 @@
 import { createEmptyState } from '../data/demoData'
 import { rolePermissionPresets } from '../lib/permissions'
 import { synchronizeOperationalState } from '../lib/operations'
+import { createDefaultLeadHunterCategories, createDefaultLeadHunterCities, createDefaultLeadHunterSettings } from '../constants/leadHunterDefaults'
 import type { AppState, BankAccount, Client, Expense, Lead, User } from '../types'
 
 const STORAGE_KEY = 'hero-drone-manager:data:v2-empty'
@@ -186,6 +187,11 @@ export const normalizeAppState = (state: AppState): AppState => {
     leads: normalizedLeads,
     clients: normalizedClients,
     companies: state.companies || [],
+    leadHunterCities: state.leadHunterCities?.length ? state.leadHunterCities : createDefaultLeadHunterCities(),
+    leadHunterCategories: state.leadHunterCategories?.length ? state.leadHunterCategories : createDefaultLeadHunterCategories(),
+    leadHunterProspects: state.leadHunterProspects || [],
+    leadHunterSearches: state.leadHunterSearches || [],
+    leadHunterSettings: state.leadHunterSettings || createDefaultLeadHunterSettings(),
     companySettings: {
       ...state.companySettings,
       document: state.companySettings.document?.trim() || HERO_DRONE_CNPJ,

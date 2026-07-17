@@ -1,18 +1,32 @@
 @import 'tailwindcss';
 
 :root {
-  --app-bg: #f5f6f8;
+  --background: #f7f7f5;
+  --app-bg: var(--background);
   --surface: #ffffff;
-  --surface-soft: #f2f4f7;
-  --surface-strong: #171717;
-  --text-primary: #111827;
-  --text-secondary: #475467;
-  --text-muted: #667085;
-  --border: #e4e7ec;
-  --accent: #d2aa24;
-  --accent-strong: #b98d00;
-  --success: #16a34a;
-  --danger: #dc2626;
+  --surface-soft: #f3f4f2;
+  --surface-muted: var(--surface-soft);
+  --surface-strong: #242622;
+  --text-primary: #242622;
+  --text-secondary: #5f635c;
+  --text-muted: #858a80;
+  --border: #e4e5e1;
+  --border-subtle: #ecece8;
+  --primary: #c9a227;
+  --primary-hover: #ad8715;
+  --primary-soft: #faf3d8;
+  --accent: var(--primary);
+  --accent-strong: var(--primary-hover);
+  --success: #3e8b62;
+  --success-soft: #eaf5ee;
+  --warning: #b7791f;
+  --warning-soft: #fbf2df;
+  --danger: #c95454;
+  --danger-soft: #faeaea;
+  --info: #4e78a0;
+  --info-soft: #eaf1f7;
+  --shadow-sm: 0 1px 2px rgb(24 28 22 / 0.04);
+  --shadow-md: 0 8px 24px rgb(24 28 22 / 0.07);
   color: #171717;
   background: var(--app-bg);
   font-family:
@@ -222,12 +236,13 @@ button:disabled {
 }
 
 .app-button-primary {
-  background: var(--surface-strong) !important;
-  color: #fff !important;
+  background: var(--primary) !important;
+  color: #28220e !important;
 }
 
 .app-button-primary:hover:not(:disabled) {
-  box-shadow: 0 8px 18px rgb(17 24 39 / 0.14);
+  background: var(--primary-hover) !important;
+  box-shadow: var(--shadow-md);
 }
 
 .app-button-secondary {
