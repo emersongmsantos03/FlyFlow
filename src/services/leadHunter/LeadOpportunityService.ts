@@ -29,6 +29,9 @@ export const buildInstagramUrl = (instagram: string) => {
   return `https://www.instagram.com/${handle}/`
 }
 
+export const buildGoogleBusinessUrl = (lead: Pick<LeadHunterProspect, 'name' | 'address' | 'city'>) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([lead.name, lead.address, lead.city].filter(Boolean).join(', '))}`
+
 export const leadOpportunitySummary = (lead: LeadHunterProspect) => {
   if (lead.whatsapp && lead.score >= 75) return 'Alta chance de contato: oportunidade qualificada com WhatsApp direto.'
   if (lead.website || lead.instagram) return 'Boa presença digital: abordagem visual pode demonstrar valor rapidamente.'

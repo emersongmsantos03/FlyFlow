@@ -4747,12 +4747,17 @@ function App() {
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 10)
                   const providerLimit = Math.min(30, resultsPerSearch * 3)
-                  const importedProspects = (state.leadHunterProspects || []).filter((prospect) => prospect.status === 'Importado' || Boolean(prospect.leadId))
+                  const unavailableProspects = (state.leadHunterProspects || []).filter((prospect) =>
+                    prospect.status === 'Importado' ||
+                    prospect.status === 'Descartado' ||
+                    prospect.discardedPermanently ||
+                    Boolean(prospect.leadId),
+                  )
                   const isAlreadyImported = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
                     const normalizedName = normalizeLeadText(raw.name)
                     const normalizedCity = normalizeLeadText(raw.city)
-                    return importedProspects.some((prospect) =>
+                    return unavailableProspects.some((prospect) =>
                       prospect.id === raw.id ||
                       Boolean(osmId && prospect.externalIds.openstreetmap === osmId) ||
                       (prospect.normalizedName === normalizedName && normalizeLeadText(prospect.city) === normalizedCity),
@@ -4864,6 +4869,17 @@ function App() {
               onSaveCities={(cities) => updateState((current) => ({ ...current, leadHunterCities: cities }), 'Cidades do Lead Hunter atualizadas.')}
               onSaveCategories={(categories) => updateState((current) => ({ ...current, leadHunterCategories: categories }), 'Categorias do Lead Hunter atualizadas.')}
               onImport={importLeadHunterProspects}
+              onReject={(prospectId) => {
+                const now = new Date().toISOString()
+                updateState((current) => ({
+                  ...current,
+                  leadHunterProspects: (current.leadHunterProspects || []).map((prospect) =>
+                    prospect.id === prospectId
+                      ? { ...prospect, status: 'Descartado' as const, discardedPermanently: true, isNew: false, updatedAt: now }
+                      : prospect,
+                  ),
+                }), 'Lead rejeitado e removido das próximas buscas.')
+              }}
               onCreateRoute={(input) => {
                 const now = new Date().toISOString()
                 updateState((current) => ({ ...current, leadHunterRoutes: [{ id: createId('lh-route'), ...input, visitedProspectIds: [], status: 'Planejada', notes: '', createdBy: activeUserId, createdAt: now, updatedAt: now }, ...(current.leadHunterRoutes || [])] }), 'Rota salva no Lead Hunter.')

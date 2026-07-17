@@ -40,6 +40,7 @@ import { Button, Panel, StatusBadge } from "../ui";
 import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
 import {
   buildInstagramUrl,
+  buildGoogleBusinessUrl,
   buildLeadWhatsAppUrl,
   leadContactPriority,
   leadOpportunitySummary,
@@ -65,6 +66,7 @@ export function LeadHunterPage({
   onSaveCities,
   onSaveCategories,
   onImport,
+  onReject,
   onCreateRoute,
   onToggleVisited,
 }: {
@@ -97,6 +99,7 @@ export function LeadHunterPage({
   onSaveCities: (cities: LeadHunterCity[]) => void;
   onSaveCategories: (categories: LeadHunterCategory[]) => void;
   onImport: (prospectIds: string[]) => void;
+  onReject: (prospectId: string) => void;
   onCreateRoute: (input: {
     name: string;
     startAddress: string;
@@ -140,6 +143,8 @@ export function LeadHunterPage({
               (contactFilter === "contactable" && Boolean(lead.whatsapp || lead.phone || lead.email)) ||
               (contactFilter === "ai" && lead.sources.some((source) => /openai/i.test(source)));
             return (
+            !lead.discardedPermanently &&
+            lead.status !== "Descartado" &&
             lead.status !== "Importado" &&
             !lead.leadId &&
             (!cityId || lead.cityId === cityId) &&
@@ -529,6 +534,9 @@ export function LeadHunterPage({
                                 ? ` · ${lead.neighborhood}`
                                 : ""}
                             </p>
+                            <p className="mt-1 line-clamp-2 text-xs text-gray-500">
+                              {lead.address || "Endereço não informado na fonte pública"}
+                            </p>
                           </div>
                           <div className="text-right">
                             <strong className="text-xl text-gray-950">
@@ -574,7 +582,13 @@ export function LeadHunterPage({
                       {lead.email ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={`mailto:${lead.email}`} title="Enviar e-mail"><Mail size={15} /></a> : null}
                       {lead.website ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={lead.website} target="_blank" rel="noreferrer" title="Abrir site"><Globe2 size={15} /></a> : null}
                       {lead.googleMapsUrl ? <a className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-amber-300" href={lead.googleMapsUrl} target="_blank" rel="noreferrer" title="Abrir mapa"><Map size={15} /></a> : null}
+                      <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={buildGoogleBusinessUrl(lead)} target="_blank" rel="noreferrer" title="Abrir perfil ou pesquisa da empresa no Google">
+                        <Map size={15} /> Perfil no Google
+                      </a>
                       {!lead.whatsapp && !lead.phone && !lead.email ? <span className="text-xs text-gray-400">Contato ainda não localizado</span> : null}
+                      <button className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50" type="button" onClick={() => { if (window.confirm(`Rejeitar ${lead.name} e impedir que apareça novamente?`)) onReject(lead.id); }}>
+                        <X size={15} /> Rejeitar
+                      </button>
                       <button className="ml-auto text-xs font-semibold text-[#8a6d08] hover:underline" type="button" onClick={() => setOpenedLeadId(lead.id)}>Ver inteligência</button>
                     </div>
                   </article>
@@ -621,6 +635,7 @@ export function LeadHunterPage({
               lead={prospects.find((lead) => lead.id === openedLeadId)}
               onClose={() => setOpenedLeadId("")}
               onImport={(id) => onImport([id])}
+              onReject={onReject}
             />
           ) : null}
         </>
@@ -709,10 +724,12 @@ function LeadDetail({
   lead,
   onClose,
   onImport,
+  onReject,
 }: {
   lead?: LeadHunterProspect;
   onClose: () => void;
   onImport: (id: string) => void;
+  onReject: (id: string) => void;
 }) {
   if (!lead) return null;
   return (
@@ -877,6 +894,23 @@ function LeadDetail({
               Mapa
             </a>
           ) : null}
+          <a
+            className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold"
+            href={buildGoogleBusinessUrl(lead)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Map size={16} />
+            Perfil no Google
+          </a>
+          <button
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-red-200 px-3.5 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+            type="button"
+            onClick={() => { if (window.confirm(`Rejeitar ${lead.name} e impedir que apareça novamente?`)) { onReject(lead.id); onClose(); } }}
+          >
+            <X size={16} />
+            Rejeitar lead
+          </button>
         </div>
       </aside>
     </div>
