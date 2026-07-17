@@ -4739,20 +4739,16 @@ function App() {
                 const activeCities = (state.leadHunterCities || []).filter((item) => item.active && (!item.blockedUntil || item.blockedUntil <= now))
                 const activeCategories = (state.leadHunterCategories || []).filter((item) => item.active)
                 const publicSearchCategories = activeCategories.filter((item) =>
-                  item.group !== 'Eventos' &&
-                  /hotel|pousada|airbnb|chal[eé]|cabana|glamping|ref[uú]gio|temporada|restaurante|imobili[aá]ria|corretor|vin[ií]cola|resort|haras|pesqueiro|concession[aá]ria|shopping|academia|cl[ií]nica|escola|ind[uú]stria|log[ií]stico|galp[aã]o|energia solar|condom[ií]nio|fazenda|s[ií]tio|cooperativa|construtora|incorporadora|loteamento/i.test(item.name),
+                  /hotel|pousada|airbnb|chal[eé]|cabana|glamping|ref[uú]gio|temporada|espa[cç]o para eventos|clube|restaurante|imobili[aá]ria|corretor|vin[ií]cola|resort|haras|pesqueiro|concession[aá]ria|shopping|energia solar|construtora|incorporadora/i.test(item.name),
                 )
                 const categoryCoveragePriority = (name: string) => {
                   const normalized = normalizeLeadText(name)
-                  if (/construtora|incorporadora|loteamento/.test(normalized)) return 110
-                  if (/energia solar/.test(normalized)) return 108
-                  if (/imobiliaria|corretor de imoveis|condominio/.test(normalized)) return 105
-                  if (/industria|logistic|galpao/.test(normalized)) return 100
-                  if (/fazenda|sitio|haras|cooperativa|pesqueiro/.test(normalized)) return 96
-                  if (/pousada|hotel fazenda|chale|cabana|glamping|refugio|casa de temporada|airbnb/.test(normalized)) return 94
-                  if (/vinicola|concessionaria/.test(normalized)) return 90
-                  if (/hotel|resort/.test(normalized)) return 78
-                  if (/shopping|academia|clinica|escola/.test(normalized)) return 70
+                  if (/pousada|hotel fazenda|chale|cabana|glamping|refugio|casa de temporada|airbnb/.test(normalized)) return 115
+                  if (/espaco para eventos|clube|vinicola|haras|pesqueiro/.test(normalized)) return 108
+                  if (/construtora|incorporadora|energia solar/.test(normalized)) return 96
+                  if (/imobiliaria|corretor de imoveis/.test(normalized)) return 88
+                  if (/hotel|resort/.test(normalized)) return 82
+                  if (/concessionaria|shopping/.test(normalized)) return 76
                   if (/restaurante/.test(normalized)) return 25
                   return 50
                 }

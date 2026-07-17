@@ -10,6 +10,7 @@ type NominatimResult = {
   lon: string
   name?: string
   display_name: string
+  category?: string
   type?: string
   address?: Record<string, string>
   extratags?: Record<string, string>
@@ -21,7 +22,7 @@ const ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ]
 const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:v8:'
+const CACHE_PREFIX = 'flyflow:osm-leads:v9:'
 const CITY_COORDINATES: Record<string, [number, number]> = {
   curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
   'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
@@ -32,6 +33,50 @@ const CITY_COORDINATES: Record<string, [number, number]> = {
 const clean = (value = '', max = 240) => [...value].map((character) => character.charCodeAt(0) < 32 || character === '<' || character === '>' ? ' ' : character).join('').replace(/\s+/g, ' ').trim().slice(0, max)
 const normalize = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 const first = (tags: Record<string, string>, ...keys: string[]) => clean(keys.map((key) => tags[key]).find(Boolean) || '')
+
+const lowFitName = (name: string) =>
+  /refinaria|usina|termel[eé]trica|hidrel[eé]trica|f[aá]brica|ind[uú]stria|campus|sistema fiep|terminal|subesta[cç][aã]o|esta[cç][aã]o de tratamento|aterro|pedreira|mineradora/i.test(normalize(name))
+
+const categoryFamily = (value: string) => {
+  const normalized = normalize(value)
+  if (/hotel|pousada|hosped|guest.house|hostel|apartament|airbnb|temporada|chale|cabana|refugio|glamping|camp.site|resort/.test(normalized)) return 'lodging'
+  if (/evento|events.venue|centro de convencoes|salao de festas|clube/.test(normalized)) return 'venue'
+  if (/vinicola|winery|wine/.test(normalized)) return 'winery'
+  if (/restaurante|restaurant/.test(normalized)) return 'restaurant'
+  if (/haras|equestrian|horse.riding/.test(normalized)) return 'equestrian'
+  if (/pesqueiro|fishing/.test(normalized)) return 'fishing'
+  if (/imobili|estate.agent|corretor/.test(normalized)) return 'real-estate'
+  if (/construtora|incorporadora|construction.company|builder/.test(normalized)) return 'construction'
+  if (/concessionaria|car.dealer|shop.car/.test(normalized)) return 'car-dealer'
+  if (/shopping|mall/.test(normalized)) return 'mall'
+  if (/academia|fitness/.test(normalized)) return 'fitness'
+  if (/clinica|clinic/.test(normalized)) return 'clinic'
+  if (/escola|school|colegio/.test(normalized)) return 'school'
+  if (/energia solar|solar.panel/.test(normalized)) return 'solar'
+  return ''
+}
+
+const categoryFromNominatim = (result: NominatimResult) => {
+  const tags = result.extratags || {}
+  const descriptor = [
+    result.category, result.type, result.name, tags.tourism, tags.amenity, tags.leisure,
+    tags.sport, tags.office, tags.craft, tags.shop,
+  ].filter(Boolean).join(' ')
+  const family = categoryFamily(descriptor)
+  if (family === 'lodging') {
+    if (/chalet|camp.site|chale|cabana|glamping|refugio/i.test(descriptor)) return 'Chalé ou cabana'
+    if (/resort/i.test(descriptor)) return 'Resort'
+    if (/guest.house|pousada|hostel/i.test(descriptor)) return 'Pousada'
+    return 'Hotel ou hospedagem'
+  }
+  const names: Record<string, string> = {
+    venue: 'Local para eventos', winery: 'Vinícola', restaurant: 'Restaurante com área externa',
+    equestrian: 'Haras', fishing: 'Pesqueiro', 'real-estate': 'Imobiliária',
+    construction: 'Construtora ou incorporadora', 'car-dealer': 'Concessionária',
+    mall: 'Shopping', fitness: 'Academia', clinic: 'Clínica', school: 'Escola', solar: 'Energia solar',
+  }
+  return names[family] || ''
+}
 
 const locateCity = async (city: string, signal?: AbortSignal): Promise<[number, number]> => {
   const known = CITY_COORDINATES[normalize(city)]
@@ -82,20 +127,31 @@ const categoryFor = (tags: Record<string, string>, requested: string[]) => {
   const tourism = tags.tourism
   if (tourism === 'hotel') return requested.find((item) => normalize(item).includes('hotel')) || 'Hotel'
   if (['guest_house', 'hostel'].includes(tourism)) return requested.find((item) => /pousada|hosped/i.test(item)) || 'Pousada'
+  if (tourism === 'apartment') return 'Airbnb ou casa de temporada'
   if (['chalet', 'camp_site'].includes(tourism)) return requested.find((item) => /chale|cabana|glamping/i.test(normalize(item))) || 'Cabana'
+  if (tourism === 'resort') return 'Resort'
   if (tags.amenity === 'restaurant') return 'Restaurante com área externa'
   if (tags.amenity === 'events_venue' || tags.leisure === 'sports_centre') return 'Espaço para eventos'
   if (tags.craft === 'winery' || tags.shop === 'wine') return 'Vinícola'
   if (tags.leisure === 'horse_riding' || tags.sport === 'equestrian') return 'Haras'
   if (tags.leisure === 'fishing') return 'Pesqueiro'
   if (tags.office === 'estate_agent') return 'Imobiliária'
-  return requested[0] || 'Hospedagem'
+  if (tags.office === 'construction_company' || tags.craft === 'builder') return 'Construtora ou incorporadora'
+  if (tags.shop === 'car') return 'Concessionária'
+  if (tags.shop === 'mall') return 'Shopping'
+  if (tags.leisure === 'fitness_centre') return 'Academia'
+  if (tags.amenity === 'clinic') return 'Clínica'
+  if (tags.amenity === 'school') return 'Escola'
+  if (tags.craft === 'solar_panel_installer') return 'Energia solar'
+  return ''
 }
 
 export const mapOsmElement = (element: OsmElement, city: string, requestedCategories: string[]): LeadSearchProviderResult['leads'][number] | null => {
   const tags = element.tags || {}
   const name = clean(tags.name || tags.brand || tags.operator || '')
-  if (!name) return null
+  if (!name || lowFitName(name)) return null
+  const categoryName = categoryFor(tags, requestedCategories)
+  if (!categoryName) return null
   const latitude = element.lat ?? element.center?.lat
   const longitude = element.lon ?? element.center?.lon
   const phone = first(tags, 'contact:phone', 'phone', 'contact:mobile', 'mobile')
@@ -113,18 +169,22 @@ export const mapOsmElement = (element: OsmElement, city: string, requestedCatego
   const score = Math.max(0, Math.min(100, 35 + scoreReasons.reduce((total, reason) => total + reason.points, 0)))
   return {
     id: `osm-${element.type}-${element.id}`, externalIds: { openstreetmap: osmId }, name, normalizedName: normalize(name),
-    categoryName: categoryFor(tags, requestedCategories), recommendedService: recommendLeadService(categoryFor(tags, requestedCategories)), city, neighborhood: clean(tags['addr:suburb'] || tags['addr:neighbourhood'] || ''), address,
+    categoryName, recommendedService: recommendLeadService(categoryName), city, neighborhood: clean(tags['addr:suburb'] || tags['addr:neighbourhood'] || ''), address,
     latitude, longitude, phone, whatsapp, email: first(tags, 'contact:email', 'email'), instagram, website,
     googleMapsUrl: latitude != null && longitude != null ? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}` : '',
     sources: ['OpenStreetMap'], sourceUrls: [`https://www.openstreetmap.org/${osmId}`], score, scoreReasons,
   }
 }
 
-const mapNominatimResult = (result: NominatimResult, city: string, requestedCategories: string[]): LeadSearchProviderResult['leads'][number] | null => {
+export const mapNominatimResult = (result: NominatimResult, city: string, requestedCategories: string[]): LeadSearchProviderResult['leads'][number] | null => {
   const tags = result.extratags || {}
   const addressTags = result.address || {}
   const name = clean(result.name || result.namedetails?.name || result.display_name.split(',')[0] || '')
   if (!name) return null
+  const categoryName = categoryFromNominatim(result)
+  const requestedFamilies = new Set(requestedCategories.map(categoryFamily).filter(Boolean))
+  const actualFamily = categoryFamily(categoryName)
+  if (!categoryName || !actualFamily || !requestedFamilies.has(actualFamily) || lowFitName(name)) return null
   const latitude = Number(result.lat)
   const longitude = Number(result.lon)
   const phone = first(tags, 'contact:phone', 'phone', 'contact:mobile', 'mobile')
@@ -144,8 +204,8 @@ const mapNominatimResult = (result: NominatimResult, city: string, requestedCate
     externalIds: { openstreetmap: osmId },
     name,
     normalizedName: normalize(name),
-    categoryName: requestedCategories[0] || 'Empresa',
-    recommendedService: recommendLeadService(requestedCategories[0] || 'Empresa'),
+    categoryName,
+    recommendedService: recommendLeadService(categoryName),
     city,
     neighborhood: clean(addressTags.suburb || addressTags.neighbourhood || ''),
     address,
