@@ -45,6 +45,7 @@ export const pipelineStages = [
 ] as const
 
 export const leadSources = [
+  'Lead Hunter',
   'Instagram',
   'WhatsApp',
   'Google',

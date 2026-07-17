@@ -1679,6 +1679,50 @@ function App() {
     setModal(null)
   }
 
+  const importLeadHunterProspects = (prospectIds: string[]) => {
+    const now = new Date().toISOString()
+    updateState((current) => {
+      let clients = [...current.clients]
+      let leads = [...current.leads]
+      const importedLinks = new Map<string, { contactId: string; leadId: string }>()
+      const normalizePhone = (value = '') => value.replace(/\D/g, '')
+      for (const prospect of (current.leadHunterProspects || []).filter((item) => prospectIds.includes(item.id))) {
+        const existingContact = clients.find((contact) =>
+          (normalizePhone(prospect.whatsapp || prospect.phone) && normalizePhone(prospect.whatsapp || prospect.phone) === normalizePhone(contact.whatsapp || contact.phone)) ||
+          (prospect.email && prospect.email.toLowerCase() === contact.email.toLowerCase()) ||
+          (prospect.name.toLowerCase() === (contact.companyName || contact.fullName).toLowerCase() && prospect.city.toLowerCase() === contact.city.toLowerCase()),
+        )
+        const contact = existingContact || {
+          id: createId('client'), fullName: prospect.name, companyName: prospect.name, jobTitle: '', document: '', phone: prospect.phone,
+          whatsapp: prospect.whatsapp, email: prospect.email, instagram: prospect.instagram, neighborhood: prospect.neighborhood,
+          postalCode: '', address: prospect.address, city: prospect.city, source: 'Lead Hunter' as const,
+          notes: `Descoberto pelo Lead Hunter. Score inicial: ${prospect.score}. Fontes: ${prospect.sources.join(', ') || 'não informadas'}.`,
+          tags: ['Lead Hunter', prospect.categoryName], archived: false, createdAt: now, updatedAt: now,
+        }
+        if (!existingContact) clients = [contact, ...clients]
+        const existingLead = leads.find((lead) => lead.contactId === contact.id)
+        const lead = existingLead || {
+          id: createId('lead'), contactId: contact.id, fullName: contact.fullName, companyName: contact.companyName,
+          phone: contact.phone, whatsapp: contact.whatsapp, email: contact.email, instagram: contact.instagram, city: contact.city,
+          neighborhood: contact.neighborhood || '', address: contact.address, source: 'Lead Hunter' as const,
+          serviceInterest: (prospect.categoryName.toLowerCase().includes('airbnb') || prospect.categoryName.toLowerCase().includes('pousada') || prospect.categoryName.toLowerCase().includes('cabana')) ? 'Filmagem de Airbnb' as const : 'Fotos e vídeo' as const,
+          pipelineStage: 'Entrada' as const, temperature: prospect.score >= 75 ? 'Quente' as const : prospect.score >= 60 ? 'Morno' as const : 'Frio' as const,
+          estimatedValue: 0, probability: Math.min(prospect.score, 90), entryDate: dateInput(), notes: `Importado do Lead Hunter com score ${prospect.score}.`,
+          responsibleUserId: activeUserId, archived: false, tags: ['Lead Hunter', prospect.categoryName], createdAt: now, updatedAt: now,
+        }
+        if (!existingLead) leads = [lead, ...leads]
+        importedLinks.set(prospect.id, { contactId: contact.id, leadId: lead.id })
+      }
+      return {
+        ...current, clients, leads,
+        leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => {
+          const link = importedLinks.get(prospect.id)
+          return link ? { ...prospect, ...link, status: 'Importado' as const, isNew: false, updatedAt: now } : prospect
+        }),
+      }
+    }, `${prospectIds.length} lead(s) processado(s) e vinculado(s) ao Comercial.`)
+  }
+
   const saveProject = (values: ProjectFormValues) => {
     if (!selectedProjectId && values.manualCreationReason.trim().length < 5) {
       setToast('Informe a justificativa para criar um projeto manualmente sem proposta aceita.')
@@ -4624,6 +4668,9 @@ function App() {
                 setToast('A integração do provedor será ativada na etapa de backend seguro.')
               }}
               onSaveSettings={(settings) => updateState((current) => ({ ...current, leadHunterSettings: settings }), 'Configurações do Lead Hunter salvas.')}
+              onSaveCities={(cities) => updateState((current) => ({ ...current, leadHunterCities: cities }), 'Cidades do Lead Hunter atualizadas.')}
+              onSaveCategories={(categories) => updateState((current) => ({ ...current, leadHunterCategories: categories }), 'Categorias do Lead Hunter atualizadas.')}
+              onImport={importLeadHunterProspects}
             />
           ) : null}
           {page === 'projects' ? (
