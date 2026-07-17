@@ -988,6 +988,11 @@ function App() {
     if (!isFirebaseConfigured) return
 
     let cancelled = false
+    const startupTimeout = window.setTimeout(() => {
+      if (cancelled) return
+      setFirebaseAuthReady(true)
+      setToast('A sincronização está demorando. O FlyFlow foi aberto com os dados locais e continuará tentando conectar.')
+    }, 8_000)
     const unsubscribe = observeFirebaseAuth((firebaseUser) => {
       if (firebaseLoginInProgress.current) return
 
@@ -996,6 +1001,7 @@ function App() {
           clearActiveFirebaseWorkspace()
           clearAuthSession()
           if (!cancelled) {
+            window.clearTimeout(startupTimeout)
             setAuthSession(null)
             setFirebaseAuthReady(true)
           }
@@ -1041,13 +1047,17 @@ function App() {
             setToast(error instanceof Error ? error.message : 'Não foi possível carregar o Firebase.')
           }
         } finally {
-          if (!cancelled) setFirebaseAuthReady(true)
+          if (!cancelled) {
+            window.clearTimeout(startupTimeout)
+            setFirebaseAuthReady(true)
+          }
         }
       })()
     })
 
     return () => {
       cancelled = true
+      window.clearTimeout(startupTimeout)
       unsubscribe()
     }
   }, [])
