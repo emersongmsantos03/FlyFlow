@@ -10,11 +10,13 @@ import {
   Camera,
   CheckCircle2,
   Clock,
+  ContactRound,
   Copy,
   DollarSign,
   Download,
   Eye,
   FileText,
+  Handshake,
   LayoutDashboard,
   Landmark,
   LogOut,
@@ -485,7 +487,8 @@ const proposalPackages: Array<{
 
 const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard }> = [
   { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { page: 'leads', label: 'Contatos', icon: Users },
+  { page: 'leads', label: 'Comercial', icon: Handshake },
+  { page: 'clients', label: 'Contatos', icon: ContactRound },
   { page: 'projects', label: 'Projetos', icon: Briefcase },
   { page: 'agenda', label: 'Agenda', icon: CalendarDays },
   { page: 'quotes', label: 'Propostas', icon: FileText },
@@ -1639,7 +1642,7 @@ function App() {
           ...current.clients,
         ],
       }),
-      'Cliente cadastrado.',
+      'Contato cadastrado na base central.',
     )
     setModal(null)
   }
@@ -4737,7 +4740,8 @@ function App() {
           {quickActionsOpen ? (
           <div className="quick-actions-menu absolute bottom-16 right-0 w-52 space-y-1 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
             {[
-              { label: 'Novo contato', modalName: 'lead', permission: 'manageLeads' },
+              { label: 'Nova oportunidade', modalName: 'lead', permission: 'manageLeads' },
+              { label: 'Novo contato', modalName: 'client', permission: 'manageClients' },
               { label: 'Nova tarefa', modalName: 'task', permission: 'manageAgenda' },
               { label: 'Novo projeto', modalName: 'project', permission: 'manageProjects' },
               { label: 'Nova proposta', modalName: 'proposal', permission: 'manageQuotes' },
@@ -4831,7 +4835,7 @@ function App() {
       ) : null}
       {modal === 'lead' ? (
         <Modal
-          title={selectedLead ? 'Editar contato' : 'Novo contato'}
+          title={selectedLead ? 'Editar oportunidade' : 'Nova oportunidade'}
           size="md"
           onClose={() => {
             setModal(null)
@@ -4850,7 +4854,7 @@ function App() {
         </Modal>
       ) : null}
       {modal === 'client' ? (
-        <Modal title="Novo cliente" onClose={() => setModal(null)}>
+        <Modal title="Novo contato" onClose={() => setModal(null)}>
           <ClientForm onCancel={() => setModal(null)} onSubmit={addClient} />
         </Modal>
       ) : null}
@@ -5367,7 +5371,8 @@ function DashboardPage({
           <p className="mt-1 max-w-2xl text-sm text-gray-500">Financeiro, agenda e operação reunidos de forma simples para você decidir o próximo passo.</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="secondary" type="button" onClick={() => onNavigate('leads')}><Users size={16} /> Ver contatos</Button>
+          <Button variant="secondary" type="button" onClick={() => onNavigate('leads')}><Handshake size={16} /> Abrir comercial</Button>
+          <Button variant="secondary" type="button" onClick={() => onNavigate('clients')}><ContactRound size={16} /> Ver contatos</Button>
           <Button type="button" onClick={() => onOpenModal('appointment')}><CalendarDays size={16} /> Novo agendamento</Button>
         </div>
       </section>
@@ -5658,25 +5663,25 @@ function ClientsPage({
   return (
     <div className="space-y-4">
       <PageToolbar
-        title="Clientes"
-        description="Cadastro, histórico de serviços, pagamentos e ticket médio."
+        title="Contatos"
+        description="Base central conectada ao comercial, propostas, projetos e financeiro."
         action={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" type="button" onClick={() => onGenerateProposal(clients[0]?.id ?? '')}>
               <Wand2 size={16} /> Gerar proposta
             </Button>
-            <Button type="button" onClick={() => onOpenModal('client')}><Plus size={16} /> Novo cliente</Button>
+            <Button type="button" onClick={() => onOpenModal('client')}><Plus size={16} /> Novo contato</Button>
           </div>
         }
       />
       <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-        <Panel title="Base de clientes">
+        <Panel title="Base de contatos">
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Cliente</th>
                   <th>Contato</th>
+                  <th>Canais</th>
                   <th>Cidade</th>
                   <th>Total faturado</th>
                   <th>Recebido</th>
@@ -5693,7 +5698,7 @@ function ClientsPage({
                     .reduce((sum, payment) => sum + payment.amount, 0)
                   return (
                     <tr key={client.id}>
-                      <td data-label="Cliente">
+                      <td data-label="Contato">
                         <div className="font-black text-gray-950">{contactDisplayName(client)}</div>
                         <div className="text-sm text-gray-500">{contactDisplayDetail(client)}</div>
                       </td>
@@ -7547,7 +7552,7 @@ function ReportsPage({
   const previousMonthSnapshot = monthSnapshot(-1)
   const previousYearSnapshot = monthSnapshot(0, -1)
   const funnel = [
-    { label: 'Contatos', value: state.leads.filter((lead) => !lead.deletedAt && !lead.archived && isInReportPeriod(lead.entryDate)).length },
+    { label: 'Oportunidades', value: state.leads.filter((lead) => !lead.deletedAt && !lead.archived && isInReportPeriod(lead.entryDate)).length },
     { label: 'Propostas', value: state.quotes.filter((quote) => !quote.deletedAt && isInReportPeriod(quote.issueDate)).length },
     { label: 'Aprovadas', value: state.quotes.filter((quote) => !quote.deletedAt && ['Aprovada', 'Aguardando entrada', 'Entrada recebida', 'Convertida em projeto'].includes(quote.status) && isInReportPeriod(quote.approvedAt || quote.issueDate)).length },
     { label: 'Projetos', value: metrics.projectCount },

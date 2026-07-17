@@ -181,15 +181,15 @@ export function CrmPage({
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7900]">Relacionamento comercial</p>
-            <h1 className="mt-1 text-2xl font-black text-gray-950">CRM</h1>
-            <p className="mt-1 text-sm text-gray-500">Gerencie contatos, negociações e próximas ações.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7900]">CRM e vendas</p>
+            <h1 className="mt-1 text-2xl font-black text-gray-950">Comercial</h1>
+            <p className="mt-1 text-sm text-gray-500">Gerencie oportunidades, negociações e próximas ações.</p>
           </div>
-          <div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button><Button type="button" onClick={onCreateLead}><Plus size={16} /> Novo contato</Button></div>
+          <div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button><Button type="button" onClick={onCreateLead}><Plus size={16} /> Nova oportunidade</Button></div>
         </div>
         <div className="crm-metrics mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
           {[
-            ['Contatos ativos', activeLeads.length],
+            ['Oportunidades ativas', activeLeads.length],
             ['Valor potencial', formatCurrency(potentialValue)],
             ['Propostas abertas', activeQuotes.length],
             ['Precisam de ação', contactsNeedingAction],

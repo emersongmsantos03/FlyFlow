@@ -16,8 +16,8 @@ export const allPermissions: UserPermission[] = [
 
 export const permissionLabels: Record<UserPermission, string> = {
   viewDashboard: 'Dashboard',
-  manageLeads: 'Contatos e CRM',
-  manageClients: 'Clientes',
+  manageLeads: 'Comercial e CRM',
+  manageClients: 'Contatos',
   manageProjects: 'Projetos',
   manageAgenda: 'Agenda',
   manageQuotes: 'Orçamentos',
