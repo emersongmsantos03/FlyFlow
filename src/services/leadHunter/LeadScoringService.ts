@@ -33,4 +33,4 @@ export const calculateLeadScore = (signals: LeadScoringSignals, settings: LeadHu
   return { score, reasons }
 }
 
-export const leadScoreLabel = (score: number) => score >= 90 ? 'Oportunidade excelente' : score >= 75 ? 'Oportunidade muito boa' : score >= 60 ? 'Vale contato' : score >= 40 ? 'Baixa prioridade' : 'Não priorizar'
+export const leadScoreLabel = (score: number) => score >= 85 ? 'Excelente' : score >= 70 ? 'Boa' : score >= 50 ? 'Média' : 'Ruim'

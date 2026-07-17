@@ -23,7 +23,6 @@ import {
   RotateCw,
   Search,
   Settings2,
-  Sparkles,
   Target,
   Trophy,
   Phone,
@@ -44,6 +43,7 @@ import {
   buildLeadWhatsAppUrl,
   leadContactPriority,
   leadOpportunitySummary,
+  opportunityLevel,
 } from "../../services/leadHunter/LeadOpportunityService";
 import { deduplicateLeadHunterProspects } from "../../services/leadHunter/LeadDeduplicationService";
 import {
@@ -52,6 +52,12 @@ import {
 } from "../../services/leadHunter/LeadRouteService";
 
 type View = "results" | "routes" | "mission" | "history" | "settings";
+
+const opportunityTone = (score: number) =>
+  score >= 85 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+  score >= 70 ? "bg-blue-50 text-blue-700 border-blue-200" :
+  score >= 50 ? "bg-amber-50 text-amber-700 border-amber-200" :
+  "bg-gray-100 text-gray-600 border-gray-200";
 
 export function LeadHunterPage({
   cities,
@@ -117,7 +123,7 @@ export function LeadHunterPage({
   const [cityId, setCityId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [radiusKm, setRadiusKm] = useState(settings.radiusKm);
-  const [minimumScore, setMinimumScore] = useState(60);
+  const [minimumScore, setMinimumScore] = useState(0);
   const [onlyNew, setOnlyNew] = useState(false);
   const [includeKnown, setIncludeKnown] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -374,7 +380,7 @@ export function LeadHunterPage({
                     setCategoryId("");
                     setOnlyNew(false);
                     setIncludeKnown(false);
-                    setMinimumScore(60);
+                    setMinimumScore(0);
                   }}
                 >
                   <Filter size={16} />
@@ -463,6 +469,15 @@ export function LeadHunterPage({
                 </span>
               </label>
             </div>
+            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-gray-500">
+              {[[90, "Excelente"], [75, "Boa"], [55, "Média"], [30, "Ruim"]].map(([score, label]) => (
+                <span key={label} className="inline-flex items-center gap-1.5">
+                  <i className={`h-2 w-2 rounded-full ${String(opportunityTone(Number(score))).split(" ")[0]}`} />
+                  {label}
+                </span>
+              ))}
+              <span className="ml-auto text-gray-400">Distância, contato, presença digital e potencial visual</span>
+            </div>
             {filtered.length ? (
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <button
@@ -511,19 +526,10 @@ export function LeadHunterPage({
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex flex-wrap gap-2">
-                              <StatusBadge>
-                                {lead.isNew ? "Novo" : "Já encontrado"}
-                              </StatusBadge>
-                              <StatusBadge>{lead.categoryName}</StatusBadge>
-                              {lead.recommendedService ? (
-                                <StatusBadge>{lead.recommendedService}</StatusBadge>
-                              ) : null}
-                              {lead.whatsapp ? (
-                                <StatusBadge>WhatsApp disponível</StatusBadge>
-                              ) : null}
-                              {lead.instagram ? (
-                                <StatusBadge>Instagram disponível</StatusBadge>
-                              ) : null}
+                              <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${opportunityTone(lead.score)}`}>
+                                {opportunityLevel(lead.score)}
+                              </span>
+                              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-600">{lead.recommendedService || lead.categoryName}</span>
                             </div>
                             <h2 className="mt-2 font-semibold text-gray-950">
                               {lead.name}
@@ -533,38 +539,22 @@ export function LeadHunterPage({
                               {lead.neighborhood
                                 ? ` · ${lead.neighborhood}`
                                 : ""}
+                              {typeof lead.distanceKm === "number" ? ` · ${lead.distanceKm} km` : ""}
                             </p>
                             <p className="mt-1 line-clamp-2 text-xs text-gray-500">
                               {lead.address || "Endereço não informado na fonte pública"}
                             </p>
                           </div>
                           <div className="text-right">
-                            <strong className="text-xl text-gray-950">
+                            <strong className="text-lg text-gray-950">
                               {lead.score}
                             </strong>
-                            <p className="text-xs text-gray-500">
-                              {leadScoreLabel(lead.score)}
-                            </p>
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">potencial</p>
                           </div>
                         </div>
-                        {lead.recommendedService ? (
-                          <div className="mt-3 flex items-center gap-2 rounded-xl bg-[#faf6e8] px-3 py-2 text-sm text-[#765d08]">
-                            <Sparkles size={15} />
-                            <span className="text-xs text-[#9a7900]">Melhor oferta:</span>
-                            <strong>{lead.recommendedService}</strong>
-                          </div>
-                        ) : null}
-                        <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                        <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-gray-500">
                           {lead.aiSummary || leadOpportunitySummary(lead)}
                         </p>
-                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                          <div className={`h-full rounded-full ${lead.score >= 75 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${lead.score}%` }} />
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
-                          <span>{lead.sources.join(", ")}</span>
-                          <span>·</span>
-                          <span>Exibido {lead.displayCount}x</span>
-                        </div>
                       </button>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
@@ -1340,7 +1330,12 @@ function LeadHunterSettingsPanel({
           />
           <Button type="submit">Adicionar</Button>
         </form>
-        <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+        <div className="mt-3 grid grid-cols-[1fr_5rem_auto] gap-2 px-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+          <span>Cidade</span>
+          <span className="text-center">Km da base</span>
+          <span>Status</span>
+        </div>
+        <div className="mt-1 max-h-80 space-y-2 overflow-y-auto">
           {cities.map((city) => (
             <div
               key={city.id}

@@ -6,6 +6,7 @@ import { calculateLeadScore } from './LeadScoringService'
 import { shouldDisplayLead } from './LeadRotationService'
 import { buildGoogleMapsRouteUrl, recommendDailyMission } from './LeadRouteService'
 import { createDefaultLeadHunterCities } from '../../constants/leadHunterDefaults'
+import { opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
 
 const prospect = (overrides: Partial<LeadHunterProspect> = {}): LeadHunterProspect => ({
   id: 'prospect-1', externalIds: {}, name: 'Refúgio Marmeleiros', normalizedName: 'refugiomarmeleiros',
@@ -48,5 +49,13 @@ describe('Lead Hunter services', () => {
     const mission = recommendDailyMission(cities, [prospect({ cityId: curitiba.id })], [], 'Curitiba')
     expect(mission?.city.name).toBe('Curitiba')
     expect(mission?.newCount).toBe(1)
+  })
+
+  it('favorece negócio local próximo com WhatsApp e Instagram', () => {
+    const local = refineLeadOpportunity(prospect({ name: 'Pousada Local', whatsapp: '41999999999', instagram: '@pousada', score: 55 }), 10)
+    const chain = refineLeadOpportunity(prospect({ name: 'Hotel Ibis Centro', score: 55 }), 45)
+    expect(local.score).toBeGreaterThan(chain.score)
+    expect(opportunityLevel(local.score)).toBe('Excelente')
+    expect(chain.scoreReasons.some((reason) => reason.id === 'large-chain')).toBe(true)
   })
 })
