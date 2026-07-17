@@ -110,6 +110,7 @@ export default {
       sourceUrls: (lead.sourceUrls || []).slice(0, 5).map((item) => clean(item, 400)),
     })).filter((lead) => lead.id && lead.name)
     if (!leads.length) return json({ error: 'Envie ao menos um lead.' }, 400, origin)
+    if (!env.OPENAI_API_KEY) return json({ error: 'OPENAI_API_KEY ainda não configurada no Worker.' }, 503, origin)
 
     const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
