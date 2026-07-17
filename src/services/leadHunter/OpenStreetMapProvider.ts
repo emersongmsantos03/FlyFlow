@@ -4,10 +4,36 @@ type OsmElement = { type: 'node' | 'way' | 'relation'; id: number; lat?: number;
 
 const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
 const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:'
+const CACHE_PREFIX = 'flyflow:osm-leads:v2:'
+const CITY_COORDINATES: Record<string, [number, number]> = {
+  curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
+  'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
+  'quatro barras': [-25.3656, -49.0763], 'campina grande do sul': [-25.3044, -49.0551], 'fazenda rio grande': [-25.6624, -49.3073], mandirituba: [-25.777, -49.3282],
+  'balsa nova': [-25.5805, -49.6325], itaperucu: [-25.2193, -49.3454], 'rio branco do sul': [-25.19, -49.314], 'bocaiuva do sul': [-25.2066, -49.1141],
+  'tijucas do sul': [-25.9311, -49.1802], contenda: [-25.6788, -49.535], lapa: [-25.7697, -49.7168],
+}
 const clean = (value = '', max = 240) => [...value].map((character) => character.charCodeAt(0) < 32 || character === '<' || character === '>' ? ' ' : character).join('').replace(/\s+/g, ' ').trim().slice(0, max)
 const normalize = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 const first = (tags: Record<string, string>, ...keys: string[]) => clean(keys.map((key) => tags[key]).find(Boolean) || '')
+
+const locateCity = async (city: string, signal?: AbortSignal): Promise<[number, number]> => {
+  const known = CITY_COORDINATES[normalize(city)]
+  if (known) return known
+  const key = `flyflow:city-coordinate:${normalize(city)}`
+  const cached = localStorage.getItem(key)
+  if (cached) return JSON.parse(cached) as [number, number]
+  const url = new URL('https://nominatim.openstreetmap.org/search')
+  url.searchParams.set('q', `${city}, Paraná, Brasil`)
+  url.searchParams.set('format', 'jsonv2')
+  url.searchParams.set('limit', '1')
+  const response = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }, signal })
+  if (!response.ok) throw new Error('Não foi possível localizar a cidade selecionada.')
+  const result = await response.json() as Array<{ lat: string; lon: string }>
+  if (!result[0]) throw new Error(`A cidade “${city}” não foi localizada. Revise o nome nas configurações.`)
+  const coordinates: [number, number] = [Number(result[0].lat), Number(result[0].lon)]
+  localStorage.setItem(key, JSON.stringify(coordinates))
+  return coordinates
+}
 
 const filtersFor = (categories: string[]) => {
   const names = categories.map(normalize).join(' ')
@@ -78,18 +104,21 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
       if (Date.now() - parsed.at < CACHE_TTL) return { ...parsed.result, warnings: [...parsed.result.warnings, 'Resultado reutilizado do cache de 24 horas.'] }
     }
     const filters = filtersFor(categories)
-    const query = `[out:json][timeout:25];area["boundary"="administrative"]["name"="${city.replace(/["\\]/g, '')}"]->.a;(${filters.map((filter) => `nwr${filter}(area.a);`).join('')});out center ${Math.min(Math.max(request.limit * 3, 30), 150)};`
+    const [latitude, longitude] = await locateCity(city, signal)
+    const radiusMeters = Math.round(Math.min(Math.max(request.radiusKm, 2), 70) * 1000)
+    const query = `[out:json][timeout:12];(${filters.map((filter) => `nwr${filter}(around:${radiusMeters},${latitude},${longitude});`).join('')});out center ${Math.min(Math.max(request.limit * 3, 30), 100)};`
     let lastError: unknown
     for (const endpoint of ENDPOINTS) {
       try {
-        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: `data=${encodeURIComponent(query)}`, signal })
+        const attemptSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(14_000)]) : AbortSignal.timeout(14_000)
+        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: `data=${encodeURIComponent(query)}`, signal: attemptSignal })
         if (!response.ok) throw new Error(`Overpass respondeu ${response.status}`)
         const data = await response.json() as { elements?: OsmElement[] }
         const leads = (data.elements || []).map((item) => mapOsmElement(item, city, categories)).filter((item): item is NonNullable<typeof item> => Boolean(item)).slice(0, request.limit)
         const result: LeadSearchProviderResult = { leads, sources: ['OpenStreetMap / Overpass API'], estimatedCost: 0, warnings: leads.length ? [] : ['Nenhum estabelecimento com nome foi encontrado nesta combinação. Tente outra categoria ou cidade.'] }
         localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
         return result
-      } catch (error) { if ((error as Error).name === 'AbortError') throw error; lastError = error }
+      } catch (error) { if (signal?.aborted) throw error; lastError = error }
     }
     throw new Error(`A fonte pública está temporariamente indisponível. Tente novamente em alguns minutos. ${lastError instanceof Error ? lastError.message : ''}`.trim())
   }
