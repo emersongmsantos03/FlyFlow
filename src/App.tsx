@@ -4754,7 +4754,7 @@ function App() {
                 }
                 const candidateCities = filters.cityIds.length
                   ? activeCities.filter((item) => filters.cityIds.includes(item.id)).slice(0, 1)
-                  : [...activeCities].sort((a, b) => a.distanceFromBaseKm - b.distanceFromBaseKm || a.searchCount - b.searchCount).slice(0, 5)
+                  : [...activeCities].sort((a, b) => a.distanceFromBaseKm - b.distanceFromBaseKm || a.searchCount - b.searchCount).slice(0, 3)
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
                   ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
@@ -4773,10 +4773,10 @@ function App() {
                 const searchId = createId('lh-search')
                 try {
                   const controller = new AbortController()
-                  const timeout = window.setTimeout(() => controller.abort(), 45_000)
+                  const timeout = window.setTimeout(() => controller.abort(), 60_000)
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = 10
-                  const providerLimit = Math.min(30, resultsPerSearch * 3)
+                  const providerLimit = filters.cityIds.length ? 30 : 8
                   const unavailableProspects = (state.leadHunterProspects || []).filter((prospect) =>
                     prospect.status === 'Importado' ||
                     prospect.status === 'Descartado' ||
@@ -4798,7 +4798,6 @@ function App() {
                   const combinedLeads = new Map(result.leads.map((lead) => [lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`, lead]))
                   const combinedSources = new Set(result.sources)
                   for (const fallbackCity of candidateCities.slice(1)) {
-                    if (combinedLeads.size >= resultsPerSearch) break
                     const fallbackResult = await provider.search({ cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit }, controller.signal)
                     fallbackResult.sources.forEach((source) => combinedSources.add(source))
                     fallbackResult.leads.filter((lead) => !isAlreadyImported(lead)).forEach((lead) => {
@@ -4806,7 +4805,21 @@ function App() {
                       if (!combinedLeads.has(key)) combinedLeads.set(key, lead)
                     })
                   }
-                  result = { ...result, leads: [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a)).slice(0, resultsPerSearch), sources: [...combinedSources] }
+                  const rankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
+                  const leadBuckets = new Map<string, typeof rankedLeads>()
+                  rankedLeads.forEach((lead) => {
+                    const bucketKey = `${normalizeLeadText(lead.city)}|${normalizeLeadText(lead.categoryName)}`
+                    leadBuckets.set(bucketKey, [...(leadBuckets.get(bucketKey) || []), lead])
+                  })
+                  const mixedLeads: typeof rankedLeads = []
+                  while (mixedLeads.length < resultsPerSearch && [...leadBuckets.values()].some((bucket) => bucket.length)) {
+                    for (const bucket of leadBuckets.values()) {
+                      const nextLead = bucket.shift()
+                      if (nextLead) mixedLeads.push(nextLead)
+                      if (mixedLeads.length >= resultsPerSearch) break
+                    }
+                  }
+                  result = { ...result, leads: mixedLeads, sources: [...combinedSources] }
                   window.clearTimeout(timeout)
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
