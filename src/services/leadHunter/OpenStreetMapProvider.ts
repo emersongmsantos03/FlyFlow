@@ -21,7 +21,7 @@ const ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ]
 const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:v4:'
+const CACHE_PREFIX = 'flyflow:osm-leads:v5:'
 const CITY_COORDINATES: Record<string, [number, number]> = {
   curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
   'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
@@ -168,8 +168,7 @@ const mapNominatimResult = (result: NominatimResult, city: string, requestedCate
   }
 }
 
-const searchNominatim = async (city: string, categories: string[], limit: number, signal?: AbortSignal): Promise<LeadSearchProviderResult['leads']> => {
-  const category = clean(categories[0] || 'hotel', 80)
+const searchNominatimCategory = async (city: string, category: string, limit: number, signal?: AbortSignal): Promise<NominatimResult[]> => {
   const url = new URL('https://nominatim.openstreetmap.org/search')
   url.searchParams.set('q', `${category} ${city}, Paraná, Brasil`)
   url.searchParams.set('format', 'jsonv2')
@@ -180,8 +179,18 @@ const searchNominatim = async (city: string, categories: string[], limit: number
   url.searchParams.set('limit', String(Math.min(Math.max(limit, 10), 30)))
   const response = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }, signal })
   if (!response.ok) throw new Error(`Nominatim respondeu ${response.status}`)
-  const data = await response.json() as NominatimResult[]
-  const mapped = data.map((item) => mapNominatimResult(item, city, categories))
+  return response.json() as Promise<NominatimResult[]>
+}
+
+const searchNominatim = async (city: string, categories: string[], limit: number, signal?: AbortSignal): Promise<LeadSearchProviderResult['leads']> => {
+  const searchCategories = [...new Set(categories.map((category) => clean(category, 80)).filter(Boolean))].slice(0, 3)
+  const collected: Array<{ result: NominatimResult; category: string }> = []
+  for (const category of searchCategories.length ? searchCategories : ['hotel']) {
+    const data = await searchNominatimCategory(city, category, limit, signal)
+    collected.push(...data.map((result) => ({ result, category })))
+    if (collected.length >= limit) break
+  }
+  const mapped = collected.map(({ result, category }) => mapNominatimResult(result, city, [category]))
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
   const unique = new Map<string, (typeof mapped)[number]>()
@@ -215,7 +224,7 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
           estimatedCost: 0,
           warnings: [],
         }
-        localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
+        if (leads.length) localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
         return result
       }
     } catch {
@@ -234,7 +243,7 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
         const data = await response.json() as { elements?: OsmElement[] }
         const leads = (data.elements || []).map((item) => mapOsmElement(item, city, categories)).filter((item): item is NonNullable<typeof item> => Boolean(item)).slice(0, request.limit)
         const result: LeadSearchProviderResult = { leads, sources: ['OpenStreetMap / Overpass API'], estimatedCost: 0, warnings: leads.length ? [] : ['Nenhum estabelecimento com nome foi encontrado nesta combinação. Tente outra categoria ou cidade.'] }
-        localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
+        if (leads.length) localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
         return result
       } catch (error) { if (signal?.aborted) throw error; lastError = error }
     }

@@ -4672,7 +4672,11 @@ function App() {
                   /hotel|pousada|restaurante|imobiliária|vinícola|resort|haras|pesqueiro|concessionária|shopping|academia|clínica|escola|indústria|logístico|galpão|energia solar|condomínio|fazenda|sítio|cooperativa|construtora|incorporadora|loteamento/i.test(item.name),
                 )
                 const city = filters.cityIds.length ? activeCities.find((item) => filters.cityIds.includes(item.id)) : [...activeCities].sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)[0]
-                const selectedCategories = filters.categoryIds.length ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1) : [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)].sort((a, b) => a.searchCount - b.searchCount || b.weight - a.weight).slice(0, 1)
+                const selectedCategories = filters.categoryIds.length
+                  ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
+                  : [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
+                    .sort((a, b) => b.weight - a.weight || a.searchCount - b.searchCount)
+                    .slice(0, 3)
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
                 try {
