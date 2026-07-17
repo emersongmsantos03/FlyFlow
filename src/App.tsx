@@ -4686,11 +4686,12 @@ function App() {
                   const controller = new AbortController()
                   const timeout = window.setTimeout(() => controller.abort(), 45_000)
                   const provider = new OpenStreetMapLeadProvider()
-                  let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: state.leadHunterSettings?.maxResultsPerSearch || 20 }, controller.signal)
+                  const resultsPerSearch = Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 10)
+                  let result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
                   for (const fallbackCity of candidateCities.slice(1)) {
                     if (result.leads.length) break
                     city = fallbackCity
-                    result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: state.leadHunterSettings?.maxResultsPerSearch || 20 }, controller.signal)
+                    result = await provider.search({ cityNames: [city.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: resultsPerSearch }, controller.signal)
                   }
                   window.clearTimeout(timeout)
                   let tokenUsage = 0

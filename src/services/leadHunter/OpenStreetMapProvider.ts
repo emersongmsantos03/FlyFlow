@@ -21,7 +21,7 @@ const ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ]
 const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:v5:'
+const CACHE_PREFIX = 'flyflow:osm-leads:v6:'
 const CITY_COORDINATES: Record<string, [number, number]> = {
   curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
   'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
@@ -215,16 +215,17 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
       const parsed = JSON.parse(cached) as { at: number; result: LeadSearchProviderResult }
       if (Date.now() - parsed.at < CACHE_TTL) return { ...parsed.result, warnings: [...parsed.result.warnings, 'Resultado reutilizado do cache de 24 horas.'] }
     }
+    let nominatimLeads: LeadSearchProviderResult['leads'] = []
     try {
-      const leads = await searchNominatim(city, categories, request.limit, signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000))
-      if (leads.length) {
+      nominatimLeads = await searchNominatim(city, categories, request.limit, signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000))
+      if (nominatimLeads.length >= request.limit) {
         const result: LeadSearchProviderResult = {
-          leads,
+          leads: nominatimLeads,
           sources: ['OpenStreetMap / Nominatim'],
           estimatedCost: 0,
           warnings: [],
         }
-        if (leads.length) localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
+        localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
         return result
       }
     } catch {
@@ -241,8 +242,15 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: `data=${encodeURIComponent(query)}`, signal: attemptSignal })
         if (!response.ok) throw new Error(`Overpass respondeu ${response.status}`)
         const data = await response.json() as { elements?: OsmElement[] }
-        const leads = (data.elements || []).map((item) => mapOsmElement(item, city, categories)).filter((item): item is NonNullable<typeof item> => Boolean(item)).slice(0, request.limit)
-        const result: LeadSearchProviderResult = { leads, sources: ['OpenStreetMap / Overpass API'], estimatedCost: 0, warnings: leads.length ? [] : ['Nenhum estabelecimento com nome foi encontrado nesta combinação. Tente outra categoria ou cidade.'] }
+        const overpassLeads = (data.elements || []).map((item) => mapOsmElement(item, city, categories)).filter((item): item is NonNullable<typeof item> => Boolean(item))
+        const unique = new Map<string, (typeof overpassLeads)[number]>()
+        for (const lead of [...nominatimLeads, ...overpassLeads]) {
+          const leadKey = `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
+          const existing = unique.get(leadKey)
+          if (!existing || leadContactPriority(lead) > leadContactPriority(existing)) unique.set(leadKey, lead)
+        }
+        const leads = [...unique.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a)).slice(0, request.limit)
+        const result: LeadSearchProviderResult = { leads, sources: ['OpenStreetMap / Nominatim', 'OpenStreetMap / Overpass API'], estimatedCost: 0, warnings: leads.length ? [] : ['Nenhum estabelecimento com nome foi encontrado nesta combinação. Tente outra categoria ou cidade.'] }
         if (leads.length) localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
         return result
       } catch (error) { if (signal?.aborted) throw error; lastError = error }
