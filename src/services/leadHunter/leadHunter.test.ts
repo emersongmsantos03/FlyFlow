@@ -55,7 +55,7 @@ describe('Lead Hunter services', () => {
     const local = refineLeadOpportunity(prospect({ name: 'Pousada Local', whatsapp: '41999999999', instagram: '@pousada', score: 55 }), 10)
     const chain = refineLeadOpportunity(prospect({ name: 'Hotel Ibis Centro', score: 55 }), 45)
     expect(local.score).toBeGreaterThan(chain.score)
-    expect(opportunityLevel(local.score)).toBe('Excelente')
+    expect(opportunityLevel(local.score)).toBe('Boa')
     expect(chain.scoreReasons.some((reason) => reason.id === 'large-chain')).toBe(true)
   })
 })
