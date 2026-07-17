@@ -4684,6 +4684,19 @@ function App() {
                   if (isOpenAILeadEnrichmentConfigured) {
                     try {
                       const knownProspects = state.leadHunterProspects || []
+                      const enrichmentPriority = (raw: typeof result.leads[number]) => {
+                        const category = normalizeLeadText(raw.categoryName)
+                        const commercialPotential =
+                          /construtora|incorporadora|loteamento|imobiliaria|condominio|industria|logistic|galpao|energia solar|concessionaria/.test(category) ? 24 :
+                          /hotel|pousada|resort|vinicola|fazenda|haras|shopping|clinica|escola|academia|restaurante/.test(category) ? 16 :
+                          8
+                        const discoverability =
+                          (raw.website ? 18 : 0) +
+                          (raw.instagram ? 10 : 0) +
+                          (raw.phone ? 6 : 0) +
+                          (raw.address ? 4 : 0)
+                        return (raw.score || 0) + commercialPotential + discoverability
+                      }
                       const enrichmentInput = result.leads.filter((raw) => {
                         const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
                         const osmId = raw.externalIds?.openstreetmap
@@ -4694,11 +4707,10 @@ function App() {
                           Boolean(osmId && item.externalIds.openstreetmap === osmId) ||
                           (item.normalizedName === normalizedName && normalizeLeadText(item.city) === normalizedCity),
                         )
-                        return !alreadyKnown && !(raw.whatsapp && raw.phone && raw.email)
-                      }).sort((a, b) =>
-                        Number(Boolean(b.website || b.instagram || b.sourceUrls?.length)) -
-                        Number(Boolean(a.website || a.instagram || a.sourceUrls?.length)),
-                      ).slice(0, 3).map((raw) => ({
+                        // Quem já possui WhatsApp está pronto para contato e não precisa consumir IA.
+                        return !alreadyKnown && !raw.whatsapp
+                      }).sort((a, b) => enrichmentPriority(b) - enrichmentPriority(a))
+                        .slice(0, 3).map((raw) => ({
                         externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '',
                         sources: [], sourceUrls: [], score: 0, scoreReasons: [], normalizedName: normalizeLeadText(raw.name), categoryId: '', status: 'Descoberto' as const,
                         isNew: true, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, changedSinceLastDisplay: false,
