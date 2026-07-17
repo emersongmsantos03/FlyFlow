@@ -32,6 +32,7 @@ import type {
 import { Button, Panel, StatusBadge } from "../ui";
 import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
 import { leadContactPriority } from "../../services/leadHunter/LeadOpportunityService";
+import { deduplicateLeadHunterProspects } from "../../services/leadHunter/LeadDeduplicationService";
 import {
   buildGoogleMapsRouteUrl,
   recommendDailyMission,
@@ -108,7 +109,7 @@ export function LeadHunterPage({
   const [searching, setSearching] = useState(false);
   const filtered = useMemo(
     () =>
-      prospects
+      deduplicateLeadHunterProspects(prospects)
         .filter(
           (lead) =>
             (!cityId || lead.cityId === cityId) &&

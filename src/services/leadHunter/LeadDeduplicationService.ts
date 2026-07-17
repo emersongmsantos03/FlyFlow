@@ -6,6 +6,41 @@ const domain = (value = '') => value.toLowerCase().replace(/^https?:\/\//, '').r
 
 export interface DuplicateMatch { type: 'prospect' | 'contact' | 'opportunity'; id: string; confidence: number; reasons: string[] }
 
+const prospectKey = (lead: Pick<LeadHunterProspect, 'name' | 'city'>) =>
+  `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
+
+export const deduplicateLeadHunterProspects = (prospects: LeadHunterProspect[]) => {
+  const unique = new Map<string, LeadHunterProspect>()
+  for (const prospect of prospects) {
+    const key = prospectKey(prospect)
+    const existing = unique.get(key)
+    if (!existing) {
+      unique.set(key, prospect)
+      continue
+    }
+    const richer = [existing, prospect].sort((a, b) =>
+      Number(Boolean(b.whatsapp)) - Number(Boolean(a.whatsapp)) ||
+      Number(Boolean(b.phone)) - Number(Boolean(a.phone)) ||
+      Number(Boolean(b.email)) - Number(Boolean(a.email)) ||
+      b.score - a.score,
+    )[0]
+    const other = richer.id === existing.id ? prospect : existing
+    unique.set(key, {
+      ...other,
+      ...richer,
+      externalIds: { ...other.externalIds, ...richer.externalIds },
+      sources: [...new Set([...other.sources, ...richer.sources])],
+      sourceUrls: [...new Set([...other.sourceUrls, ...richer.sourceUrls])],
+      scoreReasons: [...new Map([...other.scoreReasons, ...richer.scoreReasons].map((reason) => [reason.id, reason])).values()],
+      discoveryCount: Math.max(existing.discoveryCount, prospect.discoveryCount),
+      displayCount: Math.max(existing.displayCount, prospect.displayCount),
+      firstDiscoveredAt: [existing.firstDiscoveredAt, prospect.firstDiscoveredAt].sort()[0],
+      lastDiscoveredAt: [existing.lastDiscoveredAt, prospect.lastDiscoveredAt].sort().at(-1) || richer.lastDiscoveredAt,
+    })
+  }
+  return [...unique.values()]
+}
+
 export const findLeadDuplicates = (candidate: Partial<LeadHunterProspect>, prospects: LeadHunterProspect[], contacts: Client[], leads: Lead[]): DuplicateMatch[] => {
   const candidateName = normalizeLeadText(candidate.name)
   const candidatePhone = digits(candidate.whatsapp || candidate.phone)

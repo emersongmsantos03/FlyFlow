@@ -2,6 +2,7 @@ import { createEmptyState } from '../data/demoData'
 import { rolePermissionPresets } from '../lib/permissions'
 import { synchronizeOperationalState } from '../lib/operations'
 import { createDefaultLeadHunterCategories, createDefaultLeadHunterCities, createDefaultLeadHunterSettings } from '../constants/leadHunterDefaults'
+import { deduplicateLeadHunterProspects } from './leadHunter/LeadDeduplicationService'
 import type { AppState, BankAccount, Client, Expense, Lead, User } from '../types'
 
 const STORAGE_KEY = 'hero-drone-manager:data:v2-empty'
@@ -194,7 +195,7 @@ export const normalizeAppState = (state: AppState): AppState => {
       const currentIds = new Set(current.map((category) => category.id))
       return [...current, ...defaults.filter((category) => !currentIds.has(category.id))]
     })(),
-    leadHunterProspects: state.leadHunterProspects || [],
+    leadHunterProspects: deduplicateLeadHunterProspects(state.leadHunterProspects || []),
     leadHunterSearches: state.leadHunterSearches || [],
     leadHunterRoutes: state.leadHunterRoutes || [],
     leadHunterSettings: state.leadHunterSettings || createDefaultLeadHunterSettings(),

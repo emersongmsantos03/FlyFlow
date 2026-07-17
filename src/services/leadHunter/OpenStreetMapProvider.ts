@@ -1,5 +1,6 @@
 import type { LeadSearchProvider, LeadSearchProviderResult, LeadSearchRequest } from './providers'
 import { leadContactPriority, recommendLeadService } from './LeadOpportunityService'
+import { normalizeLeadText } from './LeadDeduplicationService'
 
 type OsmElement = { type: 'node' | 'way' | 'relation'; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
 type NominatimResult = {
@@ -20,7 +21,7 @@ const ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ]
 const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:v3:'
+const CACHE_PREFIX = 'flyflow:osm-leads:v4:'
 const CITY_COORDINATES: Record<string, [number, number]> = {
   curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
   'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
@@ -180,10 +181,16 @@ const searchNominatim = async (city: string, categories: string[], limit: number
   const response = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }, signal })
   if (!response.ok) throw new Error(`Nominatim respondeu ${response.status}`)
   const data = await response.json() as NominatimResult[]
-  return data.map((item) => mapNominatimResult(item, city, categories))
+  const mapped = data.map((item) => mapNominatimResult(item, city, categories))
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
-    .slice(0, limit)
+  const unique = new Map<string, (typeof mapped)[number]>()
+  for (const lead of mapped) {
+    const key = `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
+    const existing = unique.get(key)
+    if (!existing || leadContactPriority(lead) > leadContactPriority(existing)) unique.set(key, lead)
+  }
+  return [...unique.values()].slice(0, limit)
 }
 
 export class OpenStreetMapLeadProvider implements LeadSearchProvider {
