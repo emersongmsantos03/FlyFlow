@@ -137,6 +137,7 @@ export function LeadHunterPage({
   const aiCallsToday = todaySearches.filter((search) => (search.tokenUsage || 0) > 0).length;
   const effectiveDailyAiLimit = settings.maxDailyCalls;
   const tokensToday = todaySearches.reduce((total, search) => total + (search.tokenUsage || 0), 0);
+  const latestSearchId = searches[0]?.id;
   const filtered = useMemo(
     () =>
       deduplicateLeadHunterProspects(prospects)
@@ -153,6 +154,7 @@ export function LeadHunterPage({
             lead.status !== "Descartado" &&
             lead.status !== "Importado" &&
             !lead.leadId &&
+            (!latestSearchId || lead.lastSearchId === latestSearchId) &&
             (!cityId || lead.cityId === cityId) &&
             (!categoryId || lead.categoryId === categoryId) &&
             lead.score >= minimumScore &&
@@ -167,7 +169,7 @@ export function LeadHunterPage({
           sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
           leadContactPriority(b) - leadContactPriority(a),
         ),
-    [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, sortMode],
+    [categoryId, cityId, contactFilter, latestSearchId, minimumScore, onlyNew, prospects, resultQuery, sortMode],
   );
   const runSearch = async () => {
     if (searching) return;

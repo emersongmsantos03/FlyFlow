@@ -4735,7 +4735,7 @@ function App() {
                 }
                 const candidateCities = filters.cityIds.length
                   ? activeCities.filter((item) => filters.cityIds.includes(item.id)).slice(0, 1)
-                  : [...activeCities].sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm).slice(0, 3)
+                  : [...activeCities].sort((a, b) => a.distanceFromBaseKm - b.distanceFromBaseKm || a.searchCount - b.searchCount).slice(0, 5)
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
                   ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
@@ -4748,7 +4748,7 @@ function App() {
                   const controller = new AbortController()
                   const timeout = window.setTimeout(() => controller.abort(), 45_000)
                   const provider = new OpenStreetMapLeadProvider()
-                  const resultsPerSearch = Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 10)
+                  const resultsPerSearch = 10
                   const providerLimit = Math.min(30, resultsPerSearch * 3)
                   const unavailableProspects = (state.leadHunterProspects || []).filter((prospect) =>
                     prospect.status === 'Importado' ||
