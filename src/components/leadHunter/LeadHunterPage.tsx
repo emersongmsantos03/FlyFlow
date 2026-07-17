@@ -773,13 +773,20 @@ function LeadDetail({
           <h3 className="font-semibold">Contato e localização</h3>
           <dl className="mt-2 space-y-2 rounded-xl border border-gray-200 p-3 text-sm">
             {[
+              ["Categoria", lead.categoryName],
               ["Serviço recomendado", lead.recommendedService],
+              ["Responsável", lead.contactName],
               ["Telefone", lead.phone],
               ["WhatsApp", lead.whatsapp],
               ["E-mail", lead.email],
               ["Instagram", lead.instagram],
               ["Site", lead.website],
               ["Endereço", lead.address],
+              ["Bairro", lead.neighborhood],
+              ["Cidade", lead.city],
+              ["Distância da base", typeof lead.distanceKm === "number" ? `${lead.distanceKm} km` : ""],
+              ["Avaliação no Google", lead.googleRating ? `${lead.googleRating} de 5` : ""],
+              ["Avaliações recebidas", typeof lead.googleReviewCount === "number" ? String(lead.googleReviewCount) : ""],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between gap-3">
                 <dt className="text-gray-500">{label}</dt>
@@ -830,7 +837,7 @@ function LeadDetail({
                   key={reason.id}
                   className="flex justify-between gap-3 rounded-lg bg-gray-50 p-3 text-sm"
                 >
-                  <span>{reason.label}</span>
+                  <span>{reason.label}{reason.evidence ? <small className="mt-1 block text-xs text-gray-400">{reason.evidence}</small> : null}</span>
                   <strong
                     className={
                       reason.points >= 0 ? "text-emerald-700" : "text-red-700"
@@ -849,10 +856,35 @@ function LeadDetail({
           </div>
         </section>
         <section className="mt-5">
-          <h3 className="font-semibold">Fontes</h3>
+          <h3 className="font-semibold">Fontes verificáveis</h3>
           <p className="mt-2 text-sm text-gray-600">
             {lead.sources.join(", ") || "Não informado"}
           </p>
+          <div className="mt-2 space-y-2">
+            {lead.sourceUrls.map((url, index) => (
+              <a key={`${url}-${index}`} className="flex items-center gap-2 break-all rounded-lg border border-gray-200 p-2 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={url} target="_blank" rel="noreferrer">
+                <ExternalLink className="shrink-0" size={14} />
+                {url}
+              </a>
+            ))}
+          </div>
+        </section>
+        <section className="mt-5">
+          <details className="rounded-xl border border-gray-200 p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-gray-700">Dados técnicos e histórico</summary>
+            <dl className="mt-3 space-y-2 text-sm">
+              {[
+                ["Status", lead.status],
+                ["Classificação da IA", lead.aiOpportunityLevel],
+                ["Encontrado pela primeira vez", new Date(lead.firstDiscoveredAt).toLocaleString("pt-BR")],
+                ["Última descoberta", new Date(lead.lastDiscoveredAt).toLocaleString("pt-BR")],
+                ["Quantidade de descobertas", String(lead.discoveryCount)],
+                ["Latitude", typeof lead.latitude === "number" ? String(lead.latitude) : ""],
+                ["Longitude", typeof lead.longitude === "number" ? String(lead.longitude) : ""],
+                ["ID da fonte", Object.values(lead.externalIds).join(", ")],
+              ].map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-gray-500">{label}</dt><dd className="break-all text-right font-medium">{value || "Não informado"}</dd></div>)}
+            </dl>
+          </details>
         </section>
         <div className="mt-6 flex flex-wrap gap-2">
           <Button type="button" onClick={() => onImport(lead.id)}>
