@@ -77,6 +77,7 @@ html[data-theme='dark'] {
 html {
   min-width: 320px;
   background: var(--app-bg);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -86,6 +87,9 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
 }
 
 button,
@@ -106,6 +110,7 @@ button:disabled {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .no-scrollbar {
@@ -310,6 +315,23 @@ button:disabled {
 .mobile-nav {
   background: color-mix(in srgb, var(--surface) 90%, transparent) !important;
   backdrop-filter: blur(20px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-drawer {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-top: env(safe-area-inset-top, 0px);
+  transform: translateZ(0);
+}
+
+.mobile-drawer-layer {
+  height: 100dvh;
+}
+
+@media (max-width: 1023px) {
+  .quick-actions-dock {
+    bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .modal-backdrop {
@@ -860,7 +882,16 @@ html[data-theme='dark'] .data-table tr {
 @media (max-width: 1023px) {
   .page-shell {
     display: block;
-    padding-bottom: 4.75rem;
+    min-height: 100dvh;
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .app-content {
+    overflow-x: hidden;
   }
 
   .data-table thead {
@@ -926,6 +957,71 @@ html[data-theme='dark'] .data-table tr {
 }
 
 @media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  .app-header-inner {
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  .app-header-controls {
+    gap: 0.375rem;
+  }
+
+  .app-header-controls .app-header-icon {
+    height: 2.75rem;
+    width: 2.75rem;
+  }
+
+  .app-content {
+    padding: 0.75rem;
+  }
+
+  .page-toolbar {
+    padding: 1rem !important;
+  }
+
+  .page-toolbar .app-button,
+  .page-toolbar a {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .data-table td {
+    gap: 0.75rem;
+    overflow-wrap: anywhere;
+    padding: 0.7rem;
+  }
+
+  .data-table td::before {
+    flex-basis: 6.5rem;
+  }
+
+  .modal-backdrop {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  .modal-surface {
+    border-bottom: 0;
+    border-left: 0;
+    border-right: 0;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 0.5rem) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    width: 100vw !important;
+  }
+
+  button,
+  a,
+  select,
+  input[type='checkbox'] {
+    touch-action: manipulation;
+  }
+
   .crm-metrics {
     display: flex;
     margin-inline: -0.25rem;

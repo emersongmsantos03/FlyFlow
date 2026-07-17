@@ -19,6 +19,7 @@ import {
   Landmark,
   LogOut,
   Mail,
+  Menu,
   MapPin,
   MessageCircle,
   Moon,
@@ -37,6 +38,7 @@ import {
   Users,
   Wallet,
   Wand2,
+  X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useForm } from 'react-hook-form'
@@ -928,6 +930,15 @@ function App() {
   const [financeTab, setFinanceTab] = useState<FinanceTab>('dashboard')
   const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>('diaria')
   const [quickActionsOpen, setQuickActionsOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setMobileMenuOpen(false) }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', closeOnEscape) }
+  }, [mobileMenuOpen])
   const [selectedProposalClientId, setSelectedProposalClientId] = useState<string>('')
   const [selectedProposalLeadId, setSelectedProposalLeadId] = useState<string>('')
   const [selectedProposalQuoteId, setSelectedProposalQuoteId] = useState<string>('')
@@ -4384,6 +4395,7 @@ function App() {
   const currentNavigation = navigation.find((item) => item.page === page)
   const CurrentPageIcon = currentNavigation?.icon ?? LayoutDashboard
 
+
   return (
     <div className="page-shell app-shell bg-[#f4f5f7]">
       {toast ? <Toast message={toast} /> : null}
@@ -4440,10 +4452,13 @@ function App() {
         </div>
       </aside>
 
+      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-3">{availableNavigation.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><Icon size={19} />{item.label}</button> })}</nav><div className="mobile-drawer-footer space-y-3 border-t border-white/10 p-4"><div className="grid grid-cols-2 gap-2"><label className="text-xs text-white/60">Período<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={period} onChange={(event) => setPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option className="text-black" key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-xs text-white/60">Regime<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={regime} onChange={(event) => setRegime(event.target.value as AccountingRegime)}><option className="text-black" value="cash">Caixa</option><option className="text-black" value="accrual">Competência</option></select></label></div><div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs"><strong className="block text-white">{currentUser.name}</strong><span className="mt-1 block truncate text-white/60">{currentUser.email}</span></div><Button className="w-full border border-white/15 bg-white/10 text-white" type="button" onClick={handleLogout}><LogOut size={16} /> Sair</Button></div></aside></div> : null}
+
       <main className="min-w-0">
         <header className="app-header sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
           <div className="app-header-inner flex flex-wrap items-center gap-2 px-3 py-2.5 lg:flex-nowrap lg:px-5">
             <div className="app-current-page order-1 flex min-w-0 items-center gap-2.5 lg:w-36 lg:shrink-0">
+              <button className="app-header-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 lg:hidden" type="button" aria-label="Abrir menu principal" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><Menu size={21} /></button>
               <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:flex">
                 <CurrentPageIcon size={17} />
               </span>
@@ -4689,7 +4704,7 @@ function App() {
       </main>
 
       <nav className="mobile-nav fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-gray-200 bg-white lg:hidden">
-        {availableMobileNavigation.slice(0, 6).map((item) => {
+        {availableMobileNavigation.slice(0, 4).map((item) => {
           const Icon = item.icon
           return (
             <button
@@ -4705,9 +4720,10 @@ function App() {
             </button>
           )
         })}
+        <button className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? 'text-gray-500' : 'text-[#171717]'}`} type="button" aria-label="Abrir menu completo" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />Menu</button>
       </nav>
 
-      <div className="fixed bottom-20 right-4 z-40 lg:bottom-6">
+      <div className="quick-actions-dock fixed bottom-20 right-4 z-40 lg:bottom-6">
         <div className="group relative">
           <Button
             aria-expanded={quickActionsOpen}
