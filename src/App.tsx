@@ -190,6 +190,7 @@ import {
   disconnectGoogleWorkspace,
   getGoogleWorkspaceConnection,
   listGoogleWorkspaceEmails,
+  restoreGoogleWorkspaceConnection,
   sendGoogleWorkspaceEmail,
   type GoogleMailboxMessage,
 } from './services/googleWorkspace'
@@ -1162,6 +1163,16 @@ function App() {
   const [inputDialog, setInputDialog] = useState<InputDialogState | null>(null)
   const [emailComposer, setEmailComposer] = useState<EmailComposerState | null>(null)
   const [toast, setToast] = useState('')
+  const googleRestoreAttempted = useRef('')
+
+  useEffect(() => {
+    const clientId = state.companySettings.googleOAuthClientId?.trim() || ''
+    if (!clientId || googleRestoreAttempted.current === clientId || getGoogleWorkspaceConnection().connected) return
+    googleRestoreAttempted.current = clientId
+    void restoreGoogleWorkspaceConnection(clientId).catch(() => {
+      // O Google pode exigir um novo consentimento; nesse caso a tela de Configurações continua disponível.
+    })
+  }, [state.companySettings.googleOAuthClientId])
 
   useEffect(() => {
     if (!isFirebaseConfigured && !isSupabaseConfigured) void ensurePrimaryAuthAccount()
@@ -9207,7 +9218,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         <div className="space-y-4">
           <Panel title="Google Workspace">
             <div className="space-y-3">
-              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial. O Client ID e a conta vinculada ficam salvos no Firebase; a sessão temporária permanece protegida nesta aba.</p>
+              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial. O Client ID fica salvo no Firebase e a sessão autorizada permanece vinculada neste navegador até você desconectar ou o Google revogar o acesso.</p>
               <InputField label="OAuth Client ID do Google" error={getError(errors.googleOAuthClientId?.message)}><input className="field-input" {...register('googleOAuthClientId')} placeholder="000000000000-xxxx.apps.googleusercontent.com" /></InputField>
               <input type="hidden" {...register('googleWorkspaceEmail')} />
               <div className={`rounded-xl border p-3 ${googleConnection.connected ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
