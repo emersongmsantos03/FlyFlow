@@ -171,7 +171,7 @@ import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapPr
 import type { LeadSearchProviderResult } from './services/leadHunter/providers'
 import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
-import { buildGoogleBusinessUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
+import { buildGoogleBusinessUrl, buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
 import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './services/leadHunter/LeadLearningService'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
@@ -314,6 +314,7 @@ interface InputDialogState {
 interface EmailComposerState {
   lead?: Lead
   sourceProspectId?: string
+  whatsappUrl?: string
   quote?: Quote
   to: string
   displayName: string
@@ -1752,9 +1753,15 @@ Hero Drone`
     importLeadHunterProspects([prospect.id])
     const businessName = prospect.name.trim()
     const service = prospect.recommendedService || 'vídeo institucional com drone'
-    const opportunityHook = prospect.aiContactHook?.trim() || prospect.aiSummary?.trim()
+    const storedOpportunityHook = prospect.aiContactHook?.trim() || prospect.aiSummary?.trim()
+    const opportunityHook = storedOpportunityHook && !/cadastrad[oa]\s+manualmente|fluxo comercial|para teste/i.test(storedOpportunityHook)
+      ? storedOpportunityHook
+      : ''
     setEmailComposer({
       sourceProspectId: prospect.id,
+      whatsappUrl: prospect.whatsapp
+        ? buildLeadWhatsAppUrl(prospect, buildLeadWhatsAppMessage(prospect))
+        : undefined,
       to: prospect.email || '',
       displayName: businessName,
       subject: `Uma ideia visual para ${businessName}`,
@@ -5685,7 +5692,7 @@ Hero Drone`,
                   lastSearchId: searchId,
                   changedSinceLastDisplay: false,
                   discardedPermanently: false,
-                  aiSummary: 'Lead cadastrado manualmente para validar a apresentação e o fluxo comercial.',
+                  aiSummary: `${category.name} em ${city.name} com potencial para ${recommendLeadService(category.name).toLocaleLowerCase('pt-BR')}.`,
                   aiApproach: `Apresente ${recommendLeadService(category.name).toLocaleLowerCase('pt-BR')} e personalize a abordagem com um ponto real do negócio.`,
                   notes: 'Cadastro manual de teste.',
                   createdAt: now,
@@ -6416,17 +6423,28 @@ function EmailComposer({
     syncEditor()
   }
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
+  const send = async (alsoOpenWhatsApp = false) => {
     if (!canSend) return
+    const whatsAppWindow = alsoOpenWhatsApp && composer.whatsappUrl
+      ? window.open('', '_blank')
+      : null
     setSending(true)
     setError('')
     try {
       await onSend(to.trim(), subject.trim(), body.trim(), htmlBody, attachment)
+      if (whatsAppWindow && composer.whatsappUrl) {
+        whatsAppWindow.location.href = composer.whatsappUrl
+      }
     } catch (sendError) {
+      whatsAppWindow?.close()
       setError(sendError instanceof Error ? sendError.message : 'Não foi possível enviar o e-mail.')
       setSending(false)
     }
+  }
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    await send(false)
   }
 
   return (
@@ -6527,8 +6545,13 @@ function EmailComposer({
 
         <footer className="flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p className="text-xs text-gray-500">O envio será registrado automaticamente no histórico do CRM.</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
+            {composer.whatsappUrl ? (
+              <Button variant="secondary" disabled={!canSend} type="button" onClick={() => void send(true)}>
+                <MessageCircle size={16} /> {sending ? 'Enviando...' : 'E-mail + WhatsApp'}
+              </Button>
+            ) : null}
             <Button disabled={!canSend} type="submit"><Mail size={16} /> {sending ? 'Enviando...' : 'Enviar e-mail'}</Button>
           </div>
         </footer>
