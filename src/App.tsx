@@ -9,6 +9,8 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   ContactRound,
   Copy,
@@ -7020,6 +7022,12 @@ function AgendaPage({
         </div>
       </div>
 
+      <MiniAgendaCalendar
+        appointments={sortedAppointments}
+        selectedDate={calendarDate}
+        onSelectDate={setCalendarDate}
+      />
+
       {conflicts.length ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
           {conflicts.length} conflito(s) de horário detectado(s). Ajuste os agendamentos sobrepostos.
@@ -9308,6 +9316,104 @@ function TimeGridCalendar({
         </div>
       </div>
     </Panel>
+  )
+}
+
+function MiniAgendaCalendar({
+  appointments,
+  selectedDate,
+  onSelectDate,
+}: {
+  appointments: Appointment[]
+  selectedDate: Date
+  onSelectDate: (date: Date) => void
+}) {
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
+  const selectedKey = dateInputFromDate(selectedDate)
+  const todayKey = dateInputFromDate(new Date())
+  const appointmentCountByDate = useMemo(() => {
+    const counts = new Map<string, number>()
+    appointments
+      .filter((appointment) => appointment.status !== 'Cancelado')
+      .forEach((appointment) => {
+        const key = dateInputFromDate(new Date(appointment.startAt))
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+      })
+    return counts
+  }, [appointments])
+
+  useEffect(() => {
+    setVisibleMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
+  }, [selectedDate])
+
+  const year = visibleMonth.getFullYear()
+  const month = visibleMonth.getMonth()
+  const firstDayOffset = (new Date(year, month, 1).getDay() + 6) % 7
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const day = index - firstDayOffset + 1
+    return new Date(year, month, day)
+  })
+  const changeMonth = (direction: -1 | 1) => {
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + direction, 1))
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4" aria-label="Calendário para escolher uma data">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Escolha uma data</p>
+          <h3 className="mt-0.5 text-sm font-black capitalize text-gray-950">
+            {visibleMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+          </h3>
+        </div>
+        <div className="flex items-center gap-1">
+          <button className="grid h-9 w-9 place-items-center rounded-lg border border-gray-200 text-gray-600 transition hover:border-gray-300 hover:bg-gray-50" type="button" onClick={() => changeMonth(-1)} aria-label="Mês anterior">
+            <ChevronLeft size={17} />
+          </button>
+          <button className="min-h-9 rounded-lg px-2.5 text-xs font-bold text-gray-600 transition hover:bg-gray-50" type="button" onClick={() => onSelectDate(new Date())}>Hoje</button>
+          <button className="grid h-9 w-9 place-items-center rounded-lg border border-gray-200 text-gray-600 transition hover:border-gray-300 hover:bg-gray-50" type="button" onClick={() => changeMonth(1)} aria-label="Próximo mês">
+            <ChevronRight size={17} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((weekday) => (
+          <span key={weekday} className="py-1 text-[0.62rem] font-black uppercase text-gray-400">{weekday}</span>
+        ))}
+        {cells.map((date) => {
+          const key = dateInputFromDate(date)
+          const isCurrentMonth = date.getMonth() === month
+          const isSelected = key === selectedKey
+          const isToday = key === todayKey
+          const appointmentCount = appointmentCountByDate.get(key) ?? 0
+          return (
+            <button
+              key={key}
+              className={`relative flex min-h-10 flex-col items-center justify-center rounded-lg text-xs font-bold transition sm:min-h-11 ${
+                isSelected
+                  ? 'bg-[#e0b936] text-gray-950 shadow-sm'
+                  : isToday
+                    ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-300'
+                    : isCurrentMonth
+                      ? 'text-gray-700 hover:bg-gray-100'
+                      : 'text-gray-300 hover:bg-gray-50'
+              }`}
+              type="button"
+              onClick={() => onSelectDate(new Date(date.getFullYear(), date.getMonth(), date.getDate()))}
+              aria-label={`${date.toLocaleDateString('pt-BR')}${appointmentCount ? `, ${appointmentCount} compromisso(s)` : ''}`}
+              aria-pressed={isSelected}
+            >
+              <span>{date.getDate()}</span>
+              {appointmentCount > 0 ? (
+                <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-gray-900' : 'bg-[#c99b00]'}`} aria-hidden="true" />
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+      <p className="mt-2 text-[0.68rem] text-gray-400">Os pontos indicam dias com compromissos.</p>
+    </section>
   )
 }
 
