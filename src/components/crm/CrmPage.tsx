@@ -378,7 +378,6 @@ export function CrmPage({
           onEditTask={onEditTask}
           onCompleteTask={onCompleteTask}
           onReopenTask={onReopenTask}
-          onCancelTask={onCancelTask}
           onDeleteTask={onDeleteTask}
         />
       ) : null}
@@ -660,7 +659,7 @@ export function TaskView({ state, onOpenLead, onCreate, onEdit: _onEdit, onCompl
   })}</div></div>
 }
 
-function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onCancelTask, onDeleteTask }: {
+function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
   lead: Lead
   state: AppState
   onClose: () => void
@@ -679,7 +678,6 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   onEditTask: (task: TaskItem) => void
   onCompleteTask: (task: TaskItem) => void
   onReopenTask: (task: TaskItem) => void
-  onCancelTask: (task: TaskItem) => void
   onDeleteTask: (task: TaskItem) => void
 }) {
   const [tab, setTab] = useState<DrawerTab>('overview')
@@ -742,7 +740,48 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
           <section><h3 className="text-sm font-black text-gray-950">Contato</h3><dl className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-gray-500">Telefone</dt><dd className="font-bold text-gray-950">{lead.whatsapp || lead.phone || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">E-mail</dt><dd className="break-all text-right font-bold text-gray-950">{lead.email || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">Local</dt><dd className="text-right font-bold text-gray-950">{lead.city || 'Não informado'}</dd></div></dl></section>
         </> : null}
         {tab === 'activities' ? <Timeline items={timeline} /> : null}
-        {tab === 'tasks' ? <section className="space-y-2"><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-black text-gray-950">Tarefas do contato</h3><p className="text-xs text-gray-500">Ações com prazo e responsável.</p></div><Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onCreateTask(lead)}><Plus size={14} /> Nova</Button></div>{tasks.map((task) => <article key={task.id} className="rounded-lg border border-gray-200 p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-gray-950">{task.title}</strong><StatusBadge>{task.status}</StatusBadge></div><p className="mt-1 text-xs text-gray-500">{task.taskType || 'Tarefa'} · {formatDateTime(task.dueAt)} · {task.priority}</p>{task.description ? <p className="mt-1 text-xs text-gray-600">{task.description}</p> : null}</div>{task.status !== 'Concluída' ? <div className="flex shrink-0 gap-1"><button className="rounded-lg bg-emerald-50 p-2 text-emerald-700" type="button" aria-label="Concluir tarefa" onClick={() => onCompleteTask(task)}><Check size={16} /></button><button className="rounded-lg bg-gray-100 p-2 text-gray-500" type="button" aria-label="Cancelar tarefa" onClick={() => onCancelTask(task)}><X size={16} /></button></div> : <CheckCircle2 className="shrink-0 text-emerald-600" size={18} />}</div></article>)}{!tasks.length ? <p className="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">Nenhuma tarefa vinculada.</p> : null}</section> : null}
+        {tab === 'tasks' ? (
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-black text-gray-950">Tarefas</h3>
+                <p className="text-xs text-gray-500">{tasks.length ? `${tasks.length} vinculada${tasks.length === 1 ? '' : 's'} a este contato` : 'Acompanhe os próximos passos deste contato.'}</p>
+              </div>
+              <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onCreateTask(lead)}><Plus size={14} /> Nova tarefa</Button>
+            </div>
+            <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
+              {tasks.map((task, index) => {
+                const completed = task.status === 'Concluída'
+                return (
+                  <article key={task.id} className={`${index ? 'border-t border-gray-200' : ''} group flex items-center gap-3 px-3 py-3 transition-colors hover:bg-gray-50`}>
+                    <button
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors ${completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 text-transparent hover:border-emerald-600 hover:text-emerald-600'}`}
+                      type="button"
+                      title={completed ? 'Voltar para pendente' : 'Marcar como concluída'}
+                      aria-label={completed ? 'Voltar tarefa para pendente' : 'Concluir tarefa'}
+                      onClick={() => completed ? onReopenTask(task) : onCompleteTask(task)}
+                    >
+                      {completed ? <Check size={15} /> : <Check size={14} />}
+                    </button>
+                    <button className="min-w-0 flex-1 text-left" type="button" onClick={() => onEditTask(task)}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong className={`text-sm ${completed ? 'text-gray-500 line-through' : 'text-gray-950'}`}>{task.title}</strong>
+                        <StatusBadge>{task.status}</StatusBadge>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-gray-500">{task.taskType || 'Tarefa'} · {formatDateTime(task.dueAt)} · {task.priority}</p>
+                      {task.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-600">{task.description}</p> : null}
+                    </button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button className="rounded-lg p-2 text-gray-500 hover:bg-white hover:text-gray-950 hover:shadow-sm" title="Editar tarefa" type="button" onClick={() => onEditTask(task)}><SlidersHorizontal size={15} /></button>
+                      <button className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir tarefa" type="button" onClick={() => onDeleteTask(task)}><Trash2 size={15} /></button>
+                    </div>
+                  </article>
+                )
+              })}
+              {!tasks.length ? <div className="px-4 py-8 text-center"><CheckCircle2 className="mx-auto text-gray-300" size={24} /><p className="mt-2 text-sm font-bold text-gray-700">Nenhuma tarefa</p><p className="mt-1 text-xs text-gray-500">Crie uma tarefa para definir o próximo passo.</p></div> : null}
+            </div>
+          </section>
+        ) : null}
         {tab === 'quotes' ? <DrawerList empty="Nenhuma proposta vinculada.">{quotes.map((quote) => {
           const quoteItems = state.quoteItems.filter((item) => item.quoteId === quote.id)
           const previewOpen = previewQuoteId === quote.id
@@ -822,7 +861,6 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
             </div>
           )
         })}</DrawerList> : null}
-        {tab === 'tasks' && tasks.length ? <section className="rounded-lg border border-gray-200 bg-gray-50 p-3"><h4 className="text-xs font-black uppercase tracking-wide text-gray-500">Gerenciar tarefas</h4><div className="mt-2 space-y-2">{tasks.map((task) => <div key={`manage-${task.id}`} className="flex items-center justify-between gap-2 rounded-md bg-white p-2"><button className="min-w-0 flex-1 truncate text-left text-xs font-bold text-gray-800 hover:underline" type="button" onClick={() => onEditTask(task)}>{task.title}</button><div className="flex shrink-0 items-center gap-1">{task.status === 'Concluída' ? <button className="rounded-md p-1.5 text-blue-700 hover:bg-blue-50" title="Voltar para pendente" type="button" onClick={() => onReopenTask(task)}><Clock3 size={14} /></button> : null}<button className="rounded-md p-1.5 text-gray-600 hover:bg-gray-100" title="Editar tarefa" type="button" onClick={() => onEditTask(task)}><SlidersHorizontal size={14} /></button><button className="rounded-md p-1.5 text-red-600 hover:bg-red-50" title="Excluir tarefa" type="button" onClick={() => onDeleteTask(task)}><Trash2 size={14} /></button></div></div>)}</div></section> : null}
       </div>
     </aside>
     {previewFile ? createPortal(
