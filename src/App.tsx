@@ -1749,17 +1749,13 @@ Hero Drone`
   }
 
   const sendLeadHunterEmail = (prospect: LeadHunterProspect) => {
-    if (!prospect.email) {
-      setToast('Este lead ainda não possui e-mail informado.')
-      return
-    }
     importLeadHunterProspects([prospect.id])
     const businessName = prospect.name.trim()
     const service = prospect.recommendedService || 'vídeo institucional com drone'
     const opportunityHook = prospect.aiContactHook?.trim() || prospect.aiSummary?.trim()
     setEmailComposer({
       sourceProspectId: prospect.id,
-      to: prospect.email,
+      to: prospect.email || '',
       displayName: businessName,
       subject: `Uma ideia visual para ${businessName}`,
       body: `Olá! Tudo bem?
@@ -5650,7 +5646,7 @@ Hero Drone`,
                 }
                 const searchId = createId('lh-manual')
                 const prospectId = createId('lh-prospect')
-                const contactPoints = [input.whatsapp, input.phone, input.instagram].filter(Boolean).length
+                const contactPoints = [input.whatsapp, input.phone, input.email, input.instagram].filter(Boolean).length
                 const score = Math.min(95, 60 + contactPoints * 8 + (input.googleMapsUrl ? 6 : 0))
                 const prospect = {
                   id: prospectId,
@@ -5667,7 +5663,7 @@ Hero Drone`,
                   distanceKm: city.distanceFromBaseKm,
                   phone: input.phone.trim(),
                   whatsapp: input.whatsapp.trim(),
-                  email: '',
+                  email: input.email.trim(),
                   instagram: input.instagram.trim(),
                   website: '',
                   googleMapsUrl: input.googleMapsUrl.trim(),
@@ -5677,6 +5673,7 @@ Hero Drone`,
                   scoreReasons: [
                     { id: 'manual-test', label: 'Lead cadastrado manualmente para teste', points: 60 },
                     ...(input.whatsapp ? [{ id: 'manual-whatsapp', label: 'WhatsApp informado', points: 10 }] : []),
+                    ...(input.email ? [{ id: 'manual-email', label: 'E-mail informado', points: 8 }] : []),
                     ...(input.instagram ? [{ id: 'manual-instagram', label: 'Instagram informado', points: 8 }] : []),
                   ],
                   status: 'Descoberto' as const,

@@ -115,6 +115,7 @@ export function LeadHunterPage({
     cityId: string;
     phone: string;
     whatsapp: string;
+    email: string;
     instagram: string;
     googleMapsUrl: string;
   }) => void;
@@ -648,11 +649,9 @@ export function LeadHunterPage({
                           <MessageCircle size={15} />
                         </a>
                       ) : null}
-                      {lead.email ? (
-                        <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200" type="button" title="Preparar e-mail personalizado" aria-label={`Preparar e-mail para ${lead.name}`} onClick={() => onEmail(lead)}>
-                          <Mail size={14} />
-                        </button>
-                      ) : null}
+                      <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200" type="button" title={lead.email ? "Preparar e-mail personalizado" : "Preparar e-mail e informar destinatário"} aria-label={`Preparar e-mail para ${lead.name}`} onClick={() => onEmail(lead)}>
+                        <Mail size={14} />
+                      </button>
                       {lead.instagram ? (
                         <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100" href={buildInstagramUrl(lead.instagram)} target="_blank" rel="noreferrer" title="Abrir Instagram">
                           <AtSign size={15} />
@@ -752,6 +751,10 @@ export function LeadHunterPage({
               onClose={() => setManualLeadOpen(false)}
               onSave={(input) => {
                 onCreateManual(input);
+                setSearchBatchId("");
+                setResultQuery("");
+                setMinimumScore(0);
+                setOnlyNew(false);
                 setManualLeadOpen(false);
               }}
             />
@@ -853,6 +856,7 @@ function ManualLeadModal({
     cityId: string;
     phone: string;
     whatsapp: string;
+    email: string;
     instagram: string;
     googleMapsUrl: string;
   }) => void;
@@ -865,6 +869,7 @@ function ManualLeadModal({
     cityId: activeCities[0]?.id || "",
     phone: "",
     whatsapp: "",
+    email: "",
     instagram: "",
     googleMapsUrl: "",
   });
@@ -873,8 +878,7 @@ function ManualLeadModal({
   const canSave = Boolean(
     form.name.trim() &&
     form.categoryId &&
-    form.cityId &&
-    (form.whatsapp.trim() || form.phone.trim() || form.instagram.trim() || form.googleMapsUrl.trim()),
+    form.cityId,
   );
 
   return (
@@ -919,6 +923,10 @@ function ManualLeadModal({
             Telefone
             <input className="field-input mt-1 w-full" value={form.phone} onChange={(event) => update("phone", event.currentTarget.value)} placeholder="(41) 3333-3333" />
           </label>
+          <label className="text-xs font-semibold text-gray-600 sm:col-span-2">
+            E-mail
+            <input className="field-input mt-1 w-full" type="email" value={form.email} onChange={(event) => update("email", event.currentTarget.value)} placeholder="contato@empresa.com.br" />
+          </label>
           <label className="text-xs font-semibold text-gray-600">
             Instagram
             <input className="field-input mt-1 w-full" value={form.instagram} onChange={(event) => update("instagram", event.currentTarget.value)} placeholder="@empresa ou link do perfil" />
@@ -928,7 +936,7 @@ function ManualLeadModal({
             <input className="field-input mt-1 w-full" type="url" value={form.googleMapsUrl} onChange={(event) => update("googleMapsUrl", event.currentTarget.value)} placeholder="https://maps.google.com/..." />
           </label>
         </div>
-        <p className="mt-3 text-xs text-gray-400">Informe pelo menos um canal ou o link do Google Business.</p>
+        <p className="mt-3 text-xs text-gray-400">Os canais são opcionais. Você poderá completar telefone, WhatsApp ou e-mail depois.</p>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
           <Button type="submit" disabled={!canSave}><Plus size={16} /> Criar lead de teste</Button>
@@ -1132,14 +1140,14 @@ function LeadDetail({
               >
                 Copiar mensagem
               </button>
-              {lead.email ? <button
+              <button
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
                 type="button"
                 onClick={() => onEmail(lead)}
               >
                 <Mail size={14} />
                 Preparar e-mail
-              </button> : null}
+              </button>
             </div>
           </section>
         ) : null}
