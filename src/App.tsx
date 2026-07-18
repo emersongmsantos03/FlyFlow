@@ -82,6 +82,7 @@ import {
   isPaymentOverdue,
   periodOptions,
   recalculateProjectFinancials,
+  reconcilePendingFinalPayments,
   type AccountingRegime,
   type PeriodPreset,
 } from './lib/financial'
@@ -2594,7 +2595,10 @@ function App() {
           const installmentAmount = index === values.installmentCount - 1 ? values.amount - regularAmount * (values.installmentCount - 1) : regularAmount
           return { ...payment, id: createId('pay'), paymentType: 'Parcela' as const, amount: installmentAmount, dueDate: addCalendarDays(values.dueDate, index * values.installmentIntervalDays), paidAt: undefined, status: 'Pendente' as const, confirmedReceived: false, confirmedAt: undefined, installmentGroupId, installmentNumber: index + 1, installmentCount: values.installmentCount, transactionNumber: undefined, receiptUrl: undefined, notes: `${values.notes || 'Pagamento parcelado'} · parcela ${index + 1}/${values.installmentCount}.`, createdAt: now, updatedAt: now }
         }) : [payment]
-        const payments = [...installmentPayments, ...current.payments.filter((item) => item.id !== existingSourcePayment?.id)]
+        const payments = reconcilePendingFinalPayments(
+          current.projects,
+          [...installmentPayments, ...current.payments.filter((item) => item.id !== existingSourcePayment?.id)],
+        )
         const receivedTotal = currentProject ? payments.filter((item) => item.projectId === currentProject.id).reduce((total, item) => total + getPaymentCashEffect(item), 0) : 0
         const existingReceiptFile = current.files.find((file) => file.paymentId === payment.id)
         return {
@@ -2967,11 +2971,18 @@ function App() {
       return
     }
     const now = new Date().toISOString()
-    updateState((current) => ({
-      ...current,
-      payments: current.payments.map((item) => item.id === payment.id ? { ...item, status, paidAt: undefined, confirmedReceived: false, updatedAt: now } : item),
-      statusHistory: [createStatusHistory('Pagamento', payment.id, 'Status financeiro alterado', `${payment.status} → ${status}.`, activeUserId, payment.status, status, now), ...current.statusHistory],
-    }), `Lançamento marcado como ${status.toLowerCase()}.`)
+    updateState((current) => {
+      const payments = reconcilePendingFinalPayments(
+        current.projects,
+        current.payments.map((item) => item.id === payment.id ? { ...item, status, paidAt: undefined, confirmedReceived: false, updatedAt: now } : item),
+      )
+      return {
+        ...current,
+        payments,
+        projects: payment.projectId ? current.projects.map((project) => project.id === payment.projectId ? recalculateProjectFinancials(project, payments) : project) : current.projects,
+        statusHistory: [createStatusHistory('Pagamento', payment.id, 'Status financeiro alterado', `${payment.status} → ${status}.`, activeUserId, payment.status, status, now), ...current.statusHistory],
+      }
+    }, `Lançamento marcado como ${status.toLowerCase()}.`)
   }
 
   const reversePayment = (payment: Payment) => {
@@ -2987,7 +2998,10 @@ function App() {
         updateState((current) => {
           const reversalId = createId('refund')
           const reversal: Payment = { ...payment, id: reversalId, paymentType: 'Reembolso', status: 'Recebida', dueDate: dateInput(), paidAt: now, confirmedReceived: true, confirmedAt: now, receiptUrl: undefined, transactionNumber: undefined, sourceKey: undefined, reversalOfPaymentId: payment.id, reversedByPaymentId: undefined, notes: `Estorno vinculado ao recebimento ${payment.id}.`, createdAt: now, updatedAt: now }
-          const payments = [reversal, ...current.payments.map((item) => item.id === payment.id ? { ...item, reversedByPaymentId: reversalId, updatedAt: now } : item)]
+          const payments = reconcilePendingFinalPayments(
+            current.projects,
+            [reversal, ...current.payments.map((item) => item.id === payment.id ? { ...item, reversedByPaymentId: reversalId, updatedAt: now } : item)],
+          )
           return {
             ...current,
             payments,
@@ -3011,7 +3025,10 @@ function App() {
         onConfirm: () => {
           const now = new Date().toISOString()
           updateState((current) => {
-            const payments = current.payments.map((item) => item.id === payment.id ? { ...item, status: 'Pendente' as const, paidAt: undefined, confirmedReceived: false, confirmedAt: undefined, updatedAt: now } : item)
+            const payments = reconcilePendingFinalPayments(
+              current.projects,
+              current.payments.map((item) => item.id === payment.id ? { ...item, status: 'Pendente' as const, paidAt: undefined, confirmedReceived: false, confirmedAt: undefined, updatedAt: now } : item),
+            )
             const project = payment.projectId ? current.projects.find((item) => item.id === payment.projectId) : undefined
             const hasActiveProject = payment.leadId ? current.projects.some((item) => item.leadId === payment.leadId && !item.deletedAt && item.projectStatus !== 'Cancelado') : false
             return {

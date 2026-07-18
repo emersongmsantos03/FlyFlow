@@ -1,5 +1,6 @@
 import { createEmptyState } from '../data/demoData'
 import { rolePermissionPresets } from '../lib/permissions'
+import { reconcilePendingFinalPayments } from '../lib/financial'
 import { synchronizeOperationalState } from '../lib/operations'
 import { createDefaultLeadHunterCategories, createDefaultLeadHunterCities, createDefaultLeadHunterSettings } from '../constants/leadHunterDefaults'
 import { deduplicateLeadHunterProspects } from './leadHunter/LeadDeduplicationService'
@@ -183,6 +184,11 @@ export const normalizeAppState = (state: AppState): AppState => {
     )?.id
   }
 
+  const normalizedPayments = (state.payments || []).map((payment) => ({
+    ...payment,
+    bankAccountId: payment.bankAccountId || resolveLegacyAccountId(payment.account) || (payment.status === 'Recebida' ? primaryAccount?.id : undefined),
+  }))
+
   return synchronizeOperationalState({
     ...state,
     leads: normalizedLeads,
@@ -205,10 +211,7 @@ export const normalizeAppState = (state: AppState): AppState => {
       pixKey: LEGACY_PIX_KEYS.includes(state.companySettings.pixKey?.trim() || '') ? HERO_DRONE_CNPJ : state.companySettings.pixKey,
     },
     users: normalizeUsers(state.users || []),
-    payments: (state.payments || []).map((payment) => ({
-      ...payment,
-      bankAccountId: payment.bankAccountId || resolveLegacyAccountId(payment.account) || (payment.status === 'Recebida' ? primaryAccount?.id : undefined),
-    })),
+    payments: reconcilePendingFinalPayments(state.projects || [], normalizedPayments),
     expenses: materializeRecurringExpenses(state.expenses || [], createdAt).map((expense) => ({
       ...expense,
       status: normalizeExpenseStatus(expense.status),

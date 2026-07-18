@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, Payment, Project } from '../types'
-import { getPaymentCashEffect, getProjectProfit, getFinancialForecast } from './financial'
+import { getPaymentCashEffect, getProjectProfit, getFinancialForecast, reconcilePendingFinalPayments } from './financial'
 
 const receivedPayment = (overrides: Partial<Payment> = {}): Payment => ({
   id: 'payment-1',
@@ -40,5 +40,31 @@ describe('financial calculations', () => {
 
   it('does not count received payments as future inflow', () => {
     expect(getFinancialForecast(state([receivedPayment()])).entries).toHaveLength(0)
+  })
+
+  it('recalculates the pending final payment after partial receipts', () => {
+    const contractedProject = { ...project, totalValue: 350 }
+    const payments = [
+      receivedPayment({ id: 'deposit', paymentType: 'Sinal', amount: 100 }),
+      receivedPayment({ id: 'installment', paymentType: 'Parcela', amount: 100 }),
+      receivedPayment({ id: 'final', amount: 250, status: 'Pendente', paidAt: undefined }),
+    ]
+
+    const reconciled = reconcilePendingFinalPayments([contractedProject], payments)
+
+    expect(reconciled.find((payment) => payment.id === 'final')?.amount).toBe(150)
+  })
+
+  it('restores the pending balance when a receipt is reopened', () => {
+    const contractedProject = { ...project, totalValue: 350 }
+    const payments = [
+      receivedPayment({ id: 'deposit', paymentType: 'Sinal', amount: 100 }),
+      receivedPayment({ id: 'installment', paymentType: 'Parcela', amount: 100, status: 'Pendente', paidAt: undefined }),
+      receivedPayment({ id: 'final', amount: 150, status: 'Pendente', paidAt: undefined }),
+    ]
+
+    const reconciled = reconcilePendingFinalPayments([contractedProject], payments)
+
+    expect(reconciled.find((payment) => payment.id === 'final')?.amount).toBe(250)
   })
 })

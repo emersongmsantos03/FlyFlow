@@ -186,6 +186,50 @@ export const getProjectPaidAmount = (state: AppState, projectId: string) =>
 export const getProjectPendingAmount = (state: AppState, project: Project) =>
   Math.max(project.totalValue - getProjectPaidAmount(state, project.id), 0)
 
+export const reconcilePendingFinalPayments = (projects: Project[], payments: Payment[]) => {
+  const projectsById = new Map(projects.map((project) => [project.id, project]))
+  const receivedByProject = new Map<string, number>()
+
+  payments.forEach((payment) => {
+    if (!payment.projectId) return
+    receivedByProject.set(
+      payment.projectId,
+      (receivedByProject.get(payment.projectId) || 0) + getPaymentCashEffect(payment),
+    )
+  })
+
+  const pendingFinalsByProject = new Map<string, Payment[]>()
+  payments.forEach((payment) => {
+    if (
+      !payment.projectId ||
+      payment.paymentType !== 'Pagamento final' ||
+      isReceivedPayment(payment) ||
+      isCancelledPayment(payment) ||
+      !projectsById.has(payment.projectId)
+    ) return
+    pendingFinalsByProject.set(payment.projectId, [...(pendingFinalsByProject.get(payment.projectId) || []), payment])
+  })
+
+  const correctedAmounts = new Map<string, number>()
+  pendingFinalsByProject.forEach((pendingFinals, projectId) => {
+    const project = projectsById.get(projectId)
+    if (!project) return
+    let remaining = Math.max(project.totalValue - (receivedByProject.get(projectId) || 0), 0)
+    pendingFinals
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .forEach((payment, index) => {
+        const amount = index === pendingFinals.length - 1 ? remaining : Math.min(payment.amount, remaining)
+        correctedAmounts.set(payment.id, amount)
+        remaining = Math.max(remaining - amount, 0)
+      })
+  })
+
+  return payments.map((payment) => {
+    const amount = correctedAmounts.get(payment.id)
+    return amount === undefined || amount === payment.amount ? payment : { ...payment, amount }
+  })
+}
+
 export const getProjectDirectCosts = (state: AppState, projectId: string) =>
   state.expenses
     .filter(
