@@ -307,6 +307,7 @@ interface InputDialogState {
 
 interface EmailComposerState {
   lead?: Lead
+  sourceProspectId?: string
   quote?: Quote
   to: string
   displayName: string
@@ -1730,7 +1731,38 @@ Hero Drone`
     })
   }
 
+  const sendLeadHunterEmail = (prospect: LeadHunterProspect) => {
+    if (!prospect.email) {
+      setToast('Este lead ainda não possui e-mail informado.')
+      return
+    }
+    importLeadHunterProspects([prospect.id])
+    const businessName = prospect.name.trim()
+    const service = prospect.recommendedService || 'vídeo institucional com drone'
+    const opportunityHook = prospect.aiContactHook?.trim() || prospect.aiSummary?.trim()
+    setEmailComposer({
+      sourceProspectId: prospect.id,
+      to: prospect.email,
+      displayName: businessName,
+      subject: `Uma ideia visual para ${businessName}`,
+      body: `Olá! Tudo bem?
+
+Aqui é o Emerson, da Hero Drone. ${opportunityHook || `Conheci o trabalho da ${businessName} e identifiquei uma oportunidade de fortalecer a apresentação do negócio com imagens aéreas profissionais.`}
+
+Preparei uma ideia de ${service.toLocaleLowerCase('pt-BR')} pensada para destacar o espaço, a localização e os diferenciais da ${businessName} nas redes sociais e no Google.
+
+Posso te apresentar essa proposta em uma conversa rápida, sem compromisso?
+
+Abraço,
+Emerson
+Hero Drone`,
+    })
+  }
+
   const submitCommercialEmail = async (composer: EmailComposerState, subject: string, body: string) => {
+    const associatedLead = composer.lead || (composer.sourceProspectId
+      ? state.leads.find((lead) => lead.leadHunterData?.id === composer.sourceProspectId)
+      : undefined)
     const result = await sendGoogleWorkspaceEmail({
       to: [composer.to],
       subject,
@@ -1741,16 +1773,16 @@ Hero Drone`
     const now = new Date().toISOString()
     updateState((current) => ({
       ...current,
-      leads: composer.lead ? current.leads.map((item) => item.id === composer.lead?.id ? {
+      leads: associatedLead ? current.leads.map((item) => item.id === associatedLead.id ? {
         ...item,
         lastContactAt: now,
         pipelineStage: composer.quote ? 'Proposta enviada' : item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
         updatedAt: now,
       } : item) : current.leads,
       quotes: composer.quote ? current.quotes.map((quote) => quote.id === composer.quote?.id ? { ...quote, status: 'Enviada' as const, sentAt: now, updatedAt: now } : quote) : current.quotes,
-      leadInteractions: composer.lead ? [{
+      leadInteractions: associatedLead ? [{
         id: createId('int'),
-        leadId: composer.lead.id,
+        leadId: associatedLead.id,
         interactionType: 'E-mail · Gmail',
         description: `Assunto: ${subject}\nMensagem: ${body}${composer.attachment ? `\nAnexo: ${composer.attachment.fileName}` : ''}\nGmail ID: ${result.id}`,
         interactionDate: now,
@@ -5677,6 +5709,7 @@ Hero Drone`,
                 }), 'Lead manual criado e adicionado ao topo do Lead Hunter.')
               }}
               onImport={importLeadHunterProspects}
+              onEmail={sendLeadHunterEmail}
               onReject={(prospectId) => {
                 const now = new Date().toISOString()
                 updateState((current) => ({

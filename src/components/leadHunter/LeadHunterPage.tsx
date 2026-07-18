@@ -14,6 +14,7 @@ import {
   Import,
   Map,
   MapPinned,
+  Mail,
   MessageCircle,
   Navigation,
   Plus,
@@ -71,6 +72,7 @@ export function LeadHunterPage({
   onSaveCities,
   onSaveCategories,
   onImport,
+  onEmail,
   onCreateManual,
   onEnrich,
   onReject,
@@ -106,6 +108,7 @@ export function LeadHunterPage({
   onSaveCities: (cities: LeadHunterCity[]) => void;
   onSaveCategories: (categories: LeadHunterCategory[]) => void;
   onImport: (prospectIds: string[]) => void;
+  onEmail: (prospect: LeadHunterProspect) => void;
   onCreateManual: (input: {
     name: string;
     categoryId: string;
@@ -641,9 +644,14 @@ export function LeadHunterPage({
                     </div>
                     <div className="mt-2.5 flex items-center gap-1.5 pl-7">
                       {lead.whatsapp ? (
-                        <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" href={buildLeadWhatsAppUrl(lead)} target="_blank" rel="noreferrer" title="Abrir WhatsApp" onClick={() => { if (!lead.leadId) onImport([lead.id]); }}>
+                        <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" href={buildLeadWhatsAppUrl(lead, buildLeadWhatsAppMessage(lead))} target="_blank" rel="noreferrer" title="Abrir WhatsApp com a mensagem personalizada" onClick={() => { if (!lead.leadId) onImport([lead.id]); }}>
                           <MessageCircle size={15} />
                         </a>
+                      ) : null}
+                      {lead.email ? (
+                        <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200" type="button" title="Preparar e-mail personalizado" aria-label={`Preparar e-mail para ${lead.name}`} onClick={() => onEmail(lead)}>
+                          <Mail size={14} />
+                        </button>
                       ) : null}
                       {lead.instagram ? (
                         <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100" href={buildInstagramUrl(lead.instagram)} target="_blank" rel="noreferrer" title="Abrir Instagram">
@@ -724,6 +732,7 @@ export function LeadHunterPage({
               lead={prospects.find((lead) => lead.id === openedLeadId)}
               onClose={() => setOpenedLeadId("")}
               onImport={(id) => onImport([id])}
+              onEmail={onEmail}
               enriching={enrichingId === openedLeadId}
               onEnrich={async (id) => {
                 setEnrichingId(id);
@@ -933,6 +942,7 @@ function LeadDetail({
   lead,
   onClose,
   onImport,
+  onEmail,
   onEnrich,
   enriching,
   onReject,
@@ -940,6 +950,7 @@ function LeadDetail({
   lead?: LeadHunterProspect;
   onClose: () => void;
   onImport: (id: string) => void;
+  onEmail: (prospect: LeadHunterProspect) => void;
   onEnrich: (id: string) => Promise<void> | void;
   enriching: boolean;
   onReject: (id: string) => void;
@@ -1090,16 +1101,16 @@ function LeadDetail({
               onChange={(event) => setWhatsAppDraft(event.currentTarget.value)}
               aria-label="Mensagem para WhatsApp"
             />
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               {lead.whatsapp ? <a
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white hover:bg-emerald-700"
                 href={buildLeadWhatsAppUrl(lead, whatsAppDraft)}
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => onImport(lead.id)}
               >
-                <ExternalLink size={16} />
-                Abrir no WhatsApp e salvar no Comercial
+                <ExternalLink size={14} />
+                Enviar no WhatsApp
               </a> : null}
               {lead.instagram ? <a
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100"
@@ -1115,12 +1126,20 @@ function LeadDetail({
                 Copiar e abrir Instagram
               </a> : null}
               <button
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
                 type="button"
                 onClick={() => void navigator.clipboard.writeText(whatsAppDraft)}
               >
                 Copiar mensagem
               </button>
+              {lead.email ? <button
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                type="button"
+                onClick={() => onEmail(lead)}
+              >
+                <Mail size={14} />
+                Preparar e-mail
+              </button> : null}
             </div>
           </section>
         ) : null}
