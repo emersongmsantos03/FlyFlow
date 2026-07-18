@@ -5,6 +5,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Bell,
+  Bold,
   Briefcase,
   CalendarDays,
   Camera,
@@ -19,8 +20,12 @@ import {
   Eye,
   FileText,
   Handshake,
+  ImagePlus,
+  Italic,
   LayoutDashboard,
   Landmark,
+  Link2,
+  List,
   LogOut,
   Mail,
   Menu,
@@ -37,6 +42,7 @@ import {
   Sun,
   TrendingUp,
   Trash2,
+  Underline,
   UserCog,
   UserPlus,
   Users,
@@ -313,6 +319,7 @@ interface EmailComposerState {
   displayName: string
   subject: string
   body: string
+  htmlBody?: string
   attachment?: {
     fileName: string
     mimeType: string
@@ -1769,7 +1776,7 @@ Hero Drone`,
     })
   }
 
-  const submitCommercialEmail = async (composer: EmailComposerState, subject: string, body: string) => {
+  const submitCommercialEmail = async (composer: EmailComposerState, subject: string, body: string, htmlBody?: string) => {
     const associatedLead = composer.lead || (composer.sourceProspectId
       ? state.leads.find((lead) => lead.leadHunterData?.id === composer.sourceProspectId)
       : undefined)
@@ -1777,6 +1784,7 @@ Hero Drone`,
       to: [composer.to],
       subject,
       body,
+      htmlBody,
       signatureImageUrl: state.companySettings.emailSignatureImageUrl,
       attachments: composer.attachment ? [composer.attachment] : [],
     })
@@ -5113,7 +5121,7 @@ Hero Drone`,
         <EmailComposer
           composer={emailComposer}
           onClose={() => setEmailComposer(null)}
-          onSend={(to, subject, body, attachment) => submitCommercialEmail({ ...emailComposer, to, attachment }, subject, body)}
+          onSend={(to, subject, body, htmlBody, attachment) => submitCommercialEmail({ ...emailComposer, to, attachment }, subject, body, htmlBody)}
         />
       ) : null}
       <aside className="app-sidebar hidden border-r border-gray-200 bg-[#171717] text-white lg:block">
@@ -6369,15 +6377,47 @@ function EmailComposer({
 }: {
   composer: EmailComposerState
   onClose: () => void
-  onSend: (to: string, subject: string, body: string, attachment?: EmailComposerState['attachment']) => Promise<void>
+  onSend: (to: string, subject: string, body: string, htmlBody: string, attachment?: EmailComposerState['attachment']) => Promise<void>
 }) {
   const [to, setTo] = useState(composer.to)
   const [subject, setSubject] = useState(composer.subject)
   const [body, setBody] = useState(composer.body)
+  const [htmlBody, setHtmlBody] = useState(composer.htmlBody || '')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [attachment, setAttachment] = useState(composer.attachment)
+  const editorRef = useRef<HTMLDivElement>(null)
   const canSend = Boolean(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()) && subject.trim() && body.trim() && !sending)
+
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (composer.htmlBody) editor.innerHTML = composer.htmlBody
+    else editor.innerText = composer.body
+    setHtmlBody(editor.innerHTML)
+  }, [composer.body, composer.htmlBody])
+
+  const syncEditor = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    setBody(editor.innerText)
+    setHtmlBody(editor.innerHTML)
+  }
+
+  const formatMessage = (command: string, value?: string) => {
+    editorRef.current?.focus()
+    document.execCommand(command, false, value)
+    syncEditor()
+  }
+
+  const restoreSuggestion = () => {
+    setSubject(composer.subject)
+    const editor = editorRef.current
+    if (!editor) return
+    if (composer.htmlBody) editor.innerHTML = composer.htmlBody
+    else editor.innerText = composer.body
+    syncEditor()
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -6385,7 +6425,7 @@ function EmailComposer({
     setSending(true)
     setError('')
     try {
-      await onSend(to.trim(), subject.trim(), body.trim(), attachment)
+      await onSend(to.trim(), subject.trim(), body.trim(), htmlBody, attachment)
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : 'Não foi possível enviar o e-mail.')
       setSending(false)
@@ -6394,7 +6434,7 @@ function EmailComposer({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-3 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="email-composer-title">
-      <form className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl" onSubmit={submit}>
+      <form className="email-composer-surface flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border shadow-2xl" onSubmit={submit}>
         <header className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e0b936] text-gray-950"><Mail size={19} /></div>
@@ -6424,14 +6464,47 @@ function EmailComposer({
           <label className="mt-4 block">
             <span className="flex items-center justify-between gap-3">
               <span className="field-label inline-flex items-center gap-1.5"><Wand2 size={13} className="text-[#b08700]" /> Mensagem personalizada</span>
-              <button className="text-xs font-bold text-gray-500 hover:text-gray-900" type="button" onClick={() => { setSubject(composer.subject); setBody(composer.body) }}>Restaurar sugestão</button>
+              <button className="text-xs font-bold text-gray-500 hover:text-gray-900" type="button" onClick={restoreSuggestion}>Restaurar sugestão</button>
             </span>
-            <textarea
-              className="field-input mt-1 min-h-[280px] resize-y leading-6"
-              value={body}
-              maxLength={5000}
-              onChange={(event) => setBody(event.target.value)}
-            />
+            <div className="email-editor-wrap mt-2 overflow-hidden rounded-xl border">
+              <div className="email-editor-toolbar flex flex-wrap items-center gap-1 border-b p-2">
+                <button type="button" title="Negrito" aria-label="Negrito" onClick={() => formatMessage('bold')}><Bold size={16} /></button>
+                <button type="button" title="Itálico" aria-label="Itálico" onClick={() => formatMessage('italic')}><Italic size={16} /></button>
+                <button type="button" title="Sublinhado" aria-label="Sublinhado" onClick={() => formatMessage('underline')}><Underline size={16} /></button>
+                <span className="mx-1 h-5 w-px bg-gray-200" />
+                <button type="button" title="Lista com marcadores" aria-label="Lista com marcadores" onClick={() => formatMessage('insertUnorderedList')}><List size={16} /></button>
+                <button type="button" title="Adicionar link" aria-label="Adicionar link" onClick={() => {
+                  const url = window.prompt('Cole o endereço do link:')
+                  if (url) formatMessage('createLink', url)
+                }}><Link2 size={16} /></button>
+                <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-bold" title="Adicionar imagem">
+                  <ImagePlus size={16} /> Imagem
+                  <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
+                    const file = event.currentTarget.files?.[0]
+                    if (!file) return
+                    if (file.size > 5_000_000) {
+                      setError('A imagem deve ter no máximo 5 MB.')
+                      return
+                    }
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      formatMessage('insertImage', String(reader.result || ''))
+                      setAttachment({ fileName: file.name, mimeType: file.type, data: file })
+                    }
+                    reader.readAsDataURL(file)
+                  }} />
+                </label>
+              </div>
+              <div
+                ref={editorRef}
+                className="email-rich-editor min-h-[360px] max-h-[52vh] overflow-y-auto p-5 text-base leading-7 outline-none"
+                contentEditable
+                role="textbox"
+                aria-multiline="true"
+                aria-label="Mensagem personalizada"
+                onInput={syncEditor}
+              />
+            </div>
           </label>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[0.68rem] text-gray-400">
@@ -9087,8 +9160,8 @@ function InboxPage({
         description="Acompanhe conversas comerciais sem sair do FlyFlow."
         action={<div className="flex gap-2"><Button variant="secondary" type="button" disabled={loading} onClick={() => void loadMessages()}>{loading ? 'Sincronizando...' : 'Atualizar'}</Button><Button type="button" onClick={onComposeNew}><Plus size={16} /> Novo e-mail</Button></div>}
       />
-      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50/70 p-3 sm:flex-row sm:items-center">
+      <section className="inbox-shell overflow-hidden rounded-xl border shadow-sm">
+        <div className="inbox-toolbar flex flex-col gap-3 border-b p-3 sm:flex-row sm:items-center">
           <div className="flex rounded-lg bg-gray-100 p-1">
             <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'inbox' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('inbox')}>Recebidos {box === 'inbox' && unreadCount ? `· ${unreadCount}` : ''}</button>
             <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'sent' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('sent')}>Enviados</button>
@@ -9098,11 +9171,11 @@ function InboxPage({
         </div>
         {error ? <p className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
         <div className="grid min-h-[620px] lg:grid-cols-[420px_1fr]">
-          <div className="max-h-[72vh] overflow-y-auto border-r border-gray-200 bg-gray-50/30">
+          <div className="inbox-list max-h-[72vh] overflow-y-auto border-r">
             {filtered.map((message) => {
               const lead = findLead(message)
               const active = selected?.id === message.id
-              return <button key={message.id} className={`relative block w-full border-b border-gray-200 px-4 py-3 text-left transition ${active ? 'bg-white shadow-[inset_3px_0_0_#d8a500]' : 'hover:bg-white'}`} type="button" onClick={() => setSelectedId(message.id)}>
+              return <button key={message.id} className={`inbox-message-row relative block w-full border-b px-4 py-3 text-left transition ${active ? 'is-active' : ''}`} type="button" onClick={() => setSelectedId(message.id)}>
                 <div className="flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-sm ${message.unread ? 'font-black text-gray-950' : 'font-bold text-gray-700'}`}>{message.sent ? message.to : message.from}</span><span className="shrink-0 text-[0.65rem] text-gray-400">{message.date ? new Date(message.date).toLocaleDateString('pt-BR') : ''}</span></div>
                 <p className={`mt-1 truncate text-sm ${message.unread ? 'font-black text-gray-900' : 'font-medium text-gray-600'}`}>{message.subject}</p>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-400">{message.snippet}</p>
@@ -9111,7 +9184,7 @@ function InboxPage({
             })}
             {!loading && !filtered.length ? <p className="p-8 text-center text-sm text-gray-400">Nenhum e-mail encontrado.</p> : null}
           </div>
-          <div className="min-w-0 bg-white p-5 sm:p-7">
+          <div className="inbox-reader min-w-0 p-5 sm:p-7">
             {selected ? <>
               <div className="flex flex-col gap-4 border-b border-gray-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0"><p className="text-xs font-bold text-gray-400">{selected.sent ? `Para: ${selected.to}` : `De: ${selected.from}`}</p><h2 className="mt-1 text-xl font-black text-gray-950">{selected.subject}</h2><p className="mt-1 text-xs text-gray-400">{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</p></div>

@@ -151,6 +151,91 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 17%, transparent) !important;
 }
 
+.inbox-shell,
+.email-composer-surface {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.inbox-toolbar,
+.email-editor-toolbar {
+  background: color-mix(in srgb, var(--surface-soft) 68%, var(--surface));
+  border-color: var(--border);
+}
+
+.inbox-list {
+  background: color-mix(in srgb, var(--surface-soft) 45%, var(--surface));
+  border-color: var(--border);
+}
+
+.inbox-message-row {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.inbox-message-row:hover {
+  background: color-mix(in srgb, var(--surface-soft) 75%, var(--surface));
+}
+
+.inbox-message-row.is-active {
+  background: var(--surface);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.inbox-reader {
+  background: var(--surface);
+}
+
+.email-editor-wrap {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.email-editor-toolbar button,
+.email-editor-toolbar label {
+  color: var(--text-secondary);
+  border-radius: 0.4rem;
+}
+
+.email-editor-toolbar button {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+}
+
+.email-editor-toolbar button:hover,
+.email-editor-toolbar label:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.email-rich-editor {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  line-height: 1.8;
+}
+
+.email-rich-editor:focus {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.email-rich-editor img {
+  display: block;
+  max-width: min(100%, 680px);
+  height: auto;
+  margin: 1rem 0;
+  border-radius: 0.65rem;
+}
+
+.email-rich-editor a {
+  color: var(--info);
+  text-decoration: underline;
+}
+
 .field-label,
 .data-table th {
   color: var(--text-secondary) !important;

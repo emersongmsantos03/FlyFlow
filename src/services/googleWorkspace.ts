@@ -196,6 +196,17 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => (
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
 }[character] || character))
 
+const sanitizeEmailHtml = (value: string) => {
+  const documentNode = new DOMParser().parseFromString(value, 'text/html')
+  documentNode.querySelectorAll('script,style,iframe,object,embed').forEach((node) => node.remove())
+  documentNode.querySelectorAll('*').forEach((node) => {
+    for (const attribute of [...node.attributes]) {
+      if (/^on/i.test(attribute.name)) node.removeAttribute(attribute.name)
+    }
+  })
+  return documentNode.body.innerHTML
+}
+
 export interface GoogleEmailAttachment {
   fileName: string
   mimeType: string
@@ -206,6 +217,7 @@ export const sendGoogleWorkspaceEmail = async (input: {
   to: string[]
   subject: string
   body: string
+  htmlBody?: string
   signatureImageUrl?: string
   attachments?: GoogleEmailAttachment[]
 }) => {
@@ -213,7 +225,8 @@ export const sendGoogleWorkspaceEmail = async (input: {
   if (!recipients.length) throw new Error('Informe pelo menos um destinatário.')
   const inlineSignature = input.signatureImageUrl?.match(/^data:([^;]+);base64,(.+)$/)
   const signatureSource = inlineSignature ? 'cid:flyflow-email-signature' : input.signatureImageUrl
-  const htmlBody = `${escapeHtml(input.body).replace(/\n/g, '<br>')}${
+  const messageHtml = input.htmlBody?.trim() ? sanitizeEmailHtml(input.htmlBody) : escapeHtml(input.body).replace(/\n/g, '<br>')
+  const htmlBody = `${messageHtml}${
     signatureSource
       ? `<div style="margin-top:20px"><img src="${escapeHtml(signatureSource)}" alt="Assinatura de e-mail" style="max-width:520px;width:100%;height:auto"></div>`
       : ''
