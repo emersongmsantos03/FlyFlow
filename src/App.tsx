@@ -163,6 +163,7 @@ import {
 } from './services/auth'
 import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState } from './services/storage'
 import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapProvider'
+import type { LeadSearchProviderResult } from './services/leadHunter/providers'
 import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
 import { buildGoogleBusinessUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
@@ -459,12 +460,36 @@ type GoogleAutocompleteService = {
   ) => void
 }
 
+type GooglePlaceSearchResult = {
+  place_id?: string
+  name?: string
+  formatted_address?: string
+  rating?: number
+  user_ratings_total?: number
+  business_status?: string
+  types?: string[]
+  geometry?: {
+    location?: {
+      lat: () => number
+      lng: () => number
+    }
+  }
+}
+
+type GooglePlacesService = {
+  textSearch: (
+    request: { query: string; region?: string; language?: string },
+    callback: (results: GooglePlaceSearchResult[] | null, status: string) => void,
+  ) => void
+}
+
 declare global {
   interface Window {
     google?: {
       maps?: {
         places?: {
           AutocompleteService: new () => GoogleAutocompleteService
+          PlacesService: new (container: HTMLDivElement) => GooglePlacesService
         }
       }
     }
@@ -586,6 +611,90 @@ const loadGoogleMapsPlaces = () => {
   }
 
   return window.__flyFlowGoogleMapsPromise
+}
+
+const searchGooglePlacesLeads = async ({
+  city,
+  categories,
+  limit,
+}: {
+  city: string
+  categories: string[]
+  limit: number
+}): Promise<LeadSearchProviderResult> => {
+  if (!googleMapsApiKey || limit <= 0) return { leads: [], sources: [], warnings: [] }
+  const ready = await loadGoogleMapsPlaces()
+  const PlacesService = window.google?.maps?.places?.PlacesService
+  if (!ready || !PlacesService) {
+    return { leads: [], sources: [], warnings: ['Google Places não foi carregado. Verifique se a API está habilitada para esta chave.'] }
+  }
+
+  const container = document.createElement('div')
+  const service = new PlacesService(container)
+  const leads: LeadSearchProviderResult['leads'] = []
+  const warnings: string[] = []
+  const categoryQueries = [...new Set(categories.map((category) => category.trim()).filter(Boolean))].slice(0, 2)
+
+  for (const category of categoryQueries) {
+    const results = await new Promise<GooglePlaceSearchResult[]>((resolve) => {
+      service.textSearch(
+        { query: `${category} em ${city}, Paraná, Brasil`, region: 'br', language: 'pt-BR' },
+        (items, status) => {
+          if (status === 'OK' || status === 'ZERO_RESULTS') resolve(items ?? [])
+          else {
+            warnings.push(`Google Places: consulta de “${category}” não concluída (${status}).`)
+            resolve([])
+          }
+        },
+      )
+    })
+
+    for (const place of results) {
+      if (!place.place_id || !place.name || place.business_status === 'CLOSED_PERMANENTLY') continue
+      const latitude = place.geometry?.location?.lat()
+      const longitude = place.geometry?.location?.lng()
+      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${encodeURIComponent(place.place_id)}`
+      const reviewPoints = place.rating && place.user_ratings_total
+        ? Math.min(12, Math.round(place.rating * 1.5 + Math.log10(place.user_ratings_total + 1) * 2))
+        : 0
+      leads.push({
+        id: `google-${place.place_id}`,
+        externalIds: { googlePlaces: place.place_id },
+        name: place.name.trim(),
+        normalizedName: normalizeLeadText(place.name),
+        categoryName: category,
+        recommendedService: recommendLeadService(category),
+        city,
+        neighborhood: '',
+        address: place.formatted_address?.trim() || '',
+        latitude,
+        longitude,
+        phone: '',
+        whatsapp: '',
+        email: '',
+        instagram: '',
+        website: '',
+        googleMapsUrl,
+        googleRating: place.rating,
+        googleReviewCount: place.user_ratings_total,
+        sources: ['Google Places'],
+        sourceUrls: [googleMapsUrl],
+        score: Math.min(88, 60 + reviewPoints),
+        scoreReasons: [
+          { id: 'google-confirmed', label: 'Empresa e categoria confirmadas no Google', points: 60, evidence: `Google Place ID ${place.place_id}` },
+          ...(reviewPoints ? [{ id: 'google-reputation', label: 'Avaliação e volume de comentários no Google', points: reviewPoints, evidence: `${place.rating} · ${place.user_ratings_total} avaliações` }] : []),
+        ],
+      })
+      if (leads.length >= limit) break
+    }
+    if (leads.length >= limit) break
+  }
+
+  return {
+    leads,
+    sources: leads.length ? ['Google Places'] : [],
+    warnings,
+  }
 }
 
 const getError = (message: unknown) => (typeof message === 'string' ? message : undefined)
@@ -5138,11 +5247,13 @@ Hero Drone`
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
+                    const googlePlaceId = raw.externalIds?.googlePlaces
                     const normalizedName = normalizeLeadText(raw.name)
                     const normalizedCity = normalizeLeadText(raw.city)
                     return knownProspects.some((prospect) =>
                       prospect.id === raw.id ||
                       Boolean(osmId && prospect.externalIds.openstreetmap === osmId) ||
+                      Boolean(googlePlaceId && prospect.externalIds.googlePlaces === googlePlaceId) ||
                       (prospect.normalizedName === normalizedName && normalizeLeadText(prospect.city) === normalizedCity),
                     )
                   }
@@ -5152,6 +5263,35 @@ Hero Drone`
                   const combinedLeads = new Map<string, (typeof result.leads)[number]>()
                   const combinedSources = new Set<string>()
                   const searchWarnings: string[] = []
+                  const addCandidate = (lead: (typeof result.leads)[number]) => {
+                    if (isAlreadyKnown(lead)) return
+                    const normalizedKey = `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
+                    const matchingEntry = [...combinedLeads.entries()].find(([, existing]) =>
+                      `${normalizeLeadText(existing.name)}|${normalizeLeadText(existing.city)}` === normalizedKey,
+                    )
+                    if (!matchingEntry) {
+                      combinedLeads.set(lead.id || normalizedKey, lead)
+                      return
+                    }
+                    const [existingKey, existing] = matchingEntry
+                    combinedLeads.set(existingKey, {
+                      ...existing,
+                      ...lead,
+                      id: existing.id || lead.id,
+                      externalIds: { ...(existing.externalIds || {}), ...(lead.externalIds || {}) },
+                      phone: lead.phone || existing.phone,
+                      whatsapp: lead.whatsapp || existing.whatsapp,
+                      email: lead.email || existing.email,
+                      instagram: lead.instagram || existing.instagram,
+                      website: lead.website || existing.website,
+                      address: lead.address || existing.address,
+                      googleMapsUrl: lead.googleMapsUrl || existing.googleMapsUrl,
+                      score: Math.max(existing.score || 0, lead.score || 0),
+                      scoreReasons: [...(existing.scoreReasons || []), ...(lead.scoreReasons || [])],
+                      sources: [...new Set([...(existing.sources || []), ...(lead.sources || [])])],
+                      sourceUrls: [...new Set([...(existing.sourceUrls || []), ...(lead.sourceUrls || [])])],
+                    })
+                  }
                   for (const searchCity of candidateCities) {
                     try {
                       const cityResult = await provider.search(
@@ -5159,14 +5299,23 @@ Hero Drone`
                         AbortSignal.timeout(18_000),
                       )
                       cityResult.sources.forEach((source) => combinedSources.add(source))
-                      cityResult.leads.filter((lead) => !isAlreadyKnown(lead)).forEach((lead) => {
-                      const key = lead.id || `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
-                      if (!combinedLeads.has(key)) combinedLeads.set(key, lead)
-                      })
+                      cityResult.leads.forEach(addCandidate)
                       if (combinedLeads.size >= resultsPerSearch) break
                     } catch (error) {
                       searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
                     }
+                  }
+                  try {
+                    const googleResult = await searchGooglePlacesLeads({
+                      city: candidateCities[0].name,
+                      categories: selectedCategories.map((item) => item.name),
+                      limit: 8,
+                    })
+                    googleResult.sources.forEach((source) => combinedSources.add(source))
+                    googleResult.warnings.forEach((warning) => searchWarnings.push(warning))
+                    googleResult.leads.forEach(addCandidate)
+                  } catch (error) {
+                    searchWarnings.push(`Google Places: ${error instanceof Error ? error.message : 'consulta indisponível'}`)
                   }
                   if (!combinedLeads.size && searchWarnings.length === candidateCities.length) {
                     throw new Error('As fontes públicas não responderam nesta rodada. Tente novamente em instantes.')
@@ -5211,11 +5360,13 @@ Hero Drone`
                       const enrichmentInput = result.leads.filter((raw) => {
                         const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
                         const osmId = raw.externalIds?.openstreetmap
+                        const googlePlaceId = raw.externalIds?.googlePlaces
                         const normalizedName = normalizeLeadText(raw.name)
                         const normalizedCity = normalizeLeadText(raw.city)
                         const alreadyKnown = knownProspects.some((item) =>
                           item.id === stableId ||
                           Boolean(osmId && item.externalIds.openstreetmap === osmId) ||
+                          Boolean(googlePlaceId && item.externalIds.googlePlaces === googlePlaceId) ||
                           (item.normalizedName === normalizedName && normalizeLeadText(item.city) === normalizedCity),
                         )
                         return !alreadyKnown
@@ -5260,7 +5411,11 @@ Hero Drone`
                         sources: [...new Set([...(raw.sources || []), 'OpenAI Web Search'])],
                         sourceUrls: [...new Set([...(raw.sourceUrls || []), ...enrichment.sourceUrls])],
                       } : raw
-                      const existing = existingProspects.find((item) => item.id === stableId || item.externalIds.openstreetmap === raw.externalIds?.openstreetmap)
+                      const existing = existingProspects.find((item) =>
+                        item.id === stableId ||
+                        Boolean(raw.externalIds?.openstreetmap && item.externalIds.openstreetmap === raw.externalIds.openstreetmap) ||
+                        Boolean(raw.externalIds?.googlePlaces && item.externalIds.googlePlaces === raw.externalIds.googlePlaces),
+                      )
                       const duplicate = findLeadDuplicates(raw, existingProspects, current.clients, current.leads)[0]
                       if (duplicate && duplicate.id !== existing?.id) duplicateCount += 1
                       const category = selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.categoryName)) || selectedCategories[0]
