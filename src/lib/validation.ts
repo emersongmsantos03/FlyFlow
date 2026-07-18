@@ -251,6 +251,7 @@ export const settingsFormSchema = z.object({
   paymentTerms: z.string().min(2, 'Informe a condição padrão'),
   googleOAuthClientId: optionalText,
   googleWorkspaceEmail: optionalText,
+  emailSignatureImageUrl: optionalText,
 })
 
 export type LoginFormInput = z.input<typeof loginSchema>

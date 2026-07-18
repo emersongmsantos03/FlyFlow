@@ -190,7 +190,9 @@ import {
   createGoogleWorkspaceEvent,
   disconnectGoogleWorkspace,
   getGoogleWorkspaceConnection,
+  listGoogleWorkspaceEmails,
   sendGoogleWorkspaceEmail,
+  type GoogleMailboxMessage,
 } from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
 import {
@@ -236,6 +238,7 @@ type Page =
   | 'leads'
   | 'clients'
   | 'leadHunter'
+  | 'inbox'
   | 'projects'
   | 'agenda'
   | 'quotes'
@@ -303,9 +306,17 @@ interface InputDialogState {
 }
 
 interface EmailComposerState {
-  lead: Lead
+  lead?: Lead
+  quote?: Quote
+  to: string
+  displayName: string
   subject: string
   body: string
+  attachment?: {
+    fileName: string
+    mimeType: string
+    data: Blob
+  }
 }
 
 interface ServiceConfirmationState {
@@ -555,6 +566,7 @@ const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboar
   { page: 'leads', label: 'Comercial', icon: Handshake },
   { page: 'clients', label: 'Contatos', icon: ContactRound },
   { page: 'leadHunter', label: 'Lead Hunter', icon: Search },
+  { page: 'inbox', label: 'Inbox', icon: Mail },
   { page: 'projects', label: 'Projetos', icon: Briefcase },
   { page: 'agenda', label: 'Agenda', icon: CalendarDays },
   { page: 'quotes', label: 'Propostas', icon: FileText },
@@ -1042,6 +1054,26 @@ const readFileAsDataUrl = (file: File) =>
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+
+const prepareEmailSignatureImage = async (file: File) => {
+  const source = await readFileAsDataUrl(file)
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image()
+    element.onload = () => resolve(element)
+    element.onerror = reject
+    element.src = source
+  })
+  const maximumWidth = 800
+  const maximumHeight = 220
+  const scale = Math.min(maximumWidth / image.naturalWidth, maximumHeight / image.naturalHeight, 1)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Não foi possível preparar a imagem da assinatura.')
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.78)
+}
 
 const hasWorkspaceData = (candidate: AppState) =>
   candidate.leads.length > 0 ||
@@ -1691,32 +1723,45 @@ Emerson
 Hero Drone`
     setEmailComposer({
       lead,
+      to: lead.email,
+      displayName: contactDisplayName(lead),
       subject,
       body,
     })
   }
 
   const submitCommercialEmail = async (composer: EmailComposerState, subject: string, body: string) => {
-    const result = await sendGoogleWorkspaceEmail({ to: [composer.lead.email], subject, body })
+    const result = await sendGoogleWorkspaceEmail({
+      to: [composer.to],
+      subject,
+      body,
+      signatureImageUrl: state.companySettings.emailSignatureImageUrl,
+      attachments: composer.attachment ? [composer.attachment] : [],
+    })
     const now = new Date().toISOString()
     updateState((current) => ({
       ...current,
-      leads: current.leads.map((item) => item.id === composer.lead.id ? {
+      leads: composer.lead ? current.leads.map((item) => item.id === composer.lead?.id ? {
         ...item,
         lastContactAt: now,
-        pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
+        pipelineStage: composer.quote ? 'Proposta enviada' : item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
         updatedAt: now,
-      } : item),
-      leadInteractions: [{
+      } : item) : current.leads,
+      quotes: composer.quote ? current.quotes.map((quote) => quote.id === composer.quote?.id ? { ...quote, status: 'Enviada' as const, sentAt: now, updatedAt: now } : quote) : current.quotes,
+      leadInteractions: composer.lead ? [{
         id: createId('int'),
         leadId: composer.lead.id,
         interactionType: 'E-mail · Gmail',
-        description: `Assunto: ${subject}\nMensagem: ${body}\nGmail ID: ${result.id}`,
+        description: `Assunto: ${subject}\nMensagem: ${body}${composer.attachment ? `\nAnexo: ${composer.attachment.fileName}` : ''}\nGmail ID: ${result.id}`,
         interactionDate: now,
         userId: activeUserId,
         createdAt: now,
-      }, ...current.leadInteractions],
-    }), 'E-mail enviado pelo Gmail e registrado no histórico.')
+      }, ...current.leadInteractions] : current.leadInteractions,
+      statusHistory: composer.quote ? [
+        createStatusHistory('Proposta', composer.quote.id, 'Proposta enviada por e-mail', `${composer.quote.quoteNumber} enviada para ${composer.to} com PDF anexado. Gmail ID: ${result.id}.`, activeUserId, composer.quote.status, 'Enviada', now),
+        ...current.statusHistory,
+      ] : current.statusHistory,
+    }), composer.quote ? 'Proposta enviada por e-mail com o PDF anexado.' : 'E-mail enviado pelo Gmail e registrado no histórico.')
     setEmailComposer(null)
   }
 
@@ -3854,24 +3899,6 @@ Hero Drone`
     }), 'Proposta restaurada.')
   }
 
-  const markQuoteSent = (quote: Quote) => {
-    const items = state.quoteItems.filter((item) => item.quoteId === quote.id)
-    if (!items.length || quote.totalValue <= 0) {
-      setToast('Inclua ao menos um item com valor antes de enviar.')
-      return
-    }
-    const now = new Date().toISOString()
-    updateState(
-      (current) => ({
-        ...current,
-        quotes: current.quotes.map((item) => item.id === quote.id ? { ...item, status: 'Enviada', sentAt: now, updatedAt: now } : item),
-        leads: quote.leadId ? current.leads.map((lead) => lead.id === quote.leadId ? { ...lead, pipelineStage: 'Proposta enviada', lastContactAt: now, updatedAt: now } : lead) : current.leads,
-        statusHistory: [createStatusHistory('Proposta', quote.id, 'Proposta enviada', `${quote.quoteNumber} marcada como enviada.`, activeUserId, quote.status, 'Enviada', now), ...current.statusHistory],
-      }),
-      'Proposta marcada como enviada.',
-    )
-  }
-
   const updateSettings = (values: SettingsFormValues) => {
     updateState(
       (current) => ({
@@ -4706,7 +4733,7 @@ Hero Drone`
     setToast('Texto da proposta copiado.')
   }
 
-  const downloadQuotePdf = async (quote: Quote) => {
+  const downloadQuotePdf = async (quote: Quote, shouldDownload = true) => {
     const { jsPDF } = await import('jspdf')
     let logoDataUrl = ''
     try {
@@ -4956,7 +4983,9 @@ Hero Drone`
     doc.setTextColor(107, 114, 128)
     doc.text(`Documento gerado pelo ${appName}.`, margin, pageHeight - 6)
     doc.text('Página 1 de 1', pageWidth - margin, pageHeight - 6, { align: 'right' })
-    doc.save(getQuotePdfFilename(quote, recipient.company))
+    const fileName = getQuotePdfFilename(quote, recipient.company)
+    const blob = doc.output('blob')
+    if (shouldDownload) doc.save(fileName)
     if (quote.status === 'Rascunho') {
       const now = new Date().toISOString()
       updateState((current) => ({
@@ -4964,9 +4993,41 @@ Hero Drone`
         quotes: current.quotes.map((item) => item.id === quote.id ? { ...item, status: 'Gerada', updatedAt: now } : item),
         statusHistory: [createStatusHistory('Proposta', quote.id, 'Documento gerado', `PDF de ${quote.quoteNumber} gerado.`, activeUserId, 'Rascunho', 'Gerada', now), ...current.statusHistory],
       }), 'PDF gerado. Proposta atualizada para Gerada.')
+      return { blob, fileName }
+    }
+    if (shouldDownload) setToast('PDF da proposta baixado.')
+    return { blob, fileName }
+  }
+
+  const emailQuote = async (quote: Quote) => {
+    const recipient = getQuoteRecipient(state, quote)
+    if (!recipient.email) {
+      setToast('O contato desta proposta não possui e-mail informado.')
       return
     }
-    setToast('PDF da proposta baixado.')
+    const pdf = await downloadQuotePdf(quote, false)
+    const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
+    setEmailComposer({
+      lead,
+      quote,
+      to: recipient.email,
+      displayName: recipient.company || recipient.name || 'Cliente',
+      subject: `Proposta ${quote.quoteNumber} · Hero Drone`,
+      body: `Olá, ${recipient.name || recipient.company || 'tudo bem'}!
+
+Conforme conversamos, estou enviando em anexo a proposta comercial da Hero Drone para o seu projeto.
+
+No documento você encontra o escopo, investimento, condições de pagamento e prazo previsto. Se quiser ajustar algum ponto, fico à disposição.
+
+Abraço,
+Emerson
+Hero Drone`,
+      attachment: {
+        fileName: pdf.fileName,
+        mimeType: 'application/pdf',
+        data: pdf.blob,
+      },
+    })
   }
 
   const restoreDemo = () => {
@@ -5164,7 +5225,7 @@ Hero Drone`
               onSendEmail={sendCommercialEmail}
               onScheduleReturn={(lead) => openAppointmentModal({ title: `Retorno - ${contactDisplayName(lead)}`, appointmentType: 'Follow-up', leadId: lead.id })}
               onRegisterDeposit={openQuotePayment}
-              onDownloadQuote={downloadQuotePdf}
+              onDownloadQuote={(quote) => { void downloadQuotePdf(quote) }}
               onApproveQuote={confirmQuoteApproval}
               onMarkPaymentPaid={markPaymentPaid}
               onCreateProject={(lead) => beginServiceConfirmation(lead)}
@@ -5638,6 +5699,16 @@ Hero Drone`
               }) }), 'Visita atualizada na rota.')}
             /></Suspense>
           ) : null}
+          {page === 'inbox' ? (
+            <InboxPage
+              state={state}
+              onOpenLead={(lead) => {
+                setSelectedLeadId(lead.id)
+                setModal('leadDetail')
+              }}
+              onComposeLead={sendCommercialEmail}
+            />
+          ) : null}
           {page === 'projects' ? (
             <ProjectsPage
               projects={filteredProjects}
@@ -5697,8 +5768,8 @@ Hero Drone`
               onDeleteQuote={openDeleteProposal}
               onArchiveQuote={archiveProposal}
               onRestoreQuote={restoreProposal}
-              onDownloadPdf={downloadQuotePdf}
-              onMarkSent={markQuoteSent}
+              onDownloadPdf={(quote) => { void downloadQuotePdf(quote) }}
+              onEmailQuote={emailQuote}
               onApprove={confirmQuoteApproval}
               onRegisterDeposit={openQuotePayment}
               onCreateRevision={(quote) => cloneProposal(quote, true)}
@@ -6249,7 +6320,7 @@ function EmailComposer({
   const [body, setBody] = useState(composer.body)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-  const canSend = Boolean(subject.trim() && body.trim() && composer.lead.email && !sending)
+  const canSend = Boolean(subject.trim() && body.trim() && composer.to && !sending)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -6272,7 +6343,7 @@ function EmailComposer({
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e0b936] text-gray-950"><Mail size={19} /></div>
             <div className="min-w-0">
               <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Nova mensagem</p>
-              <h2 id="email-composer-title" className="truncate text-lg font-black text-gray-950">E-mail para {contactDisplayName(composer.lead)}</h2>
+              <h2 id="email-composer-title" className="truncate text-lg font-black text-gray-950">E-mail para {composer.displayName}</h2>
             </div>
           </div>
           <button className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-900" type="button" onClick={onClose} aria-label="Fechar"><X size={19} /></button>
@@ -6280,10 +6351,10 @@ function EmailComposer({
 
         <div className="overflow-y-auto px-5 py-4 sm:px-6">
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-900 text-xs font-black text-white">{contactDisplayName(composer.lead).charAt(0).toUpperCase()}</span>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-900 text-xs font-black text-white">{composer.displayName.charAt(0).toUpperCase()}</span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-black text-gray-900">{contactDisplayName(composer.lead)}</p>
-              <p className="truncate text-xs text-gray-500">{composer.lead.email}</p>
+              <p className="truncate text-sm font-black text-gray-900">{composer.displayName}</p>
+              <p className="truncate text-xs text-gray-500">{composer.to}</p>
             </div>
             <span className="ml-auto hidden rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.65rem] font-black text-emerald-700 sm:inline">Via Gmail</span>
           </div>
@@ -6307,7 +6378,7 @@ function EmailComposer({
           </label>
 
           <div className="mt-2 flex items-center justify-between gap-3 text-[0.68rem] text-gray-400">
-            <span>Revise livremente antes de enviar.</span>
+            <span>{composer.attachment ? `Anexo: ${composer.attachment.fileName}` : 'Revise livremente antes de enviar.'}</span>
             <span>{body.length}/5000</span>
           </div>
           {error ? <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</p> : null}
@@ -7394,7 +7465,7 @@ function QuotesPage({
   onArchiveQuote,
   onRestoreQuote,
   onDownloadPdf,
-  onMarkSent,
+  onEmailQuote,
   onApprove,
   onRegisterDeposit,
   onCreateRevision,
@@ -7411,7 +7482,7 @@ function QuotesPage({
   onArchiveQuote: (quote: Quote) => void
   onRestoreQuote: (quote: Quote) => void
   onDownloadPdf: (quote: Quote) => void | Promise<void>
-  onMarkSent: (quote: Quote) => void
+  onEmailQuote: (quote: Quote) => void | Promise<void>
   onApprove: (quote: Quote) => void
   onRegisterDeposit: (quote: Quote) => void
   onCreateRevision: (quote: Quote) => void
@@ -7470,7 +7541,7 @@ function QuotesPage({
           const primaryAction = quote.status === 'Rascunho'
             ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onDownloadPdf(quote)}><Download size={15} /> Gerar PDF</Button>
             : quote.status === 'Gerada'
-              ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onMarkSent(quote)}><Mail size={15} /> Marcar enviada</Button>
+              ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onEmailQuote(quote)}><Mail size={15} /> Enviar por e-mail</Button>
               : ['Enviada', 'Visualizada', 'Em negociação'].includes(quote.status)
                 ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onApprove(quote)}><CheckCircle2 size={15} /> Aprovar</Button>
                 : ['Aprovada', 'Aguardando entrada', 'Entrada recebida'].includes(quote.status)
@@ -7492,7 +7563,7 @@ function QuotesPage({
                 <div className="quote-card-primary-actions flex flex-wrap items-center gap-1.5 lg:justify-end">
                   {quote.archivedAt || quote.deletedAt ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onRestoreQuote(quote)}>Restaurar</Button> : primaryAction}
                   {!quote.archivedAt && !quote.deletedAt && canApprove && !approvalIsPrimary ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onApprove(quote)}><CheckCircle2 size={15} /> Aprovar</Button> : null}
-                  {!(quote.archivedAt || quote.deletedAt) ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onDownloadPdf(quote)}><Download size={15} /><span className="hidden sm:inline">PDF</span></Button> : null}
+                  {!(quote.archivedAt || quote.deletedAt) ? <><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEmailQuote(quote)}><Mail size={15} /><span className="hidden sm:inline">Enviar</span></Button><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onDownloadPdf(quote)}><Download size={15} /><span className="hidden sm:inline">PDF</span></Button></> : null}
                   <button className="focus-ring min-h-9 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-600 hover:bg-gray-50" type="button" onClick={() => setExpandedQuoteId(expanded ? '' : quote.id)}>{expanded ? 'Fechar' : 'Detalhes'}</button>
                 </div>
               </div>
@@ -8884,6 +8955,104 @@ function ReportsPage({
   )
 }
 
+function InboxPage({
+  state,
+  onOpenLead,
+  onComposeLead,
+}: {
+  state: AppState
+  onOpenLead: (lead: Lead) => void
+  onComposeLead: (lead: Lead) => void
+}) {
+  const [box, setBox] = useState<'inbox' | 'sent'>('inbox')
+  const [messages, setMessages] = useState<GoogleMailboxMessage[]>([])
+  const [selectedId, setSelectedId] = useState('')
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const connection = getGoogleWorkspaceConnection()
+
+  const loadMessages = async (targetBox = box) => {
+    setLoading(true)
+    setError('')
+    try {
+      const result = await listGoogleWorkspaceEmails({ box: targetBox, maxResults: 30 })
+      setMessages(result)
+      setSelectedId((current) => result.some((message) => message.id === current) ? current : result[0]?.id || '')
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar os e-mails.')
+      setMessages([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (connection.connected) void loadMessages(box)
+    // A troca de caixa é a ação que dispara a sincronização.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [box])
+
+  const extractEmail = (value: string) => (value.match(/<([^>]+)>/)?.[1] || value.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0] || '').toLowerCase()
+  const findLead = (message: GoogleMailboxMessage) => {
+    const counterpart = extractEmail(message.sent ? message.to : message.from)
+    return state.leads.find((lead) => lead.email.trim().toLowerCase() === counterpart)
+  }
+  const filtered = messages.filter((message) => !search.trim() || matches(`${message.subject} ${message.from} ${message.to} ${message.snippet}`, search))
+  const selected = filtered.find((message) => message.id === selectedId) || filtered[0]
+  const selectedLead = selected ? findLead(selected) : undefined
+  const unreadCount = messages.filter((message) => message.unread).length
+
+  if (!connection.connected) {
+    return <div className="space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta Google</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → Google Workspace, conecte novamente o Gmail e autorize a leitura da caixa de entrada.</p></div></div>
+  }
+
+  return (
+    <div className="space-y-4">
+      <PageToolbar
+        title="Inbox"
+        description="Acompanhe conversas comerciais sem sair do FlyFlow."
+        action={<Button variant="secondary" type="button" disabled={loading} onClick={() => void loadMessages()}>{loading ? 'Sincronizando...' : 'Atualizar caixa'}</Button>}
+      />
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-gray-100 p-3 sm:flex-row sm:items-center">
+          <div className="flex rounded-lg bg-gray-100 p-1">
+            <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'inbox' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('inbox')}>Recebidos {box === 'inbox' && unreadCount ? `· ${unreadCount}` : ''}</button>
+            <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'sent' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('sent')}>Enviados</button>
+          </div>
+          <label className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} /><input className="field-input min-h-9 py-1.5 pl-10 text-sm" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar remetente, assunto ou conteúdo…" /></label>
+          <span className="text-xs font-bold text-gray-400">{connection.email}</span>
+        </div>
+        {error ? <p className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+        <div className="grid min-h-[560px] lg:grid-cols-[360px_1fr]">
+          <div className="max-h-[70vh] overflow-y-auto border-r border-gray-100">
+            {filtered.map((message) => {
+              const lead = findLead(message)
+              const active = selected?.id === message.id
+              return <button key={message.id} className={`block w-full border-b border-gray-100 p-3 text-left transition ${active ? 'bg-amber-50' : 'hover:bg-gray-50'}`} type="button" onClick={() => setSelectedId(message.id)}>
+                <div className="flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-sm ${message.unread ? 'font-black text-gray-950' : 'font-bold text-gray-700'}`}>{message.sent ? message.to : message.from}</span><span className="shrink-0 text-[0.65rem] text-gray-400">{message.date ? new Date(message.date).toLocaleDateString('pt-BR') : ''}</span></div>
+                <p className={`mt-1 truncate text-sm ${message.unread ? 'font-black text-gray-900' : 'font-medium text-gray-600'}`}>{message.subject}</p>
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-400">{message.snippet}</p>
+                <div className="mt-2 flex items-center gap-2">{lead ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.62rem] font-black text-emerald-700">No CRM</span> : null}{message.hasAttachments ? <Paperclip size={12} className="text-gray-400" /> : null}</div>
+              </button>
+            })}
+            {!loading && !filtered.length ? <p className="p-8 text-center text-sm text-gray-400">Nenhum e-mail encontrado.</p> : null}
+          </div>
+          <div className="min-w-0 p-4 sm:p-6">
+            {selected ? <>
+              <div className="flex flex-col gap-4 border-b border-gray-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0"><p className="text-xs font-bold text-gray-400">{selected.sent ? `Para: ${selected.to}` : `De: ${selected.from}`}</p><h2 className="mt-1 text-xl font-black text-gray-950">{selected.subject}</h2><p className="mt-1 text-xs text-gray-400">{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</p></div>
+                <div className="flex shrink-0 gap-2">{selectedLead ? <><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}>Abrir contato</Button><Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onComposeLead(selectedLead)}>Responder</Button></> : <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-500">Contato não vinculado</span>}</div>
+              </div>
+              <div className="whitespace-pre-wrap py-6 text-sm leading-7 text-gray-700">{selected.body || selected.snippet || 'Mensagem sem conteúdo textual disponível.'}</div>
+            </> : <div className="grid h-full place-items-center text-center"><div><Mail className="mx-auto text-gray-200" size={42} /><p className="mt-3 text-sm font-bold text-gray-400">Selecione uma mensagem para ler.</p></div></div>}
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values: SettingsFormValues) => void }) {
   const {
     register,
@@ -8905,6 +9074,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
   const additionalKm = Math.max(distance - Number(watch('freeKm') || 0), 0)
   const suggestedTravelFee = fuelCost + additionalKm * Number(watch('pricePerKm') || 0)
   const googleClientId = watch('googleOAuthClientId') ?? ''
+  const emailSignatureImageUrl = watch('emailSignatureImageUrl') ?? ''
   const [googleConnection, setGoogleConnection] = useState(() => getGoogleWorkspaceConnection())
   const [googleConnectionError, setGoogleConnectionError] = useState('')
   const [connectingGoogle, setConnectingGoogle] = useState(false)
@@ -8986,6 +9156,41 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                   : <Button type="button" disabled={!googleClientId.trim() || connectingGoogle} onClick={() => void connectGoogle()}>{connectingGoogle ? 'Conectando...' : 'Conectar Gmail e Agenda'}</Button>}
               </div>
               <p className="text-xs leading-5 text-gray-500">No Google Cloud, habilite Gmail API e Google Calendar API e adicione <strong>https://flyflow-a97ab.web.app</strong> como origem JavaScript autorizada.</p>
+            </div>
+          </Panel>
+
+          <Panel title="Assinatura de e-mail">
+            <div className="space-y-3">
+              <p className="text-sm leading-6 text-gray-500">Adicione uma imagem horizontal com sua marca, contatos e redes sociais. Ela será incluída automaticamente nos e-mails enviados pelo FlyFlow.</p>
+              <input type="hidden" {...register('emailSignatureImageUrl')} />
+              {emailSignatureImageUrl ? (
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white p-3">
+                  <img className="max-h-32 max-w-full object-contain object-left" src={emailSignatureImageUrl} alt="Prévia da assinatura de e-mail" />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-400">Nenhuma assinatura configurada.</div>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg bg-[#e0b936] px-4 text-sm font-black text-gray-950 hover:bg-[#d5ad25]">
+                  <Paperclip size={16} /> Escolher imagem
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={async (event) => {
+                      const file = event.currentTarget.files?.[0]
+                      if (!file) return
+                      if (file.size > 5_000_000) {
+                        setGoogleConnectionError('A imagem original deve ter no máximo 5 MB.')
+                        return
+                      }
+                      setValue('emailSignatureImageUrl', await prepareEmailSignatureImage(file), { shouldDirty: true })
+                    }}
+                  />
+                </label>
+                {emailSignatureImageUrl ? <Button variant="secondary" type="button" onClick={() => setValue('emailSignatureImageUrl', '', { shouldDirty: true })}>Remover</Button> : null}
+              </div>
+              <p className="text-xs text-gray-400">Recomendação: PNG ou JPG, até 800 × 220 px.</p>
             </div>
           </Panel>
 

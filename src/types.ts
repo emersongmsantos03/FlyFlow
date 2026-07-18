@@ -970,6 +970,7 @@ export interface CompanySettings {
   paymentTerms: string
   googleOAuthClientId?: string
   googleWorkspaceEmail?: string
+  emailSignatureImageUrl?: string
   createdAt: string
   updatedAt: string
 }
