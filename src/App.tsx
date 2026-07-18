@@ -301,6 +301,12 @@ interface InputDialogState {
   onSubmit: (value: string) => void
 }
 
+interface EmailComposerState {
+  lead: Lead
+  subject: string
+  body: string
+}
+
 interface ServiceConfirmationState {
   leadId: string
   previousStage: PipelineStage
@@ -1013,6 +1019,7 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
   const [noticeDialog, setNoticeDialog] = useState<NoticeDialogState | null>(null)
   const [inputDialog, setInputDialog] = useState<InputDialogState | null>(null)
+  const [emailComposer, setEmailComposer] = useState<EmailComposerState | null>(null)
   const [toast, setToast] = useState('')
 
   useEffect(() => {
@@ -1561,41 +1568,47 @@ function App() {
       return
     }
     const subject = `Uma ideia visual para ${contactDisplayName(lead)}`
-    requestInput({
-      title: `Enviar e-mail para ${contactDisplayName(lead)}`,
-      description: `${subject}\nDestinatário: ${lead.email}`,
-      label: 'Mensagem',
-      inputType: 'textarea',
-      initialValue: `Olá! Tudo bem?\n\nAqui é o Emerson, da Hero Drone. Preparei uma ideia de ${lead.serviceInterest.toLocaleLowerCase('pt-BR')} que pode valorizar a apresentação da ${contactDisplayName(lead)}.\n\nPosso te explicar rapidamente como funcionaria?\n\nAbraço,\nEmerson — Hero Drone`,
-      required: true,
-      confirmLabel: 'Enviar pelo Gmail',
-      onSubmit: async (body) => {
-        try {
-          const result = await sendGoogleWorkspaceEmail({ to: [lead.email], subject, body })
-          const now = new Date().toISOString()
-          updateState((current) => ({
-            ...current,
-            leads: current.leads.map((item) => item.id === lead.id ? {
-              ...item,
-              lastContactAt: now,
-              pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
-              updatedAt: now,
-            } : item),
-            leadInteractions: [{
-              id: createId('int'),
-              leadId: lead.id,
-              interactionType: 'E-mail · Gmail',
-              description: `Assunto: ${subject}\nMensagem: ${body}\nGmail ID: ${result.id}`,
-              interactionDate: now,
-              userId: activeUserId,
-              createdAt: now,
-            }, ...current.leadInteractions],
-          }), 'E-mail enviado pelo Gmail e registrado no histórico.')
-        } catch (error) {
-          setToast(error instanceof Error ? error.message : 'Não foi possível enviar pelo Gmail.')
-        }
-      },
+    const opportunityHook = lead.leadHunterData?.aiContactHook?.trim()
+    const body = `Olá! Tudo bem?
+
+Aqui é o Emerson, da Hero Drone. ${opportunityHook || `Vi uma oportunidade de valorizar a apresentação da ${contactDisplayName(lead)} com imagens aéreas profissionais.`}
+
+Pensei em um trabalho de ${lead.serviceInterest.toLocaleLowerCase('pt-BR')} para destacar o espaço, a localização e os diferenciais do negócio de uma forma mais marcante nas redes sociais e no Google.
+
+Posso te apresentar a ideia em uma conversa rápida, sem compromisso?
+
+Abraço,
+Emerson
+Hero Drone`
+    setEmailComposer({
+      lead,
+      subject,
+      body,
     })
+  }
+
+  const submitCommercialEmail = async (composer: EmailComposerState, subject: string, body: string) => {
+    const result = await sendGoogleWorkspaceEmail({ to: [composer.lead.email], subject, body })
+    const now = new Date().toISOString()
+    updateState((current) => ({
+      ...current,
+      leads: current.leads.map((item) => item.id === composer.lead.id ? {
+        ...item,
+        lastContactAt: now,
+        pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
+        updatedAt: now,
+      } : item),
+      leadInteractions: [{
+        id: createId('int'),
+        leadId: composer.lead.id,
+        interactionType: 'E-mail · Gmail',
+        description: `Assunto: ${subject}\nMensagem: ${body}\nGmail ID: ${result.id}`,
+        interactionDate: now,
+        userId: activeUserId,
+        createdAt: now,
+      }, ...current.leadInteractions],
+    }), 'E-mail enviado pelo Gmail e registrado no histórico.')
+    setEmailComposer(null)
   }
 
   const openAppointmentModal = (defaults: AppointmentFormDefaults = {}, appointment?: Appointment) => {
@@ -4888,6 +4901,13 @@ function App() {
       ) : null}
       {noticeDialog ? <NoticeDialog dialog={noticeDialog} onClose={() => setNoticeDialog(null)} /> : null}
       {inputDialog ? <InputDialog key={`${inputDialog.title}-${inputDialog.label}`} dialog={inputDialog} onCancel={() => setInputDialog(null)} onSubmit={(value) => { const action = inputDialog.onSubmit; setInputDialog(null); action(value) }} /> : null}
+      {emailComposer ? (
+        <EmailComposer
+          composer={emailComposer}
+          onClose={() => setEmailComposer(null)}
+          onSend={(subject, body) => submitCommercialEmail(emailComposer, subject, body)}
+        />
+      ) : null}
       <aside className="app-sidebar hidden border-r border-gray-200 bg-[#171717] text-white lg:block">
         <div className="sticky top-0 flex h-screen flex-col">
           <div className="app-brand border-b border-white/10 px-4 py-5">
@@ -6059,6 +6079,95 @@ function NoticeDialog({ dialog, onClose }: { dialog: NoticeDialogState; onClose:
       <div className="mt-5 flex justify-end"><Button type="button" onClick={onClose}>{dialog.buttonLabel || 'Entendi'}</Button></div>
     </div>
   </div>
+}
+
+function EmailComposer({
+  composer,
+  onClose,
+  onSend,
+}: {
+  composer: EmailComposerState
+  onClose: () => void
+  onSend: (subject: string, body: string) => Promise<void>
+}) {
+  const [subject, setSubject] = useState(composer.subject)
+  const [body, setBody] = useState(composer.body)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const canSend = Boolean(subject.trim() && body.trim() && composer.lead.email && !sending)
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!canSend) return
+    setSending(true)
+    setError('')
+    try {
+      await onSend(subject.trim(), body.trim())
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'Não foi possível enviar o e-mail.')
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-3 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="email-composer-title">
+      <form className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl" onSubmit={submit}>
+        <header className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e0b936] text-gray-950"><Mail size={19} /></div>
+            <div className="min-w-0">
+              <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Nova mensagem</p>
+              <h2 id="email-composer-title" className="truncate text-lg font-black text-gray-950">E-mail para {contactDisplayName(composer.lead)}</h2>
+            </div>
+          </div>
+          <button className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-900" type="button" onClick={onClose} aria-label="Fechar"><X size={19} /></button>
+        </header>
+
+        <div className="overflow-y-auto px-5 py-4 sm:px-6">
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-900 text-xs font-black text-white">{contactDisplayName(composer.lead).charAt(0).toUpperCase()}</span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-gray-900">{contactDisplayName(composer.lead)}</p>
+              <p className="truncate text-xs text-gray-500">{composer.lead.email}</p>
+            </div>
+            <span className="ml-auto hidden rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.65rem] font-black text-emerald-700 sm:inline">Via Gmail</span>
+          </div>
+
+          <label className="block">
+            <span className="field-label">Assunto</span>
+            <input className="field-input mt-1" value={subject} maxLength={160} onChange={(event) => setSubject(event.target.value)} />
+          </label>
+
+          <label className="mt-4 block">
+            <span className="flex items-center justify-between gap-3">
+              <span className="field-label inline-flex items-center gap-1.5"><Wand2 size={13} className="text-[#b08700]" /> Mensagem personalizada</span>
+              <button className="text-xs font-bold text-gray-500 hover:text-gray-900" type="button" onClick={() => { setSubject(composer.subject); setBody(composer.body) }}>Restaurar sugestão</button>
+            </span>
+            <textarea
+              className="field-input mt-1 min-h-[280px] resize-y leading-6"
+              value={body}
+              maxLength={5000}
+              onChange={(event) => setBody(event.target.value)}
+            />
+          </label>
+
+          <div className="mt-2 flex items-center justify-between gap-3 text-[0.68rem] text-gray-400">
+            <span>Revise livremente antes de enviar.</span>
+            <span>{body.length}/5000</span>
+          </div>
+          {error ? <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</p> : null}
+        </div>
+
+        <footer className="flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p className="text-xs text-gray-500">O envio será registrado automaticamente no histórico do CRM.</p>
+          <div className="flex gap-2">
+            <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
+            <Button disabled={!canSend} type="submit"><Mail size={16} /> {sending ? 'Enviando...' : 'Enviar e-mail'}</Button>
+          </div>
+        </footer>
+      </form>
+    </div>
+  )
 }
 
 function InputDialog({ dialog, onCancel, onSubmit }: { dialog: InputDialogState; onCancel: () => void; onSubmit: (value: string) => void }) {
