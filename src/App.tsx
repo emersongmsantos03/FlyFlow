@@ -662,6 +662,17 @@ const contactDisplayName = (contact: Pick<Lead | Client, 'fullName' | 'companyNa
   contact.city ||
   'Contato sem nome'
 
+const projectContactLabel = (state: AppState, project: Project) => {
+  const contact = projectClient(state, project)
+  if (!contact) return project.contactName || 'Sem contato vinculado'
+  const company = contact.companyName?.trim()
+  const person = contact.fullName?.trim()
+  return company && person && company !== person ? `${company} · ${person}` : company || person || contactDisplayName(contact)
+}
+
+const projectOptionLabel = (state: AppState, project: Project) =>
+  `${projectContactLabel(state, project)} — ${project.serviceName || project.name} — ${project.projectCode}`
+
 const contactDisplayDetail = (contact: Pick<Lead | Client, 'companyName' | 'fullName' | 'city'>) =>
   [contact.companyName && contact.companyName !== contact.fullName ? contact.companyName : '', contact.city].filter(Boolean).join(' • ') || 'Sem detalhes'
 
@@ -3698,16 +3709,17 @@ function App() {
         .filter((payment) => payment.status === 'Recebida' && (payment.quoteId === quote?.id || payment.leadId === lead.id) && !payment.deletedAt)
         .reduce((total, payment) => total + payment.amount, 0)
       const totalValue = quote?.totalValue ?? lead.estimatedValue
+      const projectServiceName = getQuoteServiceName(lead, quoteItems)
       const projectId = createId('project')
       const project: Project = {
         id: projectId,
         projectCode: `HDP-${new Date().getFullYear()}-${String(current.projects.length + 1).padStart(4, '0')}`,
-        name: quote ? getQuoteTitle(quote) : `${lead.serviceInterest} · ${contactDisplayName(lead)}`,
+        name: `${projectServiceName} · ${contactDisplayName(lead)}`,
         clientId: client.id,
         leadId: lead.id,
         quoteId: quote?.id,
         manualCreationReason: quote ? undefined : 'Criado após confirmação explícita do serviço no CRM.',
-        serviceName: getQuoteServiceName(lead, quoteItems),
+        serviceName: projectServiceName,
         description: quote?.notes || lead.notes,
         captureDate: '',
         captureStartTime: '',
@@ -6490,7 +6502,6 @@ function ProjectsPage({
   }
 
   const renderProjectRow = (project: Project) => {
-    const client = projectClient(state, project)
     const checklist = state.projectChecklistItems.filter((item) => item.projectId === project.id)
     const checklistCategories = [...new Set(checklist.map((item) => item.category))]
     const completedStages = checklistCategories.filter((category) => checklist.filter((item) => item.category === category).every((item) => item.completed)).length
@@ -6509,8 +6520,8 @@ function ProjectsPage({
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(13rem,0.75fr)_minmax(11rem,0.55fr)_auto] lg:items-center">
           <button className="min-w-0 text-left" type="button" onClick={() => setOpenedProjectId(project.id)}>
             <div className="flex flex-wrap items-center gap-2"><span className="text-[0.68rem] font-black uppercase tracking-wide text-gray-400">{project.projectCode}</span><StatusBadge>{project.projectStatus}</StatusBadge>{deadline.level === 'danger' ? <AlertTriangle className="text-red-600" size={15} /> : null}</div>
-            <h3 className="mt-1 truncate text-base font-black text-gray-950">{project.name}</h3>
-            <p className="mt-0.5 truncate text-xs text-gray-500">{client ? contactDisplayName(client) : 'Sem cliente'} · {project.serviceName}</p>
+            <h3 className="mt-1 truncate text-base font-black text-gray-950">{projectContactLabel(state, project)}</h3>
+            <p className="mt-0.5 truncate text-xs text-gray-500">{project.serviceName} · {project.name}</p>
           </button>
 
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
@@ -6641,7 +6652,7 @@ function ProjectWorkspace({
         : undefined
 
   return (
-    <Modal title={`${project.projectCode} · ${project.name}`} size="md" onClose={onClose}>
+    <Modal title={`${projectContactLabel(state, project)} · ${project.projectCode}`} size="md" onClose={onClose}>
       <div className="space-y-3">
         <section className="rounded-lg border border-gray-200 bg-gray-50 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -8717,7 +8728,7 @@ function GlobalSearchResults({ query, state, onNavigate }: { query: string; stat
       ...state.projects
         .filter((project) => isVisibleProject(project) && matches(`${project.projectCode} ${project.name} ${project.serviceName}`, query))
         .slice(0, 3)
-        .map((project) => ({ id: project.id, title: project.projectCode, subtitle: project.name, page: 'projects' as Page })),
+        .map((project) => ({ id: project.id, title: projectContactLabel(state, project), subtitle: `${project.serviceName} · ${project.projectCode}`, page: 'projects' as Page })),
     ]
   }, [query, state])
 
@@ -9875,7 +9886,7 @@ function AppointmentForm({
           </select>
         </InputField>
       ) : null}
-      {!isEditing ? <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Nenhum</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{project.projectCode} - {project.name}</option>)}</select></InputField> : null}
+      {!isEditing ? <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Nenhum</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select></InputField> : null}
       <InputField label="Status" error={getError(errors.status?.message)}><Select options={appointmentStatuses} register={register('status')} /></InputField>
       <InputField label="Início" error={getError(errors.startAt?.message)}><input className="field-input" type="datetime-local" {...register('startAt')} /></InputField>
       <InputField label="Fim" error={getError(errors.endAt?.message)}><input className="field-input" type="datetime-local" {...register('endAt')} /></InputField>
@@ -10185,7 +10196,7 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-      <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Sem projeto</option>{state.projects.filter(isVisibleProject).map((project) => <option key={project.id} value={project.id}>{project.projectCode} - {project.name}</option>)}</select></InputField>
+      <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Sem projeto</option>{state.projects.filter(isVisibleProject).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select></InputField>
       <InputField label="Cliente" error={getError(errors.clientId?.message)}><select className="field-input" {...register('clientId')}><option value="">Selecione</option>{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={client.id}>{contactDisplayName(client)}</option>)}</select></InputField>
       <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><select className="field-input" {...register('leadId')}><option value="">Sem contato</option>{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={lead.id}>{contactDisplayName(lead)}</option>)}</select></InputField>
       <InputField label="Proposta" error={getError(errors.quoteId?.message)}><select className="field-input" {...register('quoteId')}><option value="">Sem proposta</option>{state.quotes.filter((quote) => !quote.deletedAt).map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteNumber}</option>)}</select></InputField>
@@ -10262,7 +10273,7 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Descrição" error={getError(errors.description?.message)}><input className="field-input" {...register('description')} /></InputField>
-      <InputField label="Projeto relacionado" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Sem projeto</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{project.projectCode} - {project.name}</option>)}</select></InputField>
+      <InputField label="Projeto relacionado" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Sem projeto</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select></InputField>
       <InputField label="Categoria" error={getError(errors.category?.message)}><Select options={expenseCategories} register={register('category')} /></InputField>
       <InputField label="Tipo de despesa" error={getError(errors.expenseType?.message)}><Select options={expenseTypes} register={register('expenseType')} /></InputField>
       <InputField label="Valor" error={getError(errors.amount?.message)}>
