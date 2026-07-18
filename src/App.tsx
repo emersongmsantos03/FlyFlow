@@ -1425,6 +1425,121 @@ function App() {
     })
   }
 
+  const sendCommercialWhatsAppApproach = (lead: Lead, message: string, context: string) => {
+    const number = lead.whatsapp || lead.phone
+    if (!number) {
+      setToast('Este contato não possui WhatsApp informado.')
+      return
+    }
+
+    window.open(`${whatsappLink(number)}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+    const now = new Date().toISOString()
+    const previousApproaches = state.leadInteractions.filter((interaction) =>
+      interaction.leadId === lead.id && interaction.interactionType.startsWith('WhatsApp'),
+    ).length
+    const shouldScheduleFollowUp = previousApproaches < 3
+    const delayDays = previousApproaches === 0 ? 2 : previousApproaches === 1 ? 3 : 5
+    const dueAt = new Date(Date.now() + delayDays * 86_400_000).toISOString()
+    const taskId = createId('task')
+    const appointmentId = createId('appt')
+    const nextStage: PipelineStage = context === 'Interesse demonstrado'
+      ? 'Em negociação'
+      : context === 'Enviar proposta'
+        ? 'Proposta enviada'
+        : lead.pipelineStage === 'Entrada'
+          ? 'Contato realizado'
+          : lead.pipelineStage
+
+    updateState((current) => {
+      const cadenceTitle = previousApproaches === 0
+        ? 'Verificar resposta no WhatsApp'
+        : previousApproaches === 1
+          ? 'Segundo acompanhamento no WhatsApp'
+          : 'Última tentativa da cadência'
+      const task: TaskItem = {
+        id: taskId,
+        title: cadenceTitle,
+        description: `Cadência comercial após “${context}”. Revise o histórico antes de abordar novamente.`,
+        taskType: 'WhatsApp',
+        dueAt,
+        durationMinutes: 15,
+        priority: previousApproaches >= 2 ? 'Média' : 'Alta',
+        status: 'Pendente',
+        leadId: lead.id,
+        responsibleUserId: activeUserId,
+        appointmentId,
+        sourceKey: `whatsapp-cadence:${lead.id}`,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const appointment: Appointment = {
+        id: appointmentId,
+        title: cadenceTitle,
+        appointmentType: 'Tarefa',
+        leadId: lead.id,
+        startAt: dueAt,
+        endAt: new Date(new Date(dueAt).getTime() + 15 * 60_000).toISOString(),
+        address: lead.address,
+        notes: task.description,
+        status: 'Agendado',
+        color: '#d8a500',
+        createdAt: now,
+        updatedAt: now,
+      }
+      const completedTaskIds = new Set(current.tasks
+        .filter((item) => item.leadId === lead.id && item.sourceKey === `whatsapp-cadence:${lead.id}` && item.status !== 'Concluída')
+        .map((item) => item.id))
+      const completedAppointmentIds = new Set(current.tasks
+        .filter((item) => completedTaskIds.has(item.id))
+        .map((item) => item.appointmentId)
+        .filter(Boolean))
+
+      return {
+        ...current,
+        leads: current.leads.map((item) => item.id === lead.id ? {
+          ...item,
+          lastContactAt: now,
+          nextContactAt: shouldScheduleFollowUp ? dueAt : undefined,
+          pipelineStage: keepMostAdvancedCommercialStage(item.pipelineStage, nextStage),
+          tags: [...new Set([
+            ...item.tags.filter((tag) => !['A abordar', 'Cadência ativa', 'Cadência concluída'].includes(tag)),
+            'Contato iniciado',
+            shouldScheduleFollowUp ? 'Cadência ativa' : 'Cadência concluída',
+          ])],
+          updatedAt: now,
+        } : item),
+        leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.leadId === lead.id ? {
+          ...prospect,
+          status: 'Contatado' as const,
+          lastContactAt: now,
+          isNew: false,
+          updatedAt: now,
+        } : prospect),
+        leadInteractions: [{
+          id: createId('int'),
+          leadId: lead.id,
+          interactionType: `WhatsApp · ${context}`,
+          description: `Mensagem enviada pelo FlyFlow:\n${message}`,
+          interactionDate: now,
+          userId: activeUserId,
+          createdAt: now,
+        }, ...current.leadInteractions],
+        tasks: [
+          ...(shouldScheduleFollowUp ? [task] : []),
+          ...current.tasks.map((item) => completedTaskIds.has(item.id) ? { ...item, status: 'Concluída' as const, updatedAt: now } : item),
+        ],
+        appointments: [
+          ...(shouldScheduleFollowUp ? [appointment] : []),
+          ...current.appointments.map((item) => completedAppointmentIds.has(item.id) ? { ...item, status: 'Concluído' as const, updatedAt: now } : item),
+        ],
+        statusHistory: [
+          createStatusHistory('Contato', lead.id, `WhatsApp · ${context}`, shouldScheduleFollowUp ? `Mensagem registrada e acompanhamento agendado para ${formatDateTime(dueAt)}.` : 'Mensagem registrada e cadência automática concluída.', activeUserId, lead.pipelineStage, nextStage, now),
+          ...current.statusHistory,
+        ],
+      }
+    }, shouldScheduleFollowUp ? `Mensagem preparada e acompanhamento agendado para ${formatDateTime(dueAt)}.` : 'Mensagem registrada e cadência concluída.')
+  }
+
   const openAppointmentModal = (defaults: AppointmentFormDefaults = {}, appointment?: Appointment) => {
     setSelectedAppointmentId(appointment?.id ?? '')
     setAppointmentDefaults(defaults)
@@ -4807,6 +4922,7 @@ function App() {
               onAttachReceipt={openReceiptModal}
               onGenerateProposal={openProposalGenerator}
               onRegisterInteraction={registerLeadInteraction}
+              onSendWhatsAppApproach={sendCommercialWhatsAppApproach}
               onScheduleReturn={(lead) => openAppointmentModal({ title: `Retorno - ${contactDisplayName(lead)}`, appointmentType: 'Follow-up', leadId: lead.id })}
               onRegisterDeposit={openQuotePayment}
               onDownloadQuote={downloadQuotePdf}

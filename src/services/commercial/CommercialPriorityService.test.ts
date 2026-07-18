@@ -40,4 +40,20 @@ describe('Commercial priority', () => {
     expect(insights.conversionRate).toBe(50)
     expect(insights.stalled.map((item) => item.id)).toContain('stalled')
   })
+
+  it('mede abordagens e identifica problemas de higiene do CRM', () => {
+    const approached = lead({ id: 'approached', whatsapp: '41999999999', city: 'Curitiba', nextContactAt: undefined })
+    const insights = buildCommercialInsights([approached, lead({ id: 'duplicate', whatsapp: '41999999999' })], {
+      quotes: [],
+      projects: [],
+      payments: [],
+      leadInteractions: [
+        { id: 'int-1', leadId: 'approached', interactionType: 'WhatsApp · Primeiro contato', description: 'Mensagem', interactionDate: '2026-07-17T12:00:00.000Z', userId: 'user-1', createdAt: '2026-07-17T12:00:00.000Z' },
+        { id: 'int-2', leadId: 'approached', interactionType: 'WhatsApp · Interesse demonstrado', description: 'Resposta', interactionDate: '2026-07-17T13:00:00.000Z', userId: 'user-1', createdAt: '2026-07-17T13:00:00.000Z' },
+      ],
+    })
+    expect(insights.outreach.attempts).toBe(2)
+    expect(insights.outreach.responseRate).toBe(100)
+    expect(insights.hygieneIssues.find((issue) => issue.id === 'duplicates')?.count).toBe(1)
+  })
 })

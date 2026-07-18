@@ -42,7 +42,11 @@ export const buildCommercialActionQueue = (leads: Lead[], state: Pick<AppState, 
     .filter(({ lead, priority }) => priority.overdueDays > 0 || !lead.nextContactAt || (lead.nextContactAt && new Date(lead.nextContactAt).getTime() - now.getTime() <= DAY_MS))
     .sort((a, b) => b.priority.score - a.priority.score || (a.lead.nextContactAt || '').localeCompare(b.lead.nextContactAt || ''))
 
-export const buildCommercialInsights = (leads: Lead[], state: Pick<AppState, 'leadInteractions'>, now = new Date()) => {
+export const buildCommercialInsights = (
+  leads: Lead[],
+  state: Pick<AppState, 'leadInteractions'> & Partial<Pick<AppState, 'quotes' | 'projects' | 'payments'>>,
+  now = new Date(),
+) => {
   const visible = leads.filter((lead) => !lead.archived && !lead.deletedAt)
   const wonStages = new Set(['Serviço confirmado', 'Serviço agendado', 'Convertido em cliente'])
   const won = visible.filter((lead) => wonStages.has(lead.pipelineStage))
@@ -64,10 +68,80 @@ export const buildCommercialInsights = (leads: Lead[], state: Pick<AppState, 'le
     ...values,
     rate: Math.round(values.won / Math.max(1, values.total) * 100),
   })).sort((a, b) => b.rate - a.rate || b.total - a.total)
+  const whatsAppInteractions = state.leadInteractions.filter((interaction) => interaction.interactionType.startsWith('WhatsApp'))
+  const approachedLeadIds = new Set(whatsAppInteractions.map((interaction) => interaction.leadId))
+  const respondedLeadIds = new Set(whatsAppInteractions
+    .filter((interaction) => /interesse demonstrado|enviar portf[oó]lio|enviar proposta/i.test(interaction.interactionType))
+    .map((interaction) => interaction.leadId))
+  const contextMap = new Map<string, number>()
+  whatsAppInteractions.forEach((interaction) => {
+    const context = interaction.interactionType.split('·')[1]?.trim() || 'WhatsApp'
+    contextMap.set(context, (contextMap.get(context) || 0) + 1)
+  })
+  const bestContexts = [...contextMap].map(([context, count]) => ({ context, count })).sort((a, b) => b.count - a.count)
+  const dimensionPerformance = (selector: (lead: Lead) => string) => {
+    const dimensions = new Map<string, { total: number; responses: number }>()
+    visible.filter((lead) => approachedLeadIds.has(lead.id)).forEach((lead) => {
+      const label = selector(lead) || 'Não informado'
+      const current = dimensions.get(label) || { total: 0, responses: 0 }
+      current.total += 1
+      if (respondedLeadIds.has(lead.id)) current.responses += 1
+      dimensions.set(label, current)
+    })
+    return [...dimensions].map(([label, values]) => ({
+      label,
+      ...values,
+      rate: Math.round(values.responses / Math.max(1, values.total) * 100),
+    })).sort((a, b) => b.rate - a.rate || b.total - a.total)
+  }
+
+  const duplicateKeys = new Map<string, number>()
+  visible.forEach((lead) => {
+    const phoneKey = (lead.whatsapp || lead.phone).replace(/\D/g, '')
+    const key = phoneKey
+      ? `phone:${phoneKey}`
+      : lead.email
+        ? `email:${lead.email.trim().toLocaleLowerCase('pt-BR')}`
+        : `company:${lead.companyName.trim().toLocaleLowerCase('pt-BR')}`
+    if (key) duplicateKeys.set(key, (duplicateKeys.get(key) || 0) + 1)
+  })
+  const duplicateCount = [...duplicateKeys.values()].reduce((total, count) => total + Math.max(count - 1, 0), 0)
+  const invalidPhoneCount = visible.filter((lead) => {
+    const digits = (lead.whatsapp || lead.phone).replace(/\D/g, '')
+    return Boolean(digits) && digits.length < 10
+  }).length
+  const noNextActionCount = visible.filter((lead) => !lead.nextContactAt && !wonStages.has(lead.pipelineStage) && lead.pipelineStage !== 'Perdido').length
+  const expiredQuoteCount = (state.quotes || []).filter((quote) => !quote.deletedAt && quote.status === 'Expirada').length
+  const inconsistentBalanceCount = (state.projects || []).filter((project) => {
+    if (project.deletedAt) return false
+    const paid = (state.payments || [])
+      .filter((payment) => payment.projectId === project.id && payment.status === 'Recebida' && !payment.deletedAt && !payment.archivedAt)
+      .reduce((total, payment) => total + (payment.paymentType === 'Reembolso' ? -payment.amount : payment.amount), 0)
+    return Math.abs(project.remainingValue - Math.max(project.totalValue - paid, 0)) > 0.01
+  }).length
+  const hygieneIssues = [
+    { id: 'duplicates', label: 'Possíveis contatos duplicados', count: duplicateCount },
+    { id: 'invalid-phone', label: 'Telefones possivelmente inválidos', count: invalidPhoneCount },
+    { id: 'no-next-action', label: 'Oportunidades sem próxima ação', count: noNextActionCount },
+    { id: 'expired-quotes', label: 'Propostas expiradas', count: expiredQuoteCount },
+    { id: 'balance', label: 'Projetos com saldo inconsistente', count: inconsistentBalanceCount },
+  ].filter((issue) => issue.count > 0)
   return {
     conversionRate: Math.round(won.length / Math.max(1, visible.length) * 100),
     contactRate: Math.round(visible.filter((lead) => contactedIds.has(lead.id) || lead.lastContactAt).length / Math.max(1, visible.length) * 100),
     stalled,
     sourceConversion,
+    outreach: {
+      attempts: whatsAppInteractions.length,
+      approachedLeads: approachedLeadIds.size,
+      responses: respondedLeadIds.size,
+      responseRate: Math.round(respondedLeadIds.size / Math.max(1, approachedLeadIds.size) * 100),
+      bestContexts,
+      categoryPerformance: dimensionPerformance((lead) => lead.leadHunterData?.categoryName || 'Sem categoria'),
+      cityPerformance: dimensionPerformance((lead) => lead.city || 'Sem cidade'),
+      servicePerformance: dimensionPerformance((lead) => lead.leadHunterData?.recommendedService || lead.serviceInterest),
+    },
+    hygieneIssues,
+    hygieneIssueCount: hygieneIssues.reduce((total, issue) => total + issue.count, 0),
   }
 }

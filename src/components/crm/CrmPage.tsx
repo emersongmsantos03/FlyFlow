@@ -96,8 +96,36 @@ const buildPriorityWhatsAppMessage = (lead: Lead) => {
   ].join(' ')
 }
 
-const priorityWhatsAppUrl = (lead: Lead) =>
-  `${whatsappLink(lead.whatsapp || lead.phone)}?text=${encodeURIComponent(buildPriorityWhatsAppMessage(lead))}`
+const whatsappContexts = [
+  'Primeiro contato',
+  'Acompanhamento',
+  'Sem resposta',
+  'Interesse demonstrado',
+  'Enviar portfólio',
+  'Enviar proposta',
+  'Retomada',
+] as const
+type WhatsAppContext = (typeof whatsappContexts)[number]
+
+const buildContextualWhatsAppMessage = (lead: Lead, context: WhatsAppContext) => {
+  const firstMessage = buildPriorityWhatsAppMessage(lead)
+  const company = displayName(lead)
+  const contactName = lead.leadHunterData?.contactName?.trim()
+  const greeting = contactName && contactName.toLocaleLowerCase('pt-BR') !== company.toLocaleLowerCase('pt-BR')
+    ? `Olá, ${contactName.split(/\s+/)[0]}!`
+    : 'Olá! Tudo bem?'
+  const service = (lead.leadHunterData?.recommendedService || lead.serviceInterest || 'produção de imagens com drone').toLocaleLowerCase('pt-BR')
+  const messages: Record<WhatsAppContext, string> = {
+    'Primeiro contato': firstMessage,
+    'Acompanhamento': `${greeting} Aqui é o Emerson, da Hero Drone. Passando para saber se você conseguiu ver minha mensagem sobre uma ideia de ${service} para a ${company}. Se fizer sentido, te explico de forma bem rápida por aqui.`,
+    'Sem resposta': `${greeting} Prometo ser breve: se melhorar a apresentação visual da ${company} estiver nos planos, posso te enviar uma sugestão objetiva de ${service}. Caso não seja o momento, sem problema algum.`,
+    'Interesse demonstrado': `${greeting} Que bom que a ideia fez sentido! Para eu preparar uma sugestão realmente útil para a ${company}, posso te fazer duas perguntas rápidas sobre o espaço e o objetivo do material?`,
+    'Enviar portfólio': `${greeting} Separei algumas referências para você visualizar como um trabalho de ${service} pode valorizar a ${company}. Posso te enviar o portfólio e, se gostar da linha, preparo uma ideia específica para vocês.`,
+    'Enviar proposta': `${greeting} Preparei uma proposta para a ${company} considerando o trabalho de ${service} que conversamos. Posso te enviar por aqui? Se quiser, também explico rapidamente cada etapa.`,
+    'Retomada': `${greeting} Aqui é o Emerson, da Hero Drone. Retomando nosso contato sobre a ${company}: surgiu uma ideia de ${service} que pode funcionar muito bem para vocês. Ainda faz sentido conversarmos sobre isso?`,
+  }
+  return messages[context]
+}
 const displayDetail = (lead: Lead) => lead.fullName && lead.companyName ? lead.fullName : lead.city || lead.whatsapp || lead.phone || 'Sem detalhes'
 
 const newestQuote = (state: AppState, leadId: string) =>
@@ -142,6 +170,7 @@ export function CrmPage({
   onAttachReceipt,
   onGenerateProposal,
   onRegisterInteraction,
+  onSendWhatsAppApproach,
   onScheduleReturn,
   onRegisterDeposit,
   onDownloadQuote,
@@ -169,6 +198,7 @@ export function CrmPage({
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
+  onSendWhatsAppApproach: (lead: Lead, message: string, context: string) => void
   onScheduleReturn: (lead: Lead) => void
   onRegisterDeposit: (quote: Quote) => void
   onDownloadQuote: (quote: Quote) => void | Promise<void>
@@ -186,6 +216,9 @@ export function CrmPage({
   const [search, setSearch] = useState('')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
   const [mobileColumn, setMobileColumn] = useState(columns[0].id)
+  const [priorityLead, setPriorityLead] = useState<Lead>()
+  const [whatsAppContext, setWhatsAppContext] = useState<WhatsAppContext>('Primeiro contato')
+  const [whatsAppMessage, setWhatsAppMessage] = useState('')
 
   const activeLeads = useMemo(() => leads.filter((lead) => !lead.archived && !lead.deletedAt), [leads])
   const commercialInsights = useMemo(() => buildCommercialInsights(activeLeads, state), [activeLeads, state])
@@ -215,6 +248,7 @@ export function CrmPage({
   const potentialValue = activeLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
   const contactsNeedingAction = activeLeads.filter((lead) => !lead.nextContactAt || new Date(lead.nextContactAt) < new Date()).length
   const actionQueue = useMemo(() => buildCommercialActionQueue(activeLeads, state).slice(0, 5), [activeLeads, state])
+  const selectedPriority = priorityLead ? actionQueue.find(({ lead }) => lead.id === priorityLead.id)?.priority : undefined
 
   const scrollBoard = (direction: -1 | 1) => boardRef.current?.scrollBy({ left: direction * 620, behavior: 'smooth' })
 
@@ -263,7 +297,7 @@ export function CrmPage({
                 <button className="mt-1 block w-full truncate text-left text-sm font-black text-gray-950 hover:underline" type="button" onClick={() => onOpenLead(lead)}>{displayName(lead)}</button>
                 <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-gray-500">{priority.reason}</p>
                 <div className="mt-2 flex gap-2">
-                  {lead.whatsapp ? <a className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" href={priorityWhatsAppUrl(lead)} target="_blank" rel="noreferrer" title="Abrir WhatsApp com mensagem personalizada"><MessageCircle size={13} /> Mensagem</a> : null}
+                  {lead.whatsapp ? <button className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" type="button" title="Revisar mensagem personalizada" onClick={() => { setPriorityLead(lead); setWhatsAppContext('Primeiro contato'); setWhatsAppMessage(buildContextualWhatsAppMessage(lead, 'Primeiro contato')) }}><MessageCircle size={13} /> Mensagem</button> : null}
                   <button className="inline-flex min-h-8 flex-1 items-center justify-center rounded-md border border-gray-200 bg-white px-2 text-xs font-bold text-gray-700 hover:bg-gray-100" type="button" onClick={() => onOpenLead(lead)}>Abrir</button>
                 </div>
               </article>
@@ -272,11 +306,35 @@ export function CrmPage({
         </section>
       ) : null}
 
-      <section className="grid gap-2 sm:grid-cols-3">
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Taxa de contato</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.contactRate}%</strong><p className="text-xs text-gray-500">Oportunidades com atividade registrada</p></div>
         <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Conversão geral</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.conversionRate}%</strong><p className="text-xs text-gray-500">{commercialInsights.sourceConversion[0] ? `Melhor origem: ${commercialInsights.sourceConversion[0].source} (${commercialInsights.sourceConversion[0].rate}%)` : 'Ainda sem conversões registradas'}</p></div>
-        <button className="rounded-xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:border-amber-300" type="button" onClick={() => { setQuickFilter('stalled'); onViewChange('table') }}><p className="text-[0.65rem] font-bold uppercase text-gray-500">Recuperação</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.stalled.length}</strong><p className="text-xs text-gray-500">Oportunidades paradas há 7 dias ou mais</p></button>
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Abordagens no WhatsApp</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.outreach.attempts}</strong><p className="text-xs text-gray-500">{commercialInsights.outreach.responseRate}% avançaram após a abordagem</p></div>
+        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Saúde do CRM</p><strong className={`mt-1 block text-xl ${commercialInsights.hygieneIssueCount ? 'text-amber-700' : 'text-emerald-700'}`}>{commercialInsights.hygieneIssueCount}</strong><p className="text-xs text-gray-500">{commercialInsights.hygieneIssueCount ? commercialInsights.hygieneIssues[0]?.label : 'Nenhuma inconsistência detectada'}</p></div>
       </section>
+
+      {commercialInsights.hygieneIssues.length ? (
+        <details className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+          <summary className="cursor-pointer list-none text-sm font-black text-gray-900">Diagnóstico automático <span className="ml-2 text-xs font-medium text-gray-500">Veja o que precisa de correção</span></summary>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {commercialInsights.hygieneIssues.map((issue) => <div key={issue.id} className="rounded-lg bg-gray-50 px-3 py-2"><strong className="text-base text-gray-950">{issue.count}</strong><p className="text-xs text-gray-500">{issue.label}</p></div>)}
+          </div>
+        </details>
+      ) : null}
+
+      {commercialInsights.outreach.attempts ? (
+        <details className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+          <summary className="cursor-pointer list-none text-sm font-black text-gray-900">Desempenho das abordagens <span className="ml-2 text-xs font-medium text-gray-500">WhatsApp por contexto, categoria, cidade e serviço</span></summary>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ['Contexto mais usado', commercialInsights.outreach.bestContexts[0]?.context, commercialInsights.outreach.bestContexts[0]?.count ? `${commercialInsights.outreach.bestContexts[0].count} envio(s)` : 'Sem dados'],
+              ['Melhor categoria', commercialInsights.outreach.categoryPerformance[0]?.label, commercialInsights.outreach.categoryPerformance[0] ? `${commercialInsights.outreach.categoryPerformance[0].rate}% avançaram` : 'Sem dados'],
+              ['Melhor cidade', commercialInsights.outreach.cityPerformance[0]?.label, commercialInsights.outreach.cityPerformance[0] ? `${commercialInsights.outreach.cityPerformance[0].rate}% avançaram` : 'Sem dados'],
+              ['Melhor serviço', commercialInsights.outreach.servicePerformance[0]?.label, commercialInsights.outreach.servicePerformance[0] ? `${commercialInsights.outreach.servicePerformance[0].rate}% avançaram` : 'Sem dados'],
+            ].map(([label, value, detail]) => <div key={label} className="rounded-lg bg-gray-50 px-3 py-2"><p className="text-[0.65rem] font-bold uppercase text-gray-400">{label}</p><strong className="mt-1 block truncate text-sm text-gray-950">{value || 'Ainda sem dados'}</strong><p className="text-xs text-gray-500">{detail}</p></div>)}
+          </div>
+        </details>
+      ) : null}
 
       <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -382,6 +440,45 @@ export function CrmPage({
         />
       ) : null}
       {view === 'tasks' ? <TaskWorkspace state={state} onOpenLead={onOpenLead} onCreate={onCreateTask} onEdit={onEditTask} onComplete={onCompleteTask} onReopen={onReopenTask} onCancel={onCancelTask} onDelete={onDeleteTask} /> : null}
+
+      {priorityLead ? createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-3">
+          <button className="absolute inset-0 cursor-default" type="button" aria-label="Fechar mensagem" onClick={() => setPriorityLead(undefined)} />
+          <section className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <header className="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.15em] text-[#8a6c00]">Próxima abordagem</p>
+                <h2 className="mt-1 truncate text-xl font-black text-gray-950">{displayName(priorityLead)}</h2>
+                <p className="mt-1 text-xs text-gray-500">{priorityLead.leadHunterData?.categoryName || priorityLead.serviceInterest} · {selectedPriority?.score || 0} pontos</p>
+              </div>
+              <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" type="button" aria-label="Fechar" onClick={() => setPriorityLead(undefined)}><X size={19} /></button>
+            </header>
+            <div className="space-y-4 p-5">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Por que agora</p><p className="mt-1 text-xs font-bold text-gray-800">{selectedPriority?.reason || 'Acompanhamento comercial recomendado'}</p></div>
+                <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Serviço indicado</p><p className="mt-1 text-xs font-bold text-gray-800">{priorityLead.leadHunterData?.recommendedService || priorityLead.serviceInterest}</p></div>
+                <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Inteligência</p><p className="mt-1 line-clamp-3 text-xs font-bold text-gray-800">{priorityLead.leadHunterData?.aiSummary || priorityLead.leadHunterData?.aiContactHook || 'Contato acessível e com ação comercial pendente.'}</p></div>
+              </div>
+              <label className="block text-xs font-bold text-gray-700">Momento da conversa
+                <select className="field-input mt-1" value={whatsAppContext} onChange={(event) => { const context = event.target.value as WhatsAppContext; setWhatsAppContext(context); setWhatsAppMessage(buildContextualWhatsAppMessage(priorityLead, context)) }}>
+                  {whatsappContexts.map((context) => <option key={context}>{context}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-bold text-gray-700">Mensagem personalizada
+                <textarea className="field-input mt-1 min-h-36 resize-y leading-6" value={whatsAppMessage} onChange={(event) => setWhatsAppMessage(event.target.value)} />
+              </label>
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
+                Ao abrir o WhatsApp, o FlyFlow registrará a mensagem, moverá o contato no funil quando necessário e criará o próximo acompanhamento da cadência.
+              </div>
+            </div>
+            <footer className="flex flex-col-reverse gap-2 border-t border-gray-200 px-5 py-4 sm:flex-row sm:justify-end">
+              <Button variant="secondary" type="button" onClick={() => setPriorityLead(undefined)}>Cancelar</Button>
+              <Button type="button" disabled={!whatsAppMessage.trim()} onClick={() => { onSendWhatsAppApproach(priorityLead, whatsAppMessage.trim(), whatsAppContext); setPriorityLead(undefined) }}><MessageCircle size={16} /> Abrir WhatsApp e registrar</Button>
+            </footer>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
 
       {selectedLead ? (
         <ContactDrawer
