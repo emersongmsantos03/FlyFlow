@@ -5102,7 +5102,7 @@ Hero Drone`,
         <EmailComposer
           composer={emailComposer}
           onClose={() => setEmailComposer(null)}
-          onSend={(subject, body) => submitCommercialEmail(emailComposer, subject, body)}
+          onSend={(to, subject, body, attachment) => submitCommercialEmail({ ...emailComposer, to, attachment }, subject, body)}
         />
       ) : null}
       <aside className="app-sidebar hidden border-r border-gray-200 bg-[#171717] text-white lg:block">
@@ -5735,6 +5735,22 @@ Hero Drone`,
                 setModal('leadDetail')
               }}
               onComposeLead={sendCommercialEmail}
+              onComposeNew={() => setEmailComposer({
+                to: '',
+                displayName: 'novo destinatário',
+                subject: '',
+                body: `Olá! Tudo bem?
+
+Aqui é o Emerson, da Hero Drone.
+
+Gostaria de apresentar uma ideia de conteúdo com imagens aéreas profissionais para valorizar a presença visual do seu negócio.
+
+Podemos conversar rapidamente?
+
+Abraço,
+Emerson
+Hero Drone`,
+              })}
             />
           ) : null}
           {page === 'projects' ? (
@@ -6342,13 +6358,15 @@ function EmailComposer({
 }: {
   composer: EmailComposerState
   onClose: () => void
-  onSend: (subject: string, body: string) => Promise<void>
+  onSend: (to: string, subject: string, body: string, attachment?: EmailComposerState['attachment']) => Promise<void>
 }) {
+  const [to, setTo] = useState(composer.to)
   const [subject, setSubject] = useState(composer.subject)
   const [body, setBody] = useState(composer.body)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-  const canSend = Boolean(subject.trim() && body.trim() && composer.to && !sending)
+  const [attachment, setAttachment] = useState(composer.attachment)
+  const canSend = Boolean(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()) && subject.trim() && body.trim() && !sending)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -6356,7 +6374,7 @@ function EmailComposer({
     setSending(true)
     setError('')
     try {
-      await onSend(subject.trim(), body.trim())
+      await onSend(to.trim(), subject.trim(), body.trim(), attachment)
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : 'Não foi possível enviar o e-mail.')
       setSending(false)
@@ -6378,12 +6396,12 @@ function EmailComposer({
         </header>
 
         <div className="overflow-y-auto px-5 py-4 sm:px-6">
-          <div className="mb-4 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+          <div className="mb-4 grid gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-center">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-900 text-xs font-black text-white">{composer.displayName.charAt(0).toUpperCase()}</span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-black text-gray-900">{composer.displayName}</p>
-              <p className="truncate text-xs text-gray-500">{composer.to}</p>
-            </div>
+            <label className="min-w-0">
+              <span className="sr-only">Destinatário</span>
+              <input className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400" type="email" value={to} onChange={(event) => setTo(event.target.value)} placeholder="destinatario@empresa.com" autoFocus={!composer.to} />
+            </label>
             <span className="ml-auto hidden rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.65rem] font-black text-emerald-700 sm:inline">Via Gmail</span>
           </div>
 
@@ -6405,8 +6423,22 @@ function EmailComposer({
             />
           </label>
 
-          <div className="mt-2 flex items-center justify-between gap-3 text-[0.68rem] text-gray-400">
-            <span>{composer.attachment ? `Anexo: ${composer.attachment.fileName}` : 'Revise livremente antes de enviar.'}</span>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[0.68rem] text-gray-400">
+            <div className="flex items-center gap-2">
+              <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50">
+                <Paperclip size={14} /> Anexar arquivo
+                <input className="hidden" type="file" onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  if (!file) return
+                  if (file.size > 20_000_000) {
+                    setError('O anexo deve ter no máximo 20 MB.')
+                    return
+                  }
+                  setAttachment({ fileName: file.name, mimeType: file.type || 'application/octet-stream', data: file })
+                }} />
+              </label>
+              {attachment ? <span className="inline-flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-600">{attachment.fileName}<button type="button" className="text-gray-400 hover:text-red-600" onClick={() => setAttachment(undefined)} aria-label="Remover anexo"><X size={12} /></button></span> : null}
+            </div>
             <span>{body.length}/5000</span>
           </div>
           {error ? <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</p> : null}
@@ -8987,10 +9019,12 @@ function InboxPage({
   state,
   onOpenLead,
   onComposeLead,
+  onComposeNew,
 }: {
   state: AppState
   onOpenLead: (lead: Lead) => void
   onComposeLead: (lead: Lead) => void
+  onComposeNew: () => void
 }) {
   const [box, setBox] = useState<'inbox' | 'sent'>('inbox')
   const [messages, setMessages] = useState<GoogleMailboxMessage[]>([])
@@ -9040,10 +9074,10 @@ function InboxPage({
       <PageToolbar
         title="Inbox"
         description="Acompanhe conversas comerciais sem sair do FlyFlow."
-        action={<Button variant="secondary" type="button" disabled={loading} onClick={() => void loadMessages()}>{loading ? 'Sincronizando...' : 'Atualizar caixa'}</Button>}
+        action={<div className="flex gap-2"><Button variant="secondary" type="button" disabled={loading} onClick={() => void loadMessages()}>{loading ? 'Sincronizando...' : 'Atualizar'}</Button><Button type="button" onClick={onComposeNew}><Plus size={16} /> Novo e-mail</Button></div>}
       />
-      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-gray-100 p-3 sm:flex-row sm:items-center">
+      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50/70 p-3 sm:flex-row sm:items-center">
           <div className="flex rounded-lg bg-gray-100 p-1">
             <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'inbox' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('inbox')}>Recebidos {box === 'inbox' && unreadCount ? `· ${unreadCount}` : ''}</button>
             <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'sent' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('sent')}>Enviados</button>
@@ -9052,27 +9086,27 @@ function InboxPage({
           <span className="text-xs font-bold text-gray-400">{connection.email}</span>
         </div>
         {error ? <p className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-        <div className="grid min-h-[560px] lg:grid-cols-[360px_1fr]">
-          <div className="max-h-[70vh] overflow-y-auto border-r border-gray-100">
+        <div className="grid min-h-[620px] lg:grid-cols-[420px_1fr]">
+          <div className="max-h-[72vh] overflow-y-auto border-r border-gray-200 bg-gray-50/30">
             {filtered.map((message) => {
               const lead = findLead(message)
               const active = selected?.id === message.id
-              return <button key={message.id} className={`block w-full border-b border-gray-100 p-3 text-left transition ${active ? 'bg-amber-50' : 'hover:bg-gray-50'}`} type="button" onClick={() => setSelectedId(message.id)}>
+              return <button key={message.id} className={`relative block w-full border-b border-gray-200 px-4 py-3 text-left transition ${active ? 'bg-white shadow-[inset_3px_0_0_#d8a500]' : 'hover:bg-white'}`} type="button" onClick={() => setSelectedId(message.id)}>
                 <div className="flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-sm ${message.unread ? 'font-black text-gray-950' : 'font-bold text-gray-700'}`}>{message.sent ? message.to : message.from}</span><span className="shrink-0 text-[0.65rem] text-gray-400">{message.date ? new Date(message.date).toLocaleDateString('pt-BR') : ''}</span></div>
                 <p className={`mt-1 truncate text-sm ${message.unread ? 'font-black text-gray-900' : 'font-medium text-gray-600'}`}>{message.subject}</p>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-400">{message.snippet}</p>
-                <div className="mt-2 flex items-center gap-2">{lead ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.62rem] font-black text-emerald-700">No CRM</span> : null}{message.hasAttachments ? <Paperclip size={12} className="text-gray-400" /> : null}</div>
+                <div className="mt-2 flex items-center gap-2">{message.unread ? <span className="h-2 w-2 rounded-full bg-[#d8a500]" title="Não lido" /> : null}{lead ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.62rem] font-black text-emerald-700">Contato CRM</span> : null}{message.hasAttachments ? <span className="inline-flex items-center gap-1 text-[0.65rem] text-gray-400"><Paperclip size={12} /> Anexo</span> : null}</div>
               </button>
             })}
             {!loading && !filtered.length ? <p className="p-8 text-center text-sm text-gray-400">Nenhum e-mail encontrado.</p> : null}
           </div>
-          <div className="min-w-0 p-4 sm:p-6">
+          <div className="min-w-0 bg-white p-5 sm:p-7">
             {selected ? <>
               <div className="flex flex-col gap-4 border-b border-gray-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0"><p className="text-xs font-bold text-gray-400">{selected.sent ? `Para: ${selected.to}` : `De: ${selected.from}`}</p><h2 className="mt-1 text-xl font-black text-gray-950">{selected.subject}</h2><p className="mt-1 text-xs text-gray-400">{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</p></div>
                 <div className="flex shrink-0 gap-2">{selectedLead ? <><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}>Abrir contato</Button><Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onComposeLead(selectedLead)}>Responder</Button></> : <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-500">Contato não vinculado</span>}</div>
               </div>
-              <div className="whitespace-pre-wrap py-6 text-sm leading-7 text-gray-700">{selected.body || selected.snippet || 'Mensagem sem conteúdo textual disponível.'}</div>
+              <article className="mx-auto max-w-3xl whitespace-pre-wrap py-7 text-[0.94rem] leading-7 text-gray-700">{selected.body || selected.snippet || 'Mensagem sem conteúdo textual disponível.'}</article>
             </> : <div className="grid h-full place-items-center text-center"><div><Mail className="mx-auto text-gray-200" size={42} /><p className="mt-3 text-sm font-bold text-gray-400">Selecione uma mensagem para ler.</p></div></div>}
           </div>
         </div>
@@ -9114,6 +9148,8 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
       const connection = await connectGoogleWorkspace(googleClientId)
       setGoogleConnection({ connected: true, email: connection.email })
       setValue('googleWorkspaceEmail', connection.email, { shouldDirty: true })
+      setValue('googleOAuthClientId', googleClientId.trim(), { shouldDirty: true })
+      await handleSubmit(onSubmit)()
     } catch (error) {
       setGoogleConnectionError(error instanceof Error ? error.message : 'Não foi possível conectar o Google.')
     } finally {
@@ -9125,6 +9161,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
     await disconnectGoogleWorkspace()
     setGoogleConnection({ connected: false, email: '' })
     setValue('googleWorkspaceEmail', '', { shouldDirty: true })
+    await handleSubmit(onSubmit)()
   }
 
   return (
@@ -9170,7 +9207,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         <div className="space-y-4">
           <Panel title="Google Workspace">
             <div className="space-y-3">
-              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial do Google. O token fica somente na memória desta página e não é salvo no Firebase.</p>
+              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial. O Client ID e a conta vinculada ficam salvos no Firebase; a sessão temporária permanece protegida nesta aba.</p>
               <InputField label="OAuth Client ID do Google" error={getError(errors.googleOAuthClientId?.message)}><input className="field-input" {...register('googleOAuthClientId')} placeholder="000000000000-xxxx.apps.googleusercontent.com" /></InputField>
               <input type="hidden" {...register('googleWorkspaceEmail')} />
               <div className={`rounded-xl border p-3 ${googleConnection.connected ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>

@@ -1,4 +1,5 @@
 const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
+const GOOGLE_SESSION_KEY = 'flyflow.google.workspace.session'
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/gmail.send',
@@ -12,7 +13,16 @@ interface StoredGoogleToken {
   email?: string
 }
 
-let currentToken: StoredGoogleToken | undefined
+const readSessionToken = () => {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(GOOGLE_SESSION_KEY) || 'null') as StoredGoogleToken | null
+    return parsed?.accessToken && parsed.expiresAt > Date.now() + 30_000 ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+let currentToken: StoredGoogleToken | undefined = readSessionToken()
 
 interface GoogleTokenResponse {
   access_token?: string
@@ -98,6 +108,7 @@ export const connectGoogleWorkspace = async (clientId: string) => {
             email: profile.email || '',
           }
           currentToken = token
+          sessionStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify(token))
           resolve({ email: token.email || '' })
         } catch (error) {
           reject(error)
@@ -112,6 +123,7 @@ export const connectGoogleWorkspace = async (clientId: string) => {
 export const disconnectGoogleWorkspace = async () => {
   const token = readStoredToken()
   currentToken = undefined
+  sessionStorage.removeItem(GOOGLE_SESSION_KEY)
   if (!token?.accessToken) return
   await loadGoogleIdentityServices()
   await new Promise<void>((resolve) => googleOAuth()?.revoke(token.accessToken, resolve) ?? resolve())
