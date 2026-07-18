@@ -107,7 +107,6 @@ import {
 import { allPermissions, can, canOpenPage, permissionLabels, permissionSummary, rolePermissionPresets } from './lib/permissions'
 import {
   addCalendarDays,
-  buildGoogleCalendarUrl,
   calendarDaysBetween,
   createOperationalChecklist,
   createStatusHistory,
@@ -2533,10 +2532,10 @@ Hero Drone`,
         updatedAt: now,
       }
       if (!googleWorkspaceConnected) {
-        window.open(buildGoogleCalendarUrl(appointmentForCalendar), '_blank', 'noopener,noreferrer')
-        setToast('Tarefa salva. Conecte o Google nas Configurações para sincronização automática; por enquanto, confirme o evento aberto.')
+        setToast('Tarefa salva no FlyFlow. Reconecte o Google nas Configurações para adicioná-la automaticamente ao Google Calendar.')
       } else try {
         const googleEvent = await createGoogleWorkspaceEvent({
+          externalEventId: state.appointments.find((item) => item.id === appointmentId)?.externalEventId,
           title: appointmentForCalendar.title,
           description: appointmentForCalendar.notes,
           startAt: appointmentForCalendar.startAt,
@@ -2597,11 +2596,11 @@ Hero Drone`,
 
   const saveAppointment = async (values: AppointmentFormValues) => {
     const now = new Date().toISOString()
+    const googleWorkspaceConnected = getGoogleWorkspaceConnection().connected
     const existingBeforeSave = selectedAppointment ?? (values.projectId && values.appointmentType === 'Captação'
       ? state.appointments.find((appointment) => appointment.projectId === values.projectId && appointment.appointmentType === 'Captação' && appointment.status !== 'Cancelado')
       : undefined)
     const appointmentId = existingBeforeSave?.id ?? createId('appt')
-    let calendarUrl = ''
     updateState(
       (current) => {
         const selectedExisting = selectedAppointmentId
@@ -2628,8 +2627,7 @@ Hero Drone`,
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         }
-        calendarUrl = values.createGoogleCalendar ? buildGoogleCalendarUrl(appointmentBase, project) : ''
-        const appointment: Appointment = { ...appointmentBase, calendarUrl: calendarUrl || existing?.calendarUrl }
+        const appointment: Appointment = { ...appointmentBase, calendarUrl: existing?.calendarUrl }
         const captureDate = values.startAt.slice(0, 10)
         const captureStartTime = values.startAt.slice(11, 16)
         const captureEndTime = values.endAt.slice(11, 16)
@@ -2702,10 +2700,12 @@ Hero Drone`,
       },
       selectedAppointmentId ? 'Agendamento atualizado sem duplicar o evento.' : 'Agendamento criado.',
     )
-    if (values.createGoogleCalendar && calendarUrl) {
+    if (values.createGoogleCalendar) {
       const project = values.projectId ? state.projects.find((item) => item.id === values.projectId) : undefined
-      try {
-        const synced = await syncGoogleCalendarEvent({
+      if (!googleWorkspaceConnected) {
+        setToast('Agendamento salvo no FlyFlow. Reconecte o Google nas Configurações para sincronizá-lo automaticamente.')
+      } else try {
+        const synced = await createGoogleWorkspaceEvent({
           externalEventId: existingBeforeSave?.externalEventId,
           title: values.title,
           description: [
@@ -2721,17 +2721,12 @@ Hero Drone`,
           location: values.address,
           timeZone: state.companySettings.timezone,
         })
-        if (synced) {
-          updateState((current) => ({
-            ...current,
-            appointments: current.appointments.map((appointment) => appointment.id === appointmentId ? { ...appointment, externalEventId: synced.externalEventId, calendarUrl: synced.calendarUrl, updatedAt: new Date().toISOString() } : appointment),
-          }), existingBeforeSave?.externalEventId ? 'Evento atualizado no Google Calendar.' : 'Evento criado no Google Calendar.')
-        } else {
-          window.open(calendarUrl, '_blank', 'noopener,noreferrer')
-        }
-      } catch {
-        window.open(calendarUrl, '_blank', 'noopener,noreferrer')
-        setToast('Evento salvo internamente. Confirme o evento aberto no Google Calendar.')
+        updateState((current) => ({
+          ...current,
+          appointments: current.appointments.map((appointment) => appointment.id === appointmentId ? { ...appointment, externalEventId: synced.id, calendarUrl: synced.htmlLink, updatedAt: new Date().toISOString() } : appointment),
+        }), existingBeforeSave?.externalEventId ? 'Evento atualizado diretamente no Google Calendar.' : 'Evento criado diretamente no Google Calendar.')
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : 'Evento salvo no FlyFlow, mas não foi possível sincronizar com o Google Calendar.')
       }
     }
     setModal(null)
@@ -10855,7 +10850,7 @@ function AppointmentForm({
       {!isEditing ? (
         <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-700 md:col-span-2">
           <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" {...register('createGoogleCalendar')} />
-          Abrir evento no Google Calendar ao salvar {watchedCreateGoogleCalendar ? '(ativado)' : '(desativado)'}
+          Sincronizar diretamente com o Google Calendar {watchedCreateGoogleCalendar ? '(ativado)' : '(desativado)'}
         </label>
       ) : null}
       <FormActions

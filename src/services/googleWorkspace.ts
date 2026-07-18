@@ -124,6 +124,7 @@ const requireToken = () => {
 }
 
 export const createGoogleWorkspaceEvent = async (input: {
+  externalEventId?: string
   title: string
   description: string
   startAt: string
@@ -132,8 +133,9 @@ export const createGoogleWorkspaceEvent = async (input: {
   timeZone: string
   attendeeEmails?: string[]
 }) => {
-  const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
-    method: 'POST',
+  const eventPath = input.externalEventId ? `/${encodeURIComponent(input.externalEventId)}` : ''
+  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events${eventPath}?sendUpdates=all`, {
+    method: input.externalEventId ? 'PATCH' : 'POST',
     headers: {
       Authorization: `Bearer ${requireToken()}`,
       'Content-Type': 'application/json',
