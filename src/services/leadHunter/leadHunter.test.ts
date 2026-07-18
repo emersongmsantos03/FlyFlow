@@ -3,7 +3,7 @@ import { createDefaultLeadHunterCities, createDefaultLeadHunterSettings } from '
 import type { LeadHunterProspect } from '../../types'
 import { normalizeLeadText } from './LeadDeduplicationService'
 import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './LeadLearningService'
-import { opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
+import { buildLeadWhatsAppMessage, opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
 import { shouldDisplayLead } from './LeadRotationService'
 import { buildGoogleMapsRouteUrl, recommendDailyMission } from './LeadRouteService'
 import { calculateLeadScore } from './LeadScoringService'
@@ -57,6 +57,18 @@ describe('Lead Hunter services', () => {
     expect(local.score).toBeGreaterThan(chain.score)
     expect(opportunityLevel(local.score)).toBe('Boa')
     expect(chain.scoreReasons.some((reason) => reason.id === 'large-chain')).toBe(true)
+  })
+
+  it('gera abordagem natural e substitui a antiga abertura Conheci', () => {
+    const message = buildLeadWhatsAppMessage(prospect({
+      name: 'Refúgio Marmeleiros',
+      recommendedService: 'Filmagem de pousada',
+      aiFirstMessage: 'Conheci a Refúgio Marmeleiros e gostaria de apresentar meu trabalho.',
+    }))
+    expect(message).toContain('Emerson')
+    expect(message).toContain('Refúgio Marmeleiros')
+    expect(message).toContain('filmagem de pousada')
+    expect(message).not.toMatch(/\bconheci\b/i)
   })
 
   it('aprende gradualmente com aceites e rejeições', () => {

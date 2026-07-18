@@ -76,10 +76,13 @@ export const leadOpportunitySummary = (lead: LeadHunterProspect) => {
 
 export const buildLeadWhatsAppMessage = (lead: LeadHunterProspect) => {
   const service = lead.recommendedService || recommendLeadService(lead.categoryName)
-  return lead.aiFirstMessage || [
-    `Olá! Tudo bem? Sou da Hero Drone, de Curitiba.`,
-    `Conheci a ${lead.name} e acredito que um trabalho de ${service.toLocaleLowerCase('pt-BR')} pode valorizar bastante a apresentação do negócio.`,
-    `Posso te enviar uma ideia rápida, sem compromisso?`,
+  const generatedMessage = lead.aiFirstMessage?.trim()
+  if (generatedMessage && !/\bconheci\b/i.test(generatedMessage)) return generatedMessage
+  return [
+    `Olá! Tudo bem? Aqui é o Emerson, da Hero Drone.`,
+    `Estava pesquisando negócios da região e o trabalho da ${lead.name} me chamou a atenção.`,
+    `Preparei uma ideia rápida de ${service.toLocaleLowerCase('pt-BR')} para valorizar ainda mais a apresentação de vocês.`,
+    `Posso te mostrar por aqui, sem compromisso?`,
   ].join(' ')
 }
 

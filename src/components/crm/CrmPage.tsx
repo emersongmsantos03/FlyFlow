@@ -73,6 +73,31 @@ const columns: Array<{
 ]
 
 const displayName = (lead: Lead) => lead.companyName?.trim() || lead.fullName?.trim() || 'Contato sem nome'
+
+const buildPriorityWhatsAppMessage = (lead: Lead) => {
+  const data = lead.leadHunterData
+  const company = displayName(lead)
+  const contactName = data?.contactName?.trim()
+  const greeting = contactName && contactName.toLocaleLowerCase('pt-BR') !== company.toLocaleLowerCase('pt-BR')
+    ? `Olá, ${contactName.split(/\s+/)[0]}! Tudo bem?`
+    : 'Olá! Tudo bem?'
+  const service = data?.recommendedService || lead.serviceInterest || 'produção de imagens com drone'
+  const category = data?.categoryName?.trim()
+  const context = category
+    ? `Vi que vocês atuam como ${category.toLocaleLowerCase('pt-BR')} e acredito que há uma oportunidade muito boa de destacar o espaço e a experiência da ${company}.`
+    : `Estava pesquisando negócios da região e o trabalho da ${company} me chamou a atenção.`
+
+  return [
+    greeting,
+    'Aqui é o Emerson, da Hero Drone.',
+    context,
+    `Preparei uma ideia rápida de ${service.toLocaleLowerCase('pt-BR')} pensada para vocês.`,
+    'Posso te mostrar por aqui, sem compromisso?',
+  ].join(' ')
+}
+
+const priorityWhatsAppUrl = (lead: Lead) =>
+  `${whatsappLink(lead.whatsapp || lead.phone)}?text=${encodeURIComponent(buildPriorityWhatsAppMessage(lead))}`
 const displayDetail = (lead: Lead) => lead.fullName && lead.companyName ? lead.fullName : lead.city || lead.whatsapp || lead.phone || 'Sem detalhes'
 
 const newestQuote = (state: AppState, leadId: string) =>
@@ -238,7 +263,7 @@ export function CrmPage({
                 <button className="mt-1 block w-full truncate text-left text-sm font-black text-gray-950 hover:underline" type="button" onClick={() => onOpenLead(lead)}>{displayName(lead)}</button>
                 <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-gray-500">{priority.reason}</p>
                 <div className="mt-2 flex gap-2">
-                  {lead.whatsapp ? <a className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" href={whatsappLink(lead.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={13} /> WhatsApp</a> : null}
+                  {lead.whatsapp ? <a className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" href={priorityWhatsAppUrl(lead)} target="_blank" rel="noreferrer" title="Abrir WhatsApp com mensagem personalizada"><MessageCircle size={13} /> Mensagem</a> : null}
                   <button className="inline-flex min-h-8 flex-1 items-center justify-center rounded-md border border-gray-200 bg-white px-2 text-xs font-bold text-gray-700 hover:bg-gray-100" type="button" onClick={() => onOpenLead(lead)}>Abrir</button>
                 </div>
               </article>
