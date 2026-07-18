@@ -171,6 +171,7 @@ export function CrmPage({
   onGenerateProposal,
   onRegisterInteraction,
   onSendWhatsAppApproach,
+  onSendEmail,
   onScheduleReturn,
   onRegisterDeposit,
   onDownloadQuote,
@@ -199,6 +200,7 @@ export function CrmPage({
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
   onSendWhatsAppApproach: (lead: Lead, message: string, context: string) => void
+  onSendEmail: (lead: Lead) => void
   onScheduleReturn: (lead: Lead) => void
   onRegisterDeposit: (quote: Quote) => void
   onDownloadQuote: (quote: Quote) => void | Promise<void>
@@ -490,6 +492,7 @@ export function CrmPage({
           onAttachReceipt={onAttachReceipt}
           onGenerateProposal={onGenerateProposal}
           onRegisterInteraction={onRegisterInteraction}
+          onSendEmail={onSendEmail}
           onScheduleReturn={onScheduleReturn}
           onRegisterDeposit={onRegisterDeposit}
           onDownloadQuote={onDownloadQuote}
@@ -781,7 +784,7 @@ export function TaskView({ state, onOpenLead, onCreate, onEdit: _onEdit, onCompl
   })}</div></div>
 }
 
-function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
+function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onSendEmail, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
   lead: Lead
   state: AppState
   onClose: () => void
@@ -790,6 +793,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
+  onSendEmail: (lead: Lead) => void
   onScheduleReturn: (lead: Lead) => void
   onRegisterDeposit: (quote: Quote) => void
   onDownloadQuote: (quote: Quote) => void | Promise<void>
@@ -809,7 +813,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   const projects = state.projects.filter((project) => project.leadId === lead.id && !project.deletedAt)
   const payments = state.payments.filter((payment) => !payment.deletedAt && !payment.archivedAt && (payment.leadId === lead.id || projects.some((project) => project.id === payment.projectId)))
   const files = state.files.filter((file) => !file.deletedAt && (file.leadId === lead.id || projects.some((project) => project.id === file.projectId)))
-  const tasks = state.tasks.filter((task) => task.leadId === lead.id && task.status !== 'Cancelada').sort((a, b) => a.dueAt.localeCompare(b.dueAt))
+  const tasks = state.tasks.filter((task) => (task.leadId === lead.id || task.leadIds?.includes(lead.id)) && task.status !== 'Cancelada').sort((a, b) => a.dueAt.localeCompare(b.dueAt))
   const quoteForDeposit = quotes.find((quote) => ['Aprovada', 'Aguardando entrada', 'Entrada recebida'].includes(quote.status))
   const receiptTarget = payments.find((payment) => !payment.receiptUrl && !files.some((file) => file.paymentId === payment.id)) ?? payments[0]
   const storedLeadHunterData = lead.leadHunterData || state.leadHunterProspects?.find((prospect) => prospect.leadId === lead.id)
@@ -844,7 +848,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
         <div className="mt-4 grid grid-cols-3 gap-2">
           {lead.whatsapp ? <a className="crm-drawer-action" href={whatsappLink(lead.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={17} /><span>WhatsApp</span></a> : null}
           {lead.phone ? <a className="crm-drawer-action" href={phoneLink(lead.phone)}><Phone size={17} /><span>Ligar</span></a> : null}
-          {lead.email ? <a className="crm-drawer-action" href={`mailto:${lead.email}`}><Mail size={17} /><span>E-mail</span></a> : null}
+          {lead.email ? <button className="crm-drawer-action" type="button" onClick={() => onSendEmail(lead)}><Mail size={17} /><span>E-mail</span></button> : null}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Button variant="secondary" type="button" onClick={() => onEdit(lead)}><SlidersHorizontal size={16} /> Editar</Button>

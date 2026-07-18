@@ -182,6 +182,13 @@ import {
   setFirebaseWorkspaceUserActive,
 } from './services/firebaseData'
 import { syncGoogleCalendarEvent } from './services/googleCalendar'
+import {
+  connectGoogleWorkspace,
+  createGoogleWorkspaceEvent,
+  disconnectGoogleWorkspace,
+  getGoogleWorkspaceConnection,
+  sendGoogleWorkspaceEmail,
+} from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
 import {
   appointmentStatuses,
@@ -304,10 +311,13 @@ interface TaskFormDefaults {
   taskType?: NonNullable<TaskItem['taskType']>
   leadId?: string
   clientId?: string
+  leadIds?: string[]
+  clientIds?: string[]
   dueAt?: string
   durationMinutes?: number
   priority?: TaskItem['priority']
   responsibleUserId?: string
+  createGoogleCalendar?: boolean
 }
 
 interface TaskFormValues {
@@ -319,7 +329,10 @@ interface TaskFormValues {
   priority: TaskItem['priority']
   leadId?: string
   clientId?: string
+  leadIds: string[]
+  clientIds: string[]
   responsibleUserId?: string
+  createGoogleCalendar: boolean
 }
 
 interface UserFormValues {
@@ -1540,6 +1553,49 @@ function App() {
     }, shouldScheduleFollowUp ? `Mensagem preparada e acompanhamento agendado para ${formatDateTime(dueAt)}.` : 'Mensagem registrada e cadência concluída.')
   }
 
+  const sendCommercialEmail = (lead: Lead) => {
+    if (!lead.email) {
+      setToast('Este contato não possui e-mail informado.')
+      return
+    }
+    const subject = `Uma ideia visual para ${contactDisplayName(lead)}`
+    requestInput({
+      title: `Enviar e-mail para ${contactDisplayName(lead)}`,
+      description: `${subject}\nDestinatário: ${lead.email}`,
+      label: 'Mensagem',
+      inputType: 'textarea',
+      initialValue: `Olá! Tudo bem?\n\nAqui é o Emerson, da Hero Drone. Preparei uma ideia de ${lead.serviceInterest.toLocaleLowerCase('pt-BR')} que pode valorizar a apresentação da ${contactDisplayName(lead)}.\n\nPosso te explicar rapidamente como funcionaria?\n\nAbraço,\nEmerson — Hero Drone`,
+      required: true,
+      confirmLabel: 'Enviar pelo Gmail',
+      onSubmit: async (body) => {
+        try {
+          const result = await sendGoogleWorkspaceEmail({ to: [lead.email], subject, body })
+          const now = new Date().toISOString()
+          updateState((current) => ({
+            ...current,
+            leads: current.leads.map((item) => item.id === lead.id ? {
+              ...item,
+              lastContactAt: now,
+              pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
+              updatedAt: now,
+            } : item),
+            leadInteractions: [{
+              id: createId('int'),
+              leadId: lead.id,
+              interactionType: 'E-mail · Gmail',
+              description: `Assunto: ${subject}\nMensagem: ${body}\nGmail ID: ${result.id}`,
+              interactionDate: now,
+              userId: activeUserId,
+              createdAt: now,
+            }, ...current.leadInteractions],
+          }), 'E-mail enviado pelo Gmail e registrado no histórico.')
+        } catch (error) {
+          setToast(error instanceof Error ? error.message : 'Não foi possível enviar pelo Gmail.')
+        }
+      },
+    })
+  }
+
   const openAppointmentModal = (defaults: AppointmentFormDefaults = {}, appointment?: Appointment) => {
     setSelectedAppointmentId(appointment?.id ?? '')
     setAppointmentDefaults(defaults)
@@ -1560,10 +1616,13 @@ function App() {
       taskType: task.taskType || 'Tarefa',
       leadId: task.leadId,
       clientId: task.clientId,
+      leadIds: task.leadIds || (task.leadId ? [task.leadId] : []),
+      clientIds: task.clientIds || (task.clientId ? [task.clientId] : []),
       dueAt: dateTimeInputFromDate(new Date(task.dueAt)),
       durationMinutes: task.durationMinutes,
       priority: task.priority,
       responsibleUserId: task.responsibleUserId,
+      createGoogleCalendar: state.appointments.find((appointment) => appointment.id === task.appointmentId)?.createGoogleCalendar ?? false,
     })
     setModal('task')
   }
@@ -2180,7 +2239,7 @@ function App() {
     })
   }
 
-  const saveTask = (values: TaskFormValues) => {
+  const saveTask = async (values: TaskFormValues) => {
     const now = new Date().toISOString()
     const dueAt = asIsoFromInput(values.dueAt)
     const durationMinutes = Math.max(Number(values.durationMinutes) || 30, 15)
@@ -2188,10 +2247,13 @@ function App() {
     const existingTask = selectedTaskId ? state.tasks.find((item) => item.id === selectedTaskId) : undefined
     const taskId = existingTask?.id || createId('task')
     const appointmentId = existingTask?.appointmentId || createId('appt')
+    const googleWorkspaceConnected = getGoogleWorkspaceConnection().connected
     updateState(
       (current) => {
-        const lead = values.leadId ? current.leads.find((item) => item.id === values.leadId) : undefined
-        const client = values.clientId ? current.clients.find((item) => item.id === values.clientId) : undefined
+        const leadIds = [...new Set(values.leadIds)]
+        const clientIds = [...new Set(values.clientIds)]
+        const lead = leadIds[0] ? current.leads.find((item) => item.id === leadIds[0]) : undefined
+        const client = clientIds[0] ? current.clients.find((item) => item.id === clientIds[0]) : undefined
         const address = lead?.address || client?.address || ''
         const task: TaskItem = {
           ...existingTask,
@@ -2203,8 +2265,10 @@ function App() {
           durationMinutes,
           priority: values.priority,
           status: existingTask?.status || 'Pendente',
-          leadId: values.leadId || undefined,
-          clientId: values.clientId || undefined,
+          leadId: lead?.id,
+          clientId: client?.id,
+          leadIds,
+          clientIds,
           appointmentId,
           responsibleUserId: values.responsibleUserId || activeUserId,
           sourceKey: undefined,
@@ -2215,14 +2279,15 @@ function App() {
           id: appointmentId,
           title: values.title.trim(),
           appointmentType: 'Tarefa',
-          leadId: values.leadId || undefined,
-          clientId: values.clientId || undefined,
+          leadId: lead?.id,
+          clientId: client?.id,
           startAt: dueAt,
           endAt,
           address,
           notes: values.description.trim(),
           status: task.status === 'Concluída' ? 'Concluído' : task.status === 'Cancelada' ? 'Cancelado' : 'Agendado',
           color: values.priority === 'Urgente' ? '#dc2626' : values.priority === 'Alta' ? '#d97706' : values.priority === 'Média' ? '#2563eb' : '#64748b',
+          createGoogleCalendar: values.createGoogleCalendar,
           createdAt: now,
           updatedAt: now,
         }
@@ -2232,8 +2297,8 @@ function App() {
           appointments: existingTask
             ? current.appointments.map((item) => item.id === appointment.id ? { ...item, ...appointment, createdAt: item.createdAt } : item)
             : [appointment, ...current.appointments],
-          leads: lead
-            ? current.leads.map((item) => item.id === lead.id && (!item.nextContactAt || item.nextContactAt > dueAt)
+          leads: leadIds.length
+            ? current.leads.map((item) => leadIds.includes(item.id) && (!item.nextContactAt || item.nextContactAt > dueAt)
                 ? { ...item, nextContactAt: dueAt, updatedAt: now }
                 : item)
             : current.leads,
@@ -2243,8 +2308,50 @@ function App() {
           ],
         }
       },
-      existingTask ? 'Tarefa atualizada.' : 'Tarefa criada e vinculada ao contato.',
+      existingTask ? 'Tarefa atualizada.' : values.leadIds.length || values.clientIds.length ? 'Tarefa criada e vinculada aos contatos.' : 'Tarefa independente criada.',
     )
+
+    if (values.createGoogleCalendar) {
+      const selectedLeads = state.leads.filter((lead) => values.leadIds.includes(lead.id))
+      const selectedClients = state.clients.filter((client) => values.clientIds.includes(client.id))
+      const attendeeEmails = [...selectedLeads.map((lead) => lead.email), ...selectedClients.map((client) => client.email)].filter(Boolean)
+      const appointmentForCalendar: Appointment = {
+        id: appointmentId,
+        title: values.title.trim(),
+        appointmentType: 'Tarefa',
+        leadId: values.leadIds[0],
+        clientId: values.clientIds[0],
+        startAt: dueAt,
+        endAt,
+        address: selectedLeads[0]?.address || selectedClients[0]?.address || '',
+        notes: values.description.trim(),
+        status: 'Agendado',
+        color: '#d8a500',
+        createGoogleCalendar: true,
+        createdAt: now,
+        updatedAt: now,
+      }
+      if (!googleWorkspaceConnected) {
+        window.open(buildGoogleCalendarUrl(appointmentForCalendar), '_blank', 'noopener,noreferrer')
+        setToast('Tarefa salva. Conecte o Google nas Configurações para sincronização automática; por enquanto, confirme o evento aberto.')
+      } else try {
+        const googleEvent = await createGoogleWorkspaceEvent({
+          title: appointmentForCalendar.title,
+          description: appointmentForCalendar.notes,
+          startAt: appointmentForCalendar.startAt,
+          endAt: appointmentForCalendar.endAt,
+          location: appointmentForCalendar.address,
+          timeZone: state.companySettings.timezone,
+          attendeeEmails,
+        })
+        updateState((current) => ({
+          ...current,
+          appointments: current.appointments.map((item) => item.id === appointmentId ? { ...item, externalEventId: googleEvent.id, calendarUrl: googleEvent.htmlLink, updatedAt: new Date().toISOString() } : item),
+        }), 'Tarefa criada e sincronizada com o Google Calendar.')
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : 'Tarefa salva, mas não foi possível sincronizar com o Google Calendar.')
+      }
+    }
     setModal(null)
     setTaskDefaults({})
     setSelectedTaskId('')
@@ -4923,6 +5030,7 @@ function App() {
               onGenerateProposal={openProposalGenerator}
               onRegisterInteraction={registerLeadInteraction}
               onSendWhatsAppApproach={sendCommercialWhatsAppApproach}
+              onSendEmail={sendCommercialEmail}
               onScheduleReturn={(lead) => openAppointmentModal({ title: `Retorno - ${contactDisplayName(lead)}`, appointmentType: 'Follow-up', leadId: lead.id })}
               onRegisterDeposit={openQuotePayment}
               onDownloadQuote={downloadQuotePdf}
@@ -5600,7 +5708,7 @@ function App() {
               </Panel>
               <Panel title="Tarefas, eventos e arquivos">
                 <div className="space-y-2 text-sm">
-                  {state.tasks.filter((task) => task.leadId === selectedLead.id && task.status !== 'Concluída').map((task) => <div key={task.id} className="rounded-lg border border-gray-200 p-3"><strong>{task.title}</strong><p className="text-gray-500">{formatDateTime(task.dueAt)}</p></div>)}
+                  {state.tasks.filter((task) => (task.leadId === selectedLead.id || task.leadIds?.includes(selectedLead.id)) && task.status !== 'Concluída').map((task) => <div key={task.id} className="rounded-lg border border-gray-200 p-3"><strong>{task.title}</strong><p className="text-gray-500">{formatDateTime(task.dueAt)}</p></div>)}
                   {state.appointments.filter((appointment) => appointment.leadId === selectedLead.id).slice(0, 5).map((appointment) => <div key={appointment.id} className="rounded-lg border border-gray-200 p-3"><strong>{appointment.title}</strong><p className="text-gray-500">{formatDateTime(appointment.startAt)}</p></div>)}
                   <p className="rounded-lg bg-gray-50 p-3 font-bold text-gray-600">{state.files.filter((file) => file.leadId === selectedLead.id).length} arquivo(s) vinculado(s)</p>
                 </div>
@@ -8512,6 +8620,30 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
   const fuelCost = (distance / Number(watch('vehicleAverageConsumption') || 1)) * Number(watch('fuelAveragePrice') || 0)
   const additionalKm = Math.max(distance - Number(watch('freeKm') || 0), 0)
   const suggestedTravelFee = fuelCost + additionalKm * Number(watch('pricePerKm') || 0)
+  const googleClientId = watch('googleOAuthClientId') ?? ''
+  const [googleConnection, setGoogleConnection] = useState(() => getGoogleWorkspaceConnection())
+  const [googleConnectionError, setGoogleConnectionError] = useState('')
+  const [connectingGoogle, setConnectingGoogle] = useState(false)
+
+  const connectGoogle = async () => {
+    setConnectingGoogle(true)
+    setGoogleConnectionError('')
+    try {
+      const connection = await connectGoogleWorkspace(googleClientId)
+      setGoogleConnection({ connected: true, email: connection.email })
+      setValue('googleWorkspaceEmail', connection.email, { shouldDirty: true })
+    } catch (error) {
+      setGoogleConnectionError(error instanceof Error ? error.message : 'Não foi possível conectar o Google.')
+    } finally {
+      setConnectingGoogle(false)
+    }
+  }
+
+  const disconnectGoogle = async () => {
+    await disconnectGoogleWorkspace()
+    setGoogleConnection({ connected: false, email: '' })
+    setValue('googleWorkspaceEmail', '', { shouldDirty: true })
+  }
 
   return (
     <div className="space-y-4">
@@ -8554,6 +8686,25 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         </div>
 
         <div className="space-y-4">
+          <Panel title="Google Workspace">
+            <div className="space-y-3">
+              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial do Google. O token fica somente na memória desta página e não é salvo no Firebase.</p>
+              <InputField label="OAuth Client ID do Google" error={getError(errors.googleOAuthClientId?.message)}><input className="field-input" {...register('googleOAuthClientId')} placeholder="000000000000-xxxx.apps.googleusercontent.com" /></InputField>
+              <input type="hidden" {...register('googleWorkspaceEmail')} />
+              <div className={`rounded-xl border p-3 ${googleConnection.connected ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
+                <p className="text-xs font-black uppercase text-gray-500">{googleConnection.connected ? 'Google conectado' : 'Google não conectado'}</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">{googleConnection.email || state.companySettings.googleWorkspaceEmail || 'Gmail e Agenda aguardando conexão'}</p>
+              </div>
+              {googleConnectionError ? <p className="rounded-lg bg-red-50 p-2 text-xs font-bold text-red-700">{googleConnectionError}</p> : null}
+              <div className="flex flex-wrap gap-2">
+                {googleConnection.connected
+                  ? <Button variant="secondary" type="button" onClick={() => void disconnectGoogle()}>Desconectar Google</Button>
+                  : <Button type="button" disabled={!googleClientId.trim() || connectingGoogle} onClick={() => void connectGoogle()}>{connectingGoogle ? 'Conectando...' : 'Conectar Gmail e Agenda'}</Button>}
+              </div>
+              <p className="text-xs leading-5 text-gray-500">No Google Cloud, habilite Gmail API e Google Calendar API e adicione <strong>https://flyflow-a97ab.web.app</strong> como origem JavaScript autorizada.</p>
+            </div>
+          </Panel>
+
           <Panel title="PIX e cobrança">
             <div className="space-y-4">
               <InputField label="Chave PIX" error={getError(errors.pixKey?.message)}><input className="field-input" {...register('pixKey')} /></InputField>
@@ -9826,18 +9977,17 @@ function TaskForm({
   const [durationMinutes, setDurationMinutes] = useState(initialValues?.durationMinutes ?? 30)
   const [priority, setPriority] = useState<TaskItem['priority']>(initialValues?.priority ?? 'Média')
   const [responsibleUserId, setResponsibleUserId] = useState(initialValues?.responsibleUserId ?? state.users.find((user) => user.active)?.id ?? '')
-  const [contactKey, setContactKey] = useState(initialValues?.leadId ? `lead:${initialValues.leadId}` : initialValues?.clientId ? `client:${initialValues.clientId}` : '')
+  const [contactKeys, setContactKeys] = useState<string[]>([
+    ...(initialValues?.leadIds || (initialValues?.leadId ? [initialValues.leadId] : [])).map((id) => `lead:${id}`),
+    ...(initialValues?.clientIds || (initialValues?.clientId ? [initialValues.clientId] : [])).map((id) => `client:${id}`),
+  ])
+  const [createGoogleCalendar, setCreateGoogleCalendar] = useState(initialValues?.createGoogleCalendar ?? false)
   const [error, setError] = useState('')
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const [contactType, contactId] = contactKey.split(':')
     if (title.trim().length < 2) {
       setError('Informe o título da tarefa.')
-      return
-    }
-    if (!contactId) {
-      setError('Vincule a tarefa a um contato.')
       return
     }
     if (!dueAt) {
@@ -9851,22 +10001,49 @@ function TaskForm({
       dueAt,
       durationMinutes,
       priority,
-      leadId: contactType === 'lead' ? contactId : undefined,
-      clientId: contactType === 'client' ? contactId : undefined,
+      leadId: contactKeys.find((key) => key.startsWith('lead:'))?.split(':')[1],
+      clientId: contactKeys.find((key) => key.startsWith('client:'))?.split(':')[1],
+      leadIds: contactKeys.filter((key) => key.startsWith('lead:')).map((key) => key.split(':')[1]),
+      clientIds: contactKeys.filter((key) => key.startsWith('client:')).map((key) => key.split(':')[1]),
       responsibleUserId,
+      createGoogleCalendar,
     })
   }
+
+  const toggleContact = (key: string) => setContactKeys((current) =>
+    current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+  )
 
   return <form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}>
     {error ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800 sm:col-span-2">{error}</div> : null}
     <div className="sm:col-span-2"><InputField label="Tarefa"><input className="field-input" value={title} onChange={(event) => setTitle(event.currentTarget.value)} placeholder="Ex.: Confirmar horário com o cliente" autoFocus required /></InputField></div>
     <InputField label="Tipo"><select className="field-input" value={taskType} onChange={(event) => setTaskType(event.currentTarget.value as NonNullable<TaskItem['taskType']>)}>{['Tarefa', 'Ligação', 'E-mail', 'WhatsApp', 'Follow-up'].map((type) => <option key={type}>{type}</option>)}</select></InputField>
-    <InputField label="Contato do CRM"><select className="field-input" value={contactKey} onChange={(event) => setContactKey(event.currentTarget.value)} required><option value="">Selecione o contato</option><optgroup label="Contatos">{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={`lead:${lead.id}`}>{contactDisplayName(lead)}</option>)}</optgroup><optgroup label="Clientes">{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={`client:${client.id}`}>{contactDisplayName(client)}</option>)}</optgroup></select></InputField>
+    <div className="sm:col-span-2">
+      <InputField label="Contatos do CRM (opcional)">
+        <details className="rounded-xl border border-gray-200 bg-white">
+          <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-bold text-gray-700">{contactKeys.length ? `${contactKeys.length} contato(s) vinculado(s)` : 'Tarefa sem contato vinculado'}</summary>
+          <div className="max-h-52 space-y-1 overflow-y-auto border-t border-gray-200 p-2">
+            {state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => {
+              const key = `lead:${lead.id}`
+              return <label key={key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-gray-50"><input className="h-4 w-4 accent-[#d8a500]" type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><span className="font-bold text-gray-900">{contactDisplayName(lead)}</span><span className="ml-auto text-xs text-gray-400">Oportunidade</span></label>
+            })}
+            {state.clients.filter((client) => !client.archived).map((client) => {
+              const key = `client:${client.id}`
+              return <label key={key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-gray-50"><input className="h-4 w-4 accent-[#d8a500]" type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><span className="font-bold text-gray-900">{contactDisplayName(client)}</span><span className="ml-auto text-xs text-gray-400">Cliente</span></label>
+            })}
+          </div>
+        </details>
+      </InputField>
+    </div>
     <InputField label="Data e horário"><input className="field-input" type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.currentTarget.value)} required /></InputField>
     <InputField label="Duração"><select className="field-input" value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.currentTarget.value))}>{[15, 30, 45, 60, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes < 60 ? `${minutes} minutos` : minutes === 60 ? '1 hora' : `${minutes / 60} horas`}</option>)}</select></InputField>
     <InputField label="Prioridade"><select className="field-input" value={priority} onChange={(event) => setPriority(event.currentTarget.value as TaskItem['priority'])}>{['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => <option key={value}>{value}</option>)}</select></InputField>
     <InputField label="Responsável"><select className="field-input" value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.currentTarget.value)}>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
     <div className="sm:col-span-2"><InputField label="Observações"><textarea className="field-input min-h-20" value={description} onChange={(event) => setDescription(event.currentTarget.value)} placeholder="Contexto ou próximo passo" /></InputField></div>
+    <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-700 sm:col-span-2">
+      <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" checked={createGoogleCalendar} onChange={(event) => setCreateGoogleCalendar(event.currentTarget.checked)} />
+      Adicionar também ao meu Google Calendar
+    </label>
     <div className="flex flex-wrap justify-between gap-2 sm:col-span-2">
       <div>{onDelete ? <Button variant="danger" type="button" onClick={onDelete}><Trash2 size={16} /> Excluir</Button> : null}</div>
       <div className="flex gap-2"><Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button><Button type="submit"><CheckCircle2 size={16} /> {editing ? 'Salvar alterações' : 'Criar tarefa'}</Button></div>

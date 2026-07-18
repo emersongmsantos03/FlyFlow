@@ -910,6 +910,8 @@ export interface TaskItem {
   status: 'Pendente' | 'Em andamento' | 'Concluída' | 'Cancelada'
   leadId?: string
   clientId?: string
+  leadIds?: string[]
+  clientIds?: string[]
   quoteId?: string
   projectId?: string
   appointmentId?: string
@@ -966,6 +968,8 @@ export interface CompanySettings {
   timezone: 'America/Sao_Paulo'
   dateFormat: 'DD/MM/AAAA'
   paymentTerms: string
+  googleOAuthClientId?: string
+  googleWorkspaceEmail?: string
   createdAt: string
   updatedAt: string
 }

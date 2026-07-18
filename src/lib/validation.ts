@@ -249,6 +249,8 @@ export const settingsFormSchema = z.object({
   pricePerKm: money,
   freeKm: z.coerce.number().min(0, 'Não pode ser negativo'),
   paymentTerms: z.string().min(2, 'Informe a condição padrão'),
+  googleOAuthClientId: optionalText,
+  googleWorkspaceEmail: optionalText,
 })
 
 export type LoginFormInput = z.input<typeof loginSchema>
