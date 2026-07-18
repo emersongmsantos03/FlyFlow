@@ -7256,6 +7256,10 @@ function AgendaPage({
     : calendarView === 'semanal'
       ? `Semana de ${getWeekStart(calendarDate).toLocaleDateString('pt-BR')}`
       : calendarDate.toLocaleDateString('pt-BR')
+  const selectedDateKey = dateInputFromDate(calendarDate)
+  const selectedDayAppointments = sortedAppointments.filter((appointment) =>
+    appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === selectedDateKey,
+  )
 
   return (
     <div className="space-y-4">
@@ -7274,23 +7278,31 @@ function AgendaPage({
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3">
-        <div>
-          <p className="text-xs font-bold uppercase text-gray-500">Período</p>
-          <h2 className="text-lg font-black capitalize text-gray-950">{calendarLabel}</h2>
+      <section className="grid overflow-hidden rounded-xl border border-gray-200 bg-white lg:grid-cols-[320px_1fr]">
+        <MiniAgendaCalendar
+          appointments={sortedAppointments}
+          selectedDate={calendarDate}
+          onSelectDate={setCalendarDate}
+        />
+        <div className="flex min-h-36 flex-col justify-between border-t border-gray-100 p-4 lg:border-l lg:border-t-0">
+          <div>
+            <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Período selecionado</p>
+            <h2 className="mt-1 text-xl font-black capitalize text-gray-950">{calendarLabel}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {calendarDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {' · '}
+              {selectedDayAppointments.length
+                ? `${selectedDayAppointments.length} compromisso(s)`
+                : 'Nenhum compromisso'}
+            </p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => moveCalendar(-1)}><ChevronLeft size={15} /> Anterior</Button>
+            <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</Button>
+            <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => moveCalendar(1)}>Próximo <ChevronRight size={15} /></Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" type="button" onClick={() => moveCalendar(-1)}>Anterior</Button>
-          <Button variant="secondary" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</Button>
-          <Button variant="secondary" type="button" onClick={() => moveCalendar(1)}>Próximo</Button>
-        </div>
-      </div>
-
-      <MiniAgendaCalendar
-        appointments={sortedAppointments}
-        selectedDate={calendarDate}
-        onSelectDate={setCalendarDate}
-      />
+      </section>
 
       {conflicts.length ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
@@ -9613,7 +9625,9 @@ function MiniAgendaCalendar({
   const year = visibleMonth.getFullYear()
   const month = visibleMonth.getMonth()
   const firstDayOffset = (new Date(year, month, 1).getDay() + 6) % 7
-  const cells = Array.from({ length: 42 }, (_, index) => {
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cellCount = Math.ceil((firstDayOffset + daysInMonth) / 7) * 7
+  const cells = Array.from({ length: cellCount }, (_, index) => {
     const day = index - firstDayOffset + 1
     return new Date(year, month, day)
   })
@@ -9622,28 +9636,27 @@ function MiniAgendaCalendar({
   }
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4" aria-label="Calendário para escolher uma data">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="p-3" aria-label="Calendário para escolher uma data">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Escolha uma data</p>
-          <h3 className="mt-0.5 text-sm font-black capitalize text-gray-950">
+          <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-gray-400">Escolha uma data</p>
+          <h3 className="text-xs font-black capitalize text-gray-950">
             {visibleMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
           </h3>
         </div>
         <div className="flex items-center gap-1">
-          <button className="grid h-9 w-9 place-items-center rounded-lg border border-gray-200 text-gray-600 transition hover:border-gray-300 hover:bg-gray-50" type="button" onClick={() => changeMonth(-1)} aria-label="Mês anterior">
-            <ChevronLeft size={17} />
+          <button className="grid h-7 w-7 place-items-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50" type="button" onClick={() => changeMonth(-1)} aria-label="Mês anterior">
+            <ChevronLeft size={14} />
           </button>
-          <button className="min-h-9 rounded-lg px-2.5 text-xs font-bold text-gray-600 transition hover:bg-gray-50" type="button" onClick={() => onSelectDate(new Date())}>Hoje</button>
-          <button className="grid h-9 w-9 place-items-center rounded-lg border border-gray-200 text-gray-600 transition hover:border-gray-300 hover:bg-gray-50" type="button" onClick={() => changeMonth(1)} aria-label="Próximo mês">
-            <ChevronRight size={17} />
+          <button className="grid h-7 w-7 place-items-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50" type="button" onClick={() => changeMonth(1)} aria-label="Próximo mês">
+            <ChevronRight size={14} />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center">
+      <div className="grid grid-cols-7 gap-0.5 text-center">
         {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((weekday) => (
-          <span key={weekday} className="py-1 text-[0.62rem] font-black uppercase text-gray-400">{weekday}</span>
+          <span key={weekday} className="py-0.5 text-[0.55rem] font-black uppercase text-gray-400">{weekday}</span>
         ))}
         {cells.map((date) => {
           const key = dateInputFromDate(date)
@@ -9654,7 +9667,7 @@ function MiniAgendaCalendar({
           return (
             <button
               key={key}
-              className={`relative flex min-h-10 flex-col items-center justify-center rounded-lg text-xs font-bold transition sm:min-h-11 ${
+              className={`relative flex h-7 flex-col items-center justify-center rounded-md text-[0.68rem] font-bold transition ${
                 isSelected
                   ? 'bg-[#e0b936] text-gray-950 shadow-sm'
                   : isToday
@@ -9670,14 +9683,13 @@ function MiniAgendaCalendar({
             >
               <span>{date.getDate()}</span>
               {appointmentCount > 0 ? (
-                <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-gray-900' : 'bg-[#c99b00]'}`} aria-hidden="true" />
+                <span className={`absolute bottom-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-gray-900' : 'bg-[#c99b00]'}`} aria-hidden="true" />
               ) : null}
             </button>
           )
         })}
       </div>
-      <p className="mt-2 text-[0.68rem] text-gray-400">Os pontos indicam dias com compromissos.</p>
-    </section>
+    </div>
   )
 }
 
