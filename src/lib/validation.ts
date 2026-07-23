@@ -36,9 +36,12 @@ export const leadFormSchema = z.object({
   companyName: optionalText,
   phone: optionalText,
   whatsapp: optionalText,
-  email: optionalEmail,
+  // Oportunidades podem vir de importações e do LeadHunter ainda sem todos os
+  // dados validados. Esses campos não devem impedir a edição de WhatsApp,
+  // telefone, nome ou temperatura.
+  email: optionalText,
   instagram: optionalText,
-  city: z.string().min(2, 'Informe a cidade'),
+  city: optionalText,
   neighborhood: optionalText,
   address: optionalText,
   source: z.enum(leadSources),

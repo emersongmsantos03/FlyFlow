@@ -304,7 +304,9 @@ export const observeFirebaseWorkspace = (
 
 export const saveFirebaseAppState = async (state: AppState) => {
   const { db } = ensureServices()
-  if (!activeWorkspaceId) return
+  if (!activeWorkspaceId) {
+    throw new Error('A conexão com o espaço de trabalho foi perdida. Entre novamente e tente salvar.')
+  }
 
   if (cachedWorkspaceId !== activeWorkspaceId) {
     recordCache.clear()

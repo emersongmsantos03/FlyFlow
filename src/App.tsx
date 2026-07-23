@@ -10844,6 +10844,7 @@ function LeadForm({
   onCancel: () => void
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
+  const [validationMessage, setValidationMessage] = useState('')
   const initialContact = contacts.find((contact) => contact.id === (lead?.contactId || initialContactId))
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<LeadFormInput, unknown, LeadFormValues>({
     resolver: zodResolver(leadFormSchema),
@@ -10874,7 +10875,18 @@ function LeadForm({
   const hasAdditionalErrors = Boolean(errors.email || errors.instagram || errors.source || errors.city || errors.neighborhood || errors.address || errors.notes)
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+    <form
+      className="space-y-4"
+      onSubmit={handleSubmit(
+        async (values) => {
+          setValidationMessage('')
+          await onSubmit(values)
+        },
+        () => {
+          setValidationMessage('Revise os campos destacados antes de salvar.')
+        },
+      )}
+    >
       <input type="hidden" {...register('pipelineStage')} />
       <input type="hidden" {...register('probability')} />
       <input type="hidden" {...register('serviceInterest')} />
@@ -10941,6 +10953,11 @@ function LeadForm({
           <div className="sm:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-20" {...register('notes')} /></InputField></div>
         </div>
       </details>
+      {validationMessage ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700" role="alert">
+          {validationMessage}
+        </p>
+      ) : null}
       <FormActions onCancel={onCancel} submitLabel={isSubmitting ? 'Salvando…' : lead ? 'Salvar oportunidade' : 'Criar oportunidade'} submitDisabled={isSubmitting} />
     </form>
   )
