@@ -324,6 +324,7 @@ export const sendGoogleWorkspaceEmail = async (input: {
   }`
   const attachments = input.attachments || []
   const alternativeBoundary = `flyflow-alt-${Date.now()}`
+  const relatedBoundary = `flyflow-related-${Date.now()}`
   const mixedBoundary = `flyflow-mixed-${Date.now()}`
   const bodyParts = [
     `--${alternativeBoundary}`,
@@ -338,18 +339,25 @@ export const sendGoogleWorkspaceEmail = async (input: {
     htmlBody,
     `--${alternativeBoundary}--`,
   ].join('\r\n')
-  const attachmentParts: string[] = []
-  if (inlineSignature) {
-    attachmentParts.push([
-      `--${mixedBoundary}`,
+  const inlineSignaturePart = inlineSignature ? [
+      `--${relatedBoundary}`,
       `Content-Type: ${inlineSignature[1]}; name="assinatura.jpg"`,
       'Content-Transfer-Encoding: base64',
       'Content-Disposition: inline; filename="assinatura.jpg"',
       'Content-ID: <flyflow-email-signature>',
+      'Content-Location: assinatura.jpg',
       '',
       inlineSignature[2].replace(/(.{76})/g, '$1\r\n'),
-    ].join('\r\n'))
-  }
+    ].join('\r\n') : ''
+  const relatedBody = inlineSignature ? [
+    `--${relatedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+    '',
+    bodyParts,
+    inlineSignaturePart,
+    `--${relatedBoundary}--`,
+  ].join('\r\n') : bodyParts
+  const attachmentParts: string[] = []
   for (const attachment of attachments) {
     const bytes = new Uint8Array(await attachment.data.arrayBuffer())
     attachmentParts.push([
@@ -365,8 +373,21 @@ export const sendGoogleWorkspaceEmail = async (input: {
     `To: ${recipients.join(', ')}`,
     `Subject: ${input.subject}`,
     'MIME-Version: 1.0',
-    ...(attachments.length || inlineSignature
-      ? [`Content-Type: multipart/mixed; boundary="${mixedBoundary}"`, '', `--${mixedBoundary}`, `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`, '', bodyParts, ...attachmentParts, `--${mixedBoundary}--`]
+    ...(attachments.length
+      ? [
+          `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+          '',
+          `--${mixedBoundary}`,
+          inlineSignature
+            ? `Content-Type: multipart/related; boundary="${relatedBoundary}"`
+            : `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+          '',
+          relatedBody,
+          ...attachmentParts,
+          `--${mixedBoundary}--`,
+        ]
+      : inlineSignature
+        ? [`Content-Type: multipart/related; boundary="${relatedBoundary}"`, '', relatedBody]
       : [`Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`, '', bodyParts]),
   ].join('\r\n')
   const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
