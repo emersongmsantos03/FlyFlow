@@ -1268,6 +1268,7 @@ function App() {
   const observedInboxIds = useRef<Set<string> | null>(null)
   const googleRestoreAttempted = useRef('')
   const latestState = useRef(state)
+  const firebaseSaveQueue = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     latestState.current = state
@@ -1473,9 +1474,12 @@ function App() {
 
     if (isFirebaseConfigured) {
       const timeout = window.setTimeout(() => {
-        void saveFirebaseAppState(state).catch((error) =>
-          setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar as alterações com o Firebase.'),
-        )
+        firebaseSaveQueue.current = firebaseSaveQueue.current
+          .catch(() => undefined)
+          .then(() => saveFirebaseAppState(state))
+          .catch((error) => {
+            setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar as alterações com o Firebase.')
+          })
       }, 900)
       return () => {
         window.clearTimeout(localTimeout)
@@ -1644,7 +1648,18 @@ function App() {
   const updateState = (producer: (current: AppState) => AppState, message: string) => {
     setState((current) => {
       const nextState = synchronizeOperationalState(producer(current))
+      latestState.current = nextState
       saveAppState(nextState)
+      if (isFirebaseConfigured && authSession) {
+        firebaseSaveQueue.current = firebaseSaveQueue.current
+          .catch(() => undefined)
+          .then(() => saveFirebaseAppState(nextState))
+          .catch((error) => {
+            setToast(error instanceof Error ? error.message : 'Não foi possível salvar as alterações no Firebase.')
+          })
+      } else if (isSupabaseConfigured && authSession) {
+        void saveCloudAppState(nextState).catch(() => setToast('Não foi possível salvar as alterações no Supabase.'))
+      }
       return nextState
     })
     setToast(message)
