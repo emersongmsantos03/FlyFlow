@@ -309,6 +309,15 @@ export const setGoogleWorkspaceEmailSignature = (signatureImageUrl?: string) => 
   configuredEmailSignatureImageUrl = signatureImageUrl?.trim() || ''
 }
 
+export const uploadGoogleWorkspaceEmailSignature = async (dataUrl: string) =>
+  backendRequest<{ url: string }>('/signature', {
+    method: 'POST',
+    body: JSON.stringify({ dataUrl }),
+  })
+
+export const removeGoogleWorkspaceEmailSignature = async () =>
+  backendRequest<{ removed: boolean }>('/signature', { method: 'DELETE' })
+
 export const sendGoogleWorkspaceEmail = async (input: {
   to: string[]
   subject: string
@@ -320,8 +329,16 @@ export const sendGoogleWorkspaceEmail = async (input: {
   const recipients = [...new Set(input.to.map((email) => email.trim()).filter(Boolean))]
   if (!recipients.length) throw new Error('Informe pelo menos um destinatário.')
   const signatureImageUrl = input.signatureImageUrl?.trim() || configuredEmailSignatureImageUrl
-  const inlineSignature = signatureImageUrl.match(/^data:([^;]+);base64,(.+)$/)
-  const signatureSource = inlineSignature ? 'cid:flyflow-email-signature' : signatureImageUrl
+  let resolvedSignatureImageUrl = signatureImageUrl
+  if (signatureImageUrl && !signatureImageUrl.startsWith('data:')) {
+    const signatureResponse = await fetch(signatureImageUrl)
+    if (signatureResponse.ok) {
+      const signatureBlob = await signatureResponse.blob()
+      resolvedSignatureImageUrl = `data:${signatureBlob.type};base64,${bytesToBase64(new Uint8Array(await signatureBlob.arrayBuffer()))}`
+    }
+  }
+  const inlineSignature = resolvedSignatureImageUrl.match(/^data:([^;]+);base64,(.+)$/)
+  const signatureSource = inlineSignature ? 'cid:flyflow-email-signature' : resolvedSignatureImageUrl
   const signatureExtension = inlineSignature?.[1] === 'image/png' ? 'png' : inlineSignature?.[1] === 'image/webp' ? 'webp' : 'jpg'
   const messageHtml = input.htmlBody?.trim() ? sanitizeEmailHtml(input.htmlBody) : escapeHtml(input.body).replace(/\n/g, '<br>')
   const htmlBody = `${messageHtml}${

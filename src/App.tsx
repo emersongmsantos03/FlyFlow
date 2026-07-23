@@ -203,8 +203,10 @@ import {
   getStoredGoogleOAuthClientId,
   listGoogleWorkspaceEmails,
   restoreGoogleWorkspaceConnection,
+  removeGoogleWorkspaceEmailSignature,
   sendGoogleWorkspaceEmail,
   setGoogleWorkspaceEmailSignature,
+  uploadGoogleWorkspaceEmailSignature,
   type GoogleMailboxMessage,
 } from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
@@ -1126,28 +1128,8 @@ const readFileAsDataUrl = (file: File) =>
   })
 
 const prepareEmailSignatureImage = async (file: File) => {
-  const source = await readFileAsDataUrl(file)
-  if (source.length <= 750_000) return source
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const element = new Image()
-    element.onload = () => resolve(element)
-    element.onerror = reject
-    element.src = source
-  })
-  const maximumWidth = 1600
-  const maximumHeight = 500
-  const scale = Math.min(maximumWidth / image.naturalWidth, maximumHeight / image.naturalHeight, 1)
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Não foi possível preparar a imagem da assinatura.')
-  context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
-  const highQuality = canvas.toDataURL(outputType, outputType === 'image/jpeg' ? 0.95 : undefined)
-  if (highQuality.length <= 750_000) return highQuality
-  const jpeg = canvas.toDataURL('image/jpeg', 0.94)
-  return jpeg.length <= 750_000 ? jpeg : canvas.toDataURL('image/jpeg', 0.86)
+  if (file.size > 5_000_000) throw new Error('A assinatura deve ter no máximo 5 MB.')
+  return readFileAsDataUrl(file)
 }
 
 const hasWorkspaceData = (candidate: AppState) =>
@@ -10022,9 +10004,10 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                         setGoogleConnectionError('A imagem original deve ter no máximo 5 MB.')
                         return
                       }
-                      const preparedSignature = await prepareEmailSignatureImage(file)
-                      setValue('emailSignatureImageUrl', preparedSignature, { shouldDirty: true })
-                      setGoogleWorkspaceEmailSignature(preparedSignature)
+                      const originalSignature = await prepareEmailSignatureImage(file)
+                      const uploadedSignature = await uploadGoogleWorkspaceEmailSignature(originalSignature)
+                      setValue('emailSignatureImageUrl', uploadedSignature.url, { shouldDirty: true })
+                      setGoogleWorkspaceEmailSignature(uploadedSignature.url)
                       await handleSubmit(onSubmit)()
                     }}
                   />
@@ -10032,6 +10015,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                 {emailSignatureImageUrl ? <Button variant="secondary" type="button" onClick={() => {
                   setValue('emailSignatureImageUrl', '', { shouldDirty: true })
                   setGoogleWorkspaceEmailSignature('')
+                  void removeGoogleWorkspaceEmailSignature()
                   void handleSubmit(onSubmit)()
                 }}>Remover</Button> : null}
               </div>

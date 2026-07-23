@@ -46,6 +46,21 @@ const corsHeaders = (origin: string | null) => ({
 const json = (body: unknown, status: number, origin: string | null) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders(origin) })
 
+const signatureResponse = (dataUrl: string, origin: string | null) => {
+  const match = dataUrl.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/)
+  if (!match) return json({ error: 'Assinatura inválida.' }, 404, origin)
+  const binary = atob(match[2])
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return new Response(bytes, {
+    headers: {
+      ...corsHeaders(origin),
+      'Content-Type': match[1],
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  })
+}
+
 const firebaseKeys = createRemoteJWKSet(
   new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'),
 )
@@ -131,6 +146,11 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) })
     const url = new URL(request.url)
     if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'flyflow-lead-api' }, 200, origin)
+    const signatureImageMatch = url.pathname.match(/^\/google\/signature\/image\/([a-f0-9-]{36})$/)
+    if (request.method === 'GET' && signatureImageMatch) {
+      const signature = await env.GOOGLE_OAUTH.get(`signature:${signatureImageMatch[1]}`)
+      return signature ? signatureResponse(signature, origin) : json({ error: 'Assinatura não encontrada.' }, 404, origin)
+    }
     if (origin && !allowedOrigins.has(origin)) return json({ error: 'Origem não autorizada.' }, 403, origin)
 
     const authorization = request.headers.get('Authorization') || ''
@@ -144,6 +164,7 @@ export default {
       try {
         const workspaceId = await workspaceForUser(token, userId, env.FIREBASE_PROJECT_ID)
         const key = `workspace:${workspaceId}`
+        const signatureKey = `workspace:${workspaceId}:signature`
         const stored = await env.GOOGLE_OAUTH.get(key, 'json') as { refreshToken?: string; email?: string; connectedAt?: string } | null
 
         if (request.method === 'GET' && url.pathname === '/google/status') {
@@ -181,6 +202,27 @@ export default {
           }
           await env.GOOGLE_OAUTH.delete(key)
           return json({ connected: false }, 200, origin)
+        }
+        if (request.method === 'POST' && url.pathname === '/google/signature') {
+          const body = await request.json().catch(() => null) as { dataUrl?: string } | null
+          const dataUrl = body?.dataUrl || ''
+          if (!/^data:image\/(?:png|jpeg|webp|gif);base64,/.test(dataUrl) || dataUrl.length > 8_000_000) {
+            return json({ error: 'Envie uma imagem PNG, JPG, WEBP ou GIF de até 5 MB.' }, 400, origin)
+          }
+          const previousToken = await env.GOOGLE_OAUTH.get(signatureKey)
+          const signatureToken = crypto.randomUUID()
+          await Promise.all([
+            env.GOOGLE_OAUTH.put(`signature:${signatureToken}`, dataUrl),
+            env.GOOGLE_OAUTH.put(signatureKey, signatureToken),
+          ])
+          if (previousToken) await env.GOOGLE_OAUTH.delete(`signature:${previousToken}`)
+          return json({ url: `${url.origin}/google/signature/image/${signatureToken}` }, 200, origin)
+        }
+        if (request.method === 'DELETE' && url.pathname === '/google/signature') {
+          const signatureToken = await env.GOOGLE_OAUTH.get(signatureKey)
+          await env.GOOGLE_OAUTH.delete(signatureKey)
+          if (signatureToken) await env.GOOGLE_OAUTH.delete(`signature:${signatureToken}`)
+          return json({ removed: true }, 200, origin)
         }
         return json({ error: 'Rota Google não encontrada.' }, 404, origin)
       } catch (error) {
