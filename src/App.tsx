@@ -2300,11 +2300,15 @@ Hero Drone`,
     )
   }
 
-  const saveLead = (values: LeadFormValues) => {
+  const saveLead = async (values: LeadFormValues) => {
     const now = new Date().toISOString()
     const normalizedValues = normalizeContactValues(values)
-    updateState(
-      (current) => {
+    if (!latestState.current.clients.some((contact) => contact.id === normalizedValues.contactId)) {
+      setToast('O contato vinculado não foi encontrado. Selecione um contato e tente novamente.')
+      return
+    }
+    const nextState = synchronizeOperationalState(
+      ((current: AppState) => {
         const linkedContact = current.clients.find((contact) => contact.id === normalizedValues.contactId)
         if (!linkedContact) return current
         const syncedContact = {
@@ -2398,9 +2402,25 @@ Hero Drone`,
             ...current.leadInteractions,
           ],
         }
-      },
-      selectedLeadId ? 'Contato atualizado.' : 'Contato cadastrado.',
+      })(latestState.current),
     )
+    latestState.current = nextState
+    setState(nextState)
+    saveAppState(nextState)
+    try {
+      if (isFirebaseConfigured && authSession) {
+        firebaseSaveQueue.current = firebaseSaveQueue.current
+          .catch(() => undefined)
+          .then(() => saveFirebaseAppState(nextState))
+        await firebaseSaveQueue.current
+      } else if (isSupabaseConfigured && authSession) {
+        await saveCloudAppState(nextState)
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Não foi possível salvar a oportunidade.')
+      return
+    }
+    setToast(selectedLeadId ? 'Oportunidade salva.' : 'Oportunidade criada.')
     setModal(null)
     setSelectedLeadId('')
   }
@@ -10820,12 +10840,12 @@ function LeadForm({
   initialContactId?: string
   contacts: Client[]
   onCreateContact: () => void
-  onSubmit: (values: LeadFormValues) => void
+  onSubmit: (values: LeadFormValues) => Promise<void> | void
   onCancel: () => void
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const initialContact = contacts.find((contact) => contact.id === (lead?.contactId || initialContactId))
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeadFormInput, unknown, LeadFormValues>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<LeadFormInput, unknown, LeadFormValues>({
     resolver: zodResolver(leadFormSchema),
     defaultValues: {
       contactId: lead?.contactId ?? initialContactId ?? '',
@@ -10921,7 +10941,7 @@ function LeadForm({
           <div className="sm:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-20" {...register('notes')} /></InputField></div>
         </div>
       </details>
-      <FormActions onCancel={onCancel} submitLabel={lead ? 'Salvar oportunidade' : 'Criar oportunidade'} />
+      <FormActions onCancel={onCancel} submitLabel={isSubmitting ? 'Salvando…' : lead ? 'Salvar oportunidade' : 'Criar oportunidade'} submitDisabled={isSubmitting} />
     </form>
   )
 }
@@ -12311,10 +12331,12 @@ function PhoneInput({
 function FormActions({
   onCancel,
   submitLabel = 'Salvar',
+  submitDisabled = false,
   leftAction,
 }: {
   onCancel: () => void
   submitLabel?: string
+  submitDisabled?: boolean
   leftAction?: React.ReactNode
 }) {
   return (
@@ -12322,7 +12344,7 @@ function FormActions({
       <div className="flex flex-wrap gap-2">{leftAction}</div>
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit">{submitLabel}</Button>
+        <Button disabled={submitDisabled} type="submit">{submitLabel}</Button>
       </div>
     </div>
   )
