@@ -276,6 +276,12 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   return btoa(binary)
 }
 
+const encodeMimeHeader = (value: string) => {
+  const sanitized = value.replace(/[\r\n]+/g, ' ').trim()
+  if (/^[\x20-\x7E]*$/.test(sanitized)) return sanitized
+  return `=?UTF-8?B?${bytesToBase64(new TextEncoder().encode(sanitized))}?=`
+}
+
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
 }[character] || character))
@@ -316,6 +322,7 @@ export const sendGoogleWorkspaceEmail = async (input: {
   const signatureImageUrl = input.signatureImageUrl?.trim() || configuredEmailSignatureImageUrl
   const inlineSignature = signatureImageUrl.match(/^data:([^;]+);base64,(.+)$/)
   const signatureSource = inlineSignature ? 'cid:flyflow-email-signature' : signatureImageUrl
+  const signatureExtension = inlineSignature?.[1] === 'image/png' ? 'png' : inlineSignature?.[1] === 'image/webp' ? 'webp' : 'jpg'
   const messageHtml = input.htmlBody?.trim() ? sanitizeEmailHtml(input.htmlBody) : escapeHtml(input.body).replace(/\n/g, '<br>')
   const htmlBody = `${messageHtml}${
     signatureSource
@@ -341,11 +348,11 @@ export const sendGoogleWorkspaceEmail = async (input: {
   ].join('\r\n')
   const inlineSignaturePart = inlineSignature ? [
       `--${relatedBoundary}`,
-      `Content-Type: ${inlineSignature[1]}; name="assinatura.jpg"`,
+      `Content-Type: ${inlineSignature[1]}; name="assinatura.${signatureExtension}"`,
       'Content-Transfer-Encoding: base64',
-      'Content-Disposition: inline; filename="assinatura.jpg"',
+      `Content-Disposition: inline; filename="assinatura.${signatureExtension}"`,
       'Content-ID: <flyflow-email-signature>',
-      'Content-Location: assinatura.jpg',
+      `Content-Location: assinatura.${signatureExtension}`,
       '',
       inlineSignature[2].replace(/(.{76})/g, '$1\r\n'),
     ].join('\r\n') : ''
@@ -371,7 +378,7 @@ export const sendGoogleWorkspaceEmail = async (input: {
   }
   const raw = [
     `To: ${recipients.join(', ')}`,
-    `Subject: ${input.subject}`,
+    `Subject: ${encodeMimeHeader(input.subject)}`,
     'MIME-Version: 1.0',
     ...(attachments.length
       ? [

@@ -1127,14 +1127,15 @@ const readFileAsDataUrl = (file: File) =>
 
 const prepareEmailSignatureImage = async (file: File) => {
   const source = await readFileAsDataUrl(file)
+  if (source.length <= 750_000) return source
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const element = new Image()
     element.onload = () => resolve(element)
     element.onerror = reject
     element.src = source
   })
-  const maximumWidth = 1000
-  const maximumHeight = 300
+  const maximumWidth = 1600
+  const maximumHeight = 500
   const scale = Math.min(maximumWidth / image.naturalWidth, maximumHeight / image.naturalHeight, 1)
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
@@ -1143,7 +1144,10 @@ const prepareEmailSignatureImage = async (file: File) => {
   if (!context) throw new Error('Não foi possível preparar a imagem da assinatura.')
   context.drawImage(image, 0, 0, canvas.width, canvas.height)
   const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
-  return canvas.toDataURL(outputType, outputType === 'image/jpeg' ? 0.9 : undefined)
+  const highQuality = canvas.toDataURL(outputType, outputType === 'image/jpeg' ? 0.95 : undefined)
+  if (highQuality.length <= 750_000) return highQuality
+  const jpeg = canvas.toDataURL('image/jpeg', 0.94)
+  return jpeg.length <= 750_000 ? jpeg : canvas.toDataURL('image/jpeg', 0.86)
 }
 
 const hasWorkspaceData = (candidate: AppState) =>
