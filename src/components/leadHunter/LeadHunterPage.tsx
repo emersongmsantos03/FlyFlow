@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   AtSign,
@@ -172,6 +172,16 @@ export function LeadHunterPage({
   );
   const decisionMetrics = useMemo(() => leadDecisionMetrics(prospects), [prospects]);
   const latestSearchId = searches[0]?.id || "";
+  useEffect(() => {
+    if (!latestSearchId) return;
+    setSearchBatchId(latestSearchId);
+    setCityId("");
+    setCategoryId("");
+    setMinimumScore(0);
+    setOnlyNew(false);
+    setContactFilter("all");
+    setResultQuery("");
+  }, [latestSearchId]);
   const filtered = useMemo(
     () =>
       deduplicateLeadHunterProspects(prospects)

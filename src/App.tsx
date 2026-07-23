@@ -5884,9 +5884,6 @@ Hero Drone`,
                       if (mixedLeads.length >= resultsPerSearch) break
                     }
                   }
-                  if (mixedLeads.length < resultsPerSearch) {
-                    throw new Error(`A base possui somente ${mixedLeads.length} oportunidade(s) válida(s). Ative mais cidades e categorias para completar o lote obrigatório de 10.`)
-                  }
                   result = { ...result, leads: mixedLeads, sources: [...combinedSources], warnings: searchWarnings }
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
@@ -5948,7 +5945,7 @@ Hero Drone`,
                   updateState((current) => {
                     const existingProspects = [...(current.leadHunterProspects || [])]
                     const learningProfile = buildLeadLearningProfile(existingProspects)
-                    const incoming = result.leads.map((raw) => {
+                    let incoming: LeadHunterProspect[] = result.leads.map((raw) => {
                       const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
                       const enrichment = enrichmentById.get(stableId)
                       const enrichedRaw = enrichment ? {
@@ -6041,6 +6038,45 @@ Hero Drone`,
                       // válido da busca.
                       return hasLocation && hasPublicEvidence
                     })
+                    if (incoming.length < resultsPerSearch) {
+                      const incomingIds = new Set(incoming.map((lead) => lead.id))
+                      const eligibleKnown = existingProspects
+                        .filter((lead) =>
+                          !incomingIds.has(lead.id) &&
+                          !lead.discardedPermanently &&
+                          lead.status !== 'Descartado' &&
+                          lead.status !== 'Importado' &&
+                          !lead.leadId,
+                        )
+                        .sort((a, b) => {
+                          const quality = (lead: LeadHunterProspect) =>
+                            lead.score +
+                            (lead.whatsapp ? 30 : 0) +
+                            (lead.phone ? 18 : 0) +
+                            (lead.email ? 14 : 0) +
+                            (lead.website ? 12 : 0) +
+                            (lead.sourceUrls.some((url) => /^https?:\/\//i.test(url)) ? 10 : 0)
+                          return quality(b) - quality(a)
+                        })
+                      const needed = resultsPerSearch - incoming.length
+                      incoming = [
+                        ...incoming,
+                        ...eligibleKnown.slice(0, needed).map((lead) => ({
+                          ...lead,
+                          isNew: false as const,
+                          cityId: lead.cityId || activeCities.find((item) => normalizeLeadText(item.name) === normalizeLeadText(lead.city))?.id || city.id,
+                          categoryId: lead.categoryId || selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(lead.categoryName))?.id || selectedCategories[0].id,
+                          lastSearchId: searchId,
+                          lastDiscoveredAt: now,
+                          displayCount: lead.displayCount + 1,
+                          contactValidation: lead.contactValidation || validateLeadContacts(lead, now),
+                          updatedAt: now,
+                        })),
+                      ]
+                    }
+                    incoming = incoming
+                      .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
+                      .slice(0, resultsPerSearch)
                     newCount = incoming.filter((lead) => lead.isNew).length
                     repeatedCount = incoming.length - newCount
                     const incomingIds = new Set(incoming.map((item) => item.id))
