@@ -81,6 +81,7 @@ export function LeadHunterPage({
   onDelete,
   onCreateRoute,
   onToggleVisited,
+  onSync,
 }: {
   cities: LeadHunterCity[];
   categories: LeadHunterCategory[];
@@ -134,6 +135,7 @@ export function LeadHunterPage({
     plannedFor?: string;
   }) => void;
   onToggleVisited: (routeId: string, prospectId: string) => void;
+  onSync: () => Promise<void>;
 }) {
   const [view, setView] = useState<View>("results");
   const [mode, setMode] = useState<"Manual" | "Rotação automática">(
@@ -150,6 +152,7 @@ export function LeadHunterPage({
   const [manualLeadOpen, setManualLeadOpen] = useState(false);
   const [enrichingId, setEnrichingId] = useState("");
   const [searching, setSearching] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [resultQuery, setResultQuery] = useState("");
   const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "contactable" | "ai">("all");
   const [sortMode, setSortMode] = useState<"priority" | "score" | "newest">("priority");
@@ -247,6 +250,19 @@ export function LeadHunterPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={syncing}
+              onClick={() => {
+                if (syncing) return;
+                setSyncing(true);
+                void onSync().catch(() => undefined).finally(() => setSyncing(false));
+              }}
+            >
+              <RotateCw size={16} className={syncing ? "animate-spin" : ""} />
+              {syncing ? "Sincronizando..." : "Sincronizar agora"}
+            </Button>
             {(
               [
                 ["results", "Resultados", Radar],

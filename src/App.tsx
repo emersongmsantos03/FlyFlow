@@ -1620,6 +1620,68 @@ function App() {
     setToast(message)
   }
 
+  const forceLeadHunterSync = async () => {
+    if (!isFirebaseConfigured || !authSession) {
+      throw new Error('Entre na sua conta antes de sincronizar o LeadHunter.')
+    }
+
+    try {
+      const localState = loadAppState()
+      const currentState = latestState.current
+      const cloudState = await loadFirebaseAppState(currentState)
+      if (!cloudState) throw new Error('Não foi possível carregar os dados do Firebase.')
+
+      const mergeById = <T extends { id: string; updatedAt?: string }>(...groups: T[][]) => {
+        const merged = new Map<string, T>()
+        groups.flat().forEach((item) => {
+          const existing = merged.get(item.id)
+          if (!existing || (item.updatedAt || '') >= (existing.updatedAt || '')) merged.set(item.id, item)
+        })
+        return [...merged.values()]
+      }
+
+      const nextState = normalizeAppState({
+        ...cloudState,
+        leadHunterProspects: mergeById(
+          cloudState.leadHunterProspects || [],
+          localState.leadHunterProspects || [],
+          currentState.leadHunterProspects || [],
+        ),
+        leadHunterSearches: mergeById(
+          cloudState.leadHunterSearches || [],
+          localState.leadHunterSearches || [],
+          currentState.leadHunterSearches || [],
+        ),
+        leadHunterRoutes: mergeById(
+          cloudState.leadHunterRoutes || [],
+          localState.leadHunterRoutes || [],
+          currentState.leadHunterRoutes || [],
+        ),
+        leadHunterCities: mergeById(
+          cloudState.leadHunterCities || [],
+          localState.leadHunterCities || [],
+          currentState.leadHunterCities || [],
+        ),
+        leadHunterCategories: mergeById(
+          cloudState.leadHunterCategories || [],
+          localState.leadHunterCategories || [],
+          currentState.leadHunterCategories || [],
+        ),
+        leadHunterSettings: currentState.leadHunterSettings || localState.leadHunterSettings || cloudState.leadHunterSettings,
+      })
+
+      await saveFirebaseAppState(nextState)
+      saveAppState(nextState)
+      latestState.current = nextState
+      setState(nextState)
+      setToast(`${nextState.leadHunterProspects?.length || 0} leads sincronizados com o Firebase.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível sincronizar o LeadHunter.'
+      setToast(message)
+      throw error
+    }
+  }
+
   const requestConfirm = (dialog: ConfirmDialogState) => {
     setConfirmDialog(dialog)
   }
@@ -5576,6 +5638,7 @@ Hero Drone`,
               routes={state.leadHunterRoutes || []}
               settings={state.leadHunterSettings}
               providerReady
+              onSync={forceLeadHunterSync}
               onSearch={async (filters) => {
                 const startedAt = Date.now()
                 const now = new Date().toISOString()
