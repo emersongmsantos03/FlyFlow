@@ -5865,6 +5865,28 @@ Hero Drone`,
                       if (mixedLeads.length >= resultsPerSearch) break
                     }
                   }
+                  if (mixedLeads.length < resultsPerSearch) {
+                    const selectedKeys = new Set(mixedLeads.map((lead) =>
+                      `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`,
+                    ))
+                    const availableKnown = knownProspects
+                      .filter((lead) =>
+                        !lead.discardedPermanently &&
+                        lead.status !== 'Descartado' &&
+                        lead.status !== 'Importado' &&
+                        !lead.leadId &&
+                        !selectedKeys.has(`${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`),
+                      )
+                      .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
+                    for (const lead of availableKnown) {
+                      mixedLeads.push(lead)
+                      selectedKeys.add(`${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`)
+                      if (mixedLeads.length >= resultsPerSearch) break
+                    }
+                  }
+                  if (mixedLeads.length < resultsPerSearch) {
+                    throw new Error(`A base possui somente ${mixedLeads.length} oportunidade(s) válida(s). Ative mais cidades e categorias para completar o lote obrigatório de 10.`)
+                  }
                   result = { ...result, leads: mixedLeads, sources: [...combinedSources], warnings: searchWarnings }
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
