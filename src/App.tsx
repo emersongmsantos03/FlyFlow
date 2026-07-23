@@ -4570,7 +4570,9 @@ Hero Drone`,
               ? {
                   ...leadItem,
                   pipelineStage,
-                  lossReason: pipelineStage === 'Perdido' ? lossReason || undefined : leadItem.lossReason,
+                  lossReason: pipelineStage === 'Perdido' ? lossReason || undefined : undefined,
+                  probability: pipelineStage === 'Perdido' ? 0 : leadItem.probability,
+                  nextContactAt: pipelineStage === 'Perdido' ? undefined : leadItem.nextContactAt,
                   archived: pipelineStage === 'Perdido' ? leadItem.archived : false,
                   updatedAt: now,
                 }
@@ -4591,9 +4593,11 @@ Hero Drone`,
             },
             ...current.leadInteractions,
           ],
-          statusHistory: quoteToSend
-            ? [createStatusHistory('Proposta', quoteToSend.id, 'Proposta enviada', `${quoteToSend.quoteNumber} marcada como enviada ao mover o contato no CRM.`, activeUserId, quoteToSend.status, 'Enviada', now), ...current.statusHistory]
-            : current.statusHistory,
+          statusHistory: [
+            createStatusHistory('Contato', leadId, pipelineStage === 'Perdido' ? 'Oportunidade perdida' : 'Etapa alterada', lossReason || `Oportunidade movida para ${pipelineStage}.`, activeUserId, lead.pipelineStage, pipelineStage, now),
+            ...(quoteToSend ? [createStatusHistory('Proposta', quoteToSend.id, 'Proposta enviada', `${quoteToSend.quoteNumber} marcada como enviada ao mover o contato no CRM.`, activeUserId, quoteToSend.status, 'Enviada', now)] : []),
+            ...current.statusHistory,
+          ],
         }),
         quoteToSend ? 'Proposta marcada como enviada e contato movido.' : 'Etapa do contato atualizada.',
       )

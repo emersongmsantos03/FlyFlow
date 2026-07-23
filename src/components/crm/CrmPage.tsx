@@ -2,6 +2,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Ban,
   Briefcase,
   CalendarDays,
   Check,
@@ -219,7 +220,8 @@ export function CrmPage({
   const [whatsAppMessage, setWhatsAppMessage] = useState('')
 
   const activeLeads = useMemo(() => leads.filter((lead) => !lead.archived && !lead.deletedAt), [leads])
-  const commercialInsights = useMemo(() => buildCommercialInsights(activeLeads, state), [activeLeads, state])
+  const openLeads = useMemo(() => activeLeads.filter((lead) => lead.pipelineStage !== 'Perdido'), [activeLeads])
+  const commercialInsights = useMemo(() => buildCommercialInsights(openLeads, state), [openLeads, state])
   const stalledIds = useMemo(() => new Set(commercialInsights.stalled.map((lead) => lead.id)), [commercialInsights.stalled])
   const filtered = useMemo(() => activeLeads.filter((lead) => {
     const quote = newestQuote(state, lead.id)
@@ -243,9 +245,9 @@ export function CrmPage({
   }), [activeLeads, quickFilter, search, stalledIds, state])
 
   const activeQuotes = state.quotes.filter((quote) => !quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Recusada', 'Expirada'].includes(quote.status))
-  const potentialValue = activeLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
-  const contactsNeedingAction = activeLeads.filter((lead) => !lead.nextContactAt || new Date(lead.nextContactAt) < new Date()).length
-  const actionQueue = useMemo(() => buildCommercialActionQueue(activeLeads, state).slice(0, 5), [activeLeads, state])
+  const potentialValue = openLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
+  const contactsNeedingAction = openLeads.filter((lead) => !lead.nextContactAt || new Date(lead.nextContactAt) < new Date()).length
+  const actionQueue = useMemo(() => buildCommercialActionQueue(openLeads, state).slice(0, 5), [openLeads, state])
   const selectedPriority = priorityLead ? actionQueue.find(({ lead }) => lead.id === priorityLead.id)?.priority : undefined
 
   const scrollBoard = (direction: -1 | 1) => boardRef.current?.scrollBy({ left: direction * 620, behavior: 'smooth' })
@@ -263,7 +265,7 @@ export function CrmPage({
         </div>
         <div className="crm-metrics mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
           {[
-            ['Oportunidades ativas', activeLeads.length],
+            ['Oportunidades ativas', openLeads.length],
             ['Valor potencial', formatCurrency(potentialValue)],
             ['Propostas abertas', activeQuotes.length],
             ['Precisam de ação', contactsNeedingAction],
@@ -405,6 +407,7 @@ export function CrmPage({
                         onOpen={onOpenLead}
                         onEdit={onEditLead}
                         onDelete={onDeleteLead}
+                        onLose={(item) => onMoveLead(item.id, 'Perdido')}
                         onAttachReceipt={onAttachReceipt}
                         onGenerateProposal={onGenerateProposal}
                         onRegisterInteraction={onRegisterInteraction}
@@ -429,6 +432,7 @@ export function CrmPage({
           onOpen={onOpenLead}
           onEdit={onEditLead}
           onDelete={onDeleteLead}
+          onLose={(lead) => onMoveLead(lead.id, 'Perdido')}
           onAttachReceipt={onAttachReceipt}
           onGenerateProposal={onGenerateProposal}
           onRegisterInteraction={onRegisterInteraction}
@@ -485,6 +489,7 @@ export function CrmPage({
           onClose={onCloseLead}
           onEdit={onEditLead}
           onDelete={onDeleteLead}
+          onLose={(lead) => onMoveLead(lead.id, 'Perdido')}
           onAttachReceipt={onAttachReceipt}
           onGenerateProposal={onGenerateProposal}
           onRegisterInteraction={onRegisterInteraction}
@@ -508,12 +513,13 @@ export function CrmPage({
   )
 }
 
-function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject }: {
+function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject }: {
   lead: Lead
   state: AppState
   onOpen: (lead: Lead) => void
   onEdit: (lead: Lead) => void
   onDelete: (lead: Lead) => void
+  onLose: (lead: Lead) => void
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
@@ -552,6 +558,7 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onAttachReceip
           onRegisterDeposit={onRegisterDeposit}
           onCreateProject={onCreateProject}
         />
+        {lead.pipelineStage !== 'Perdido' ? <button className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50" type="button" onClick={(event) => { stop(event); onLose(lead) }} title="Marcar oportunidade como perdida"><Ban size={13} /> Perder</button> : null}
         <button className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50" type="button" onClick={(event) => { stop(event); onDelete(lead) }}><Trash2 size={13} /> Excluir</button>
       </footer>
     </article>
@@ -662,12 +669,13 @@ function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGe
   )
 }
 
-function CrmTable({ leads, state, onOpen, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject }: {
+function CrmTable({ leads, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject }: {
   leads: Lead[]
   state: AppState
   onOpen: (lead: Lead) => void
   onEdit: (lead: Lead) => void
   onDelete: (lead: Lead) => void
+  onLose: (lead: Lead) => void
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
@@ -700,6 +708,7 @@ function CrmTable({ leads, state, onOpen, onEdit, onDelete, onAttachReceipt, onG
                     onRegisterDeposit={onRegisterDeposit}
                     onCreateProject={onCreateProject}
                   />
+                  {lead.pipelineStage !== 'Perdido' ? <button className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50" type="button" onClick={() => onLose(lead)}><Ban size={14} /> Perder</button> : null}
                   <button className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50" onClick={() => onDelete(lead)}><Trash2 size={14} /> Excluir</button>
                 </div>
               </td>
@@ -782,12 +791,13 @@ export function TaskView({ state, onOpenLead, onCreate, onEdit: _onEdit, onCompl
   })}</div></div>
 }
 
-function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onSendWhatsAppApproach, onSendEmail, onEmailQuote, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
+function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onSendWhatsAppApproach, onSendEmail, onEmailQuote, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
   lead: Lead
   state: AppState
   onClose: () => void
   onEdit: (lead: Lead) => void
   onDelete: (lead: Lead) => void
+  onLose: (lead: Lead) => void
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
@@ -848,8 +858,9 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
       <header className="border-b border-gray-200 bg-white p-4">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase text-gray-500">Contato e oportunidade</p><h2 className="mt-1 truncate text-xl font-black text-gray-950">{displayName(lead)}</h2><p className="text-sm text-gray-500">{lead.fullName || lead.city}</p></div><button className="focus-ring rounded-lg p-2 hover:bg-gray-100" aria-label="Fechar" type="button" onClick={onClose}><X size={20} /></button></div>
         <div className="mt-3 flex flex-wrap gap-2"><StatusBadge>{lead.pipelineStage}</StatusBadge><StatusBadge>{lead.temperature}</StatusBadge>{currentProject(state, lead.id) ? <StatusBadge>Com projeto</StatusBadge> : null}</div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-3 gap-2">
           <Button className="min-h-9 py-1 text-xs" variant="secondary" type="button" onClick={() => onEdit(lead)}><SlidersHorizontal size={14} /> Editar</Button>
+          {lead.pipelineStage !== 'Perdido' ? <Button className="min-h-9 py-1 text-xs text-amber-700 hover:bg-amber-50" variant="secondary" type="button" onClick={() => onLose(lead)}><Ban size={14} /> Perder</Button> : null}
           <Button className="min-h-9 py-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700" variant="secondary" type="button" onClick={() => onDelete(lead)}><Trash2 size={14} /> Excluir</Button>
         </div>
       </header>
