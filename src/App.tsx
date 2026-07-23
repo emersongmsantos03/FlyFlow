@@ -2410,10 +2410,20 @@ Hero Drone`,
     saveAppState(nextState)
     try {
       if (isFirebaseConfigured && authSession) {
-        firebaseSaveQueue.current = firebaseSaveQueue.current
+        const cloudSave = firebaseSaveQueue.current
           .catch(() => undefined)
           .then(() => saveFirebaseAppState(nextState))
-        await firebaseSaveQueue.current
+        firebaseSaveQueue.current = cloudSave
+        const confirmed = await Promise.race([
+          cloudSave.then(() => true),
+          new Promise<false>((resolve) => window.setTimeout(() => resolve(false), 8_000)),
+        ])
+        if (!confirmed) {
+          setToast('Oportunidade salva. A sincronização com o Firebase continuará em segundo plano.')
+          setModal(null)
+          setSelectedLeadId('')
+          return
+        }
       } else if (isSupabaseConfigured && authSession) {
         await saveCloudAppState(nextState)
       }
