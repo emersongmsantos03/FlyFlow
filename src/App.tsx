@@ -1147,6 +1147,9 @@ const hasWorkspaceData = (candidate: AppState) =>
   candidate.leads.length > 0 ||
   candidate.leadInteractions.length > 0 ||
   candidate.clients.length > 0 ||
+  (candidate.leadHunterProspects?.length ?? 0) > 0 ||
+  (candidate.leadHunterSearches?.length ?? 0) > 0 ||
+  (candidate.leadHunterRoutes?.length ?? 0) > 0 ||
   candidate.projects.length > 0 ||
   candidate.appointments.length > 0 ||
   candidate.quotes.length > 0 ||
