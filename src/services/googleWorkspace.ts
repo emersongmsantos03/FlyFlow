@@ -297,6 +297,12 @@ export interface GoogleEmailAttachment {
   data: Blob
 }
 
+let configuredEmailSignatureImageUrl = ''
+
+export const setGoogleWorkspaceEmailSignature = (signatureImageUrl?: string) => {
+  configuredEmailSignatureImageUrl = signatureImageUrl?.trim() || ''
+}
+
 export const sendGoogleWorkspaceEmail = async (input: {
   to: string[]
   subject: string
@@ -307,8 +313,9 @@ export const sendGoogleWorkspaceEmail = async (input: {
 }) => {
   const recipients = [...new Set(input.to.map((email) => email.trim()).filter(Boolean))]
   if (!recipients.length) throw new Error('Informe pelo menos um destinatário.')
-  const inlineSignature = input.signatureImageUrl?.match(/^data:([^;]+);base64,(.+)$/)
-  const signatureSource = inlineSignature ? 'cid:flyflow-email-signature' : input.signatureImageUrl
+  const signatureImageUrl = input.signatureImageUrl?.trim() || configuredEmailSignatureImageUrl
+  const inlineSignature = signatureImageUrl.match(/^data:([^;]+);base64,(.+)$/)
+  const signatureSource = inlineSignature ? 'cid:flyflow-email-signature' : signatureImageUrl
   const messageHtml = input.htmlBody?.trim() ? sanitizeEmailHtml(input.htmlBody) : escapeHtml(input.body).replace(/\n/g, '<br>')
   const htmlBody = `${messageHtml}${
     signatureSource

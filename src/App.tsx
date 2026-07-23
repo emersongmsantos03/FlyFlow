@@ -204,6 +204,7 @@ import {
   listGoogleWorkspaceEmails,
   restoreGoogleWorkspaceConnection,
   sendGoogleWorkspaceEmail,
+  setGoogleWorkspaceEmailSignature,
   type GoogleMailboxMessage,
 } from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
@@ -1281,6 +1282,10 @@ function App() {
   useEffect(() => {
     latestState.current = state
   }, [state])
+
+  useEffect(() => {
+    setGoogleWorkspaceEmailSignature(state.companySettings.emailSignatureImageUrl)
+  }, [state.companySettings.emailSignatureImageUrl])
 
   useEffect(() => {
     const clientId = state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
@@ -9999,11 +10004,18 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                         setGoogleConnectionError('A imagem original deve ter no máximo 5 MB.')
                         return
                       }
-                      setValue('emailSignatureImageUrl', await prepareEmailSignatureImage(file), { shouldDirty: true })
+                      const preparedSignature = await prepareEmailSignatureImage(file)
+                      setValue('emailSignatureImageUrl', preparedSignature, { shouldDirty: true })
+                      setGoogleWorkspaceEmailSignature(preparedSignature)
+                      await handleSubmit(onSubmit)()
                     }}
                   />
                 </label>
-                {emailSignatureImageUrl ? <Button variant="secondary" type="button" onClick={() => setValue('emailSignatureImageUrl', '', { shouldDirty: true })}>Remover</Button> : null}
+                {emailSignatureImageUrl ? <Button variant="secondary" type="button" onClick={() => {
+                  setValue('emailSignatureImageUrl', '', { shouldDirty: true })
+                  setGoogleWorkspaceEmailSignature('')
+                  void handleSubmit(onSubmit)()
+                }}>Remover</Button> : null}
               </div>
               <p className="text-xs text-gray-400">Recomendação: PNG ou JPG, até 800 × 220 px.</p>
             </div>
