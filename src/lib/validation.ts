@@ -44,12 +44,14 @@ export const leadFormSchema = z.object({
   city: optionalText,
   neighborhood: optionalText,
   address: optionalText,
-  source: z.enum(leadSources),
-  serviceInterest: z.enum(serviceTypes),
-  pipelineStage: z.enum(pipelineStages),
-  temperature: z.enum(leadTemperatures),
-  estimatedValue: money,
-  probability: percentage,
+  // Registros antigos do funil podem conter opções que já foram renomeadas.
+  // Normalizamos esses valores em vez de bloquear silenciosamente o envio.
+  source: z.enum(leadSources).catch('Instagram'),
+  serviceInterest: z.enum(serviceTypes).catch('Fotos e vídeo'),
+  pipelineStage: z.enum(pipelineStages).catch('Entrada'),
+  temperature: z.enum(leadTemperatures).catch('Morno'),
+  estimatedValue: money.catch(0),
+  probability: percentage.catch(50),
   nextContactAt: optionalText,
   notes: optionalText,
 })

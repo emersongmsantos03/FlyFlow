@@ -2301,6 +2301,7 @@ Hero Drone`,
   }
 
   const saveLead = async (values: LeadFormValues) => {
+    setToast('Salvando oportunidade…')
     const now = new Date().toISOString()
     const normalizedValues = normalizeContactValues(values)
     if (!latestState.current.clients.some((contact) => contact.id === normalizedValues.contactId)) {
