@@ -5748,7 +5748,7 @@ Hero Drone`,
                       .slice(0, 2)
                     const underSearched = [...activeCities]
                       .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
-                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 2)
+                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 5)
                   })()
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
@@ -5768,7 +5768,7 @@ Hero Drone`,
                 const searchId = createId('lh-search')
                 try {
                   const provider = new OpenStreetMapLeadProvider()
-                  const resultsPerSearch = Math.min(20, Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 20))
+                  const resultsPerSearch = 10
                   const providerLimit = filters.cityIds.length ? Math.min(30, resultsPerSearch + 10) : Math.max(10, Math.ceil(resultsPerSearch / candidateCities.length) + 6)
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
@@ -5826,6 +5826,7 @@ Hero Drone`,
                       cityResult.sources.forEach((source) => combinedSources.add(source))
                       cityResult.warnings.forEach((warning) => searchWarnings.push(`${searchCity.name}: ${warning}`))
                       cityResult.leads.forEach(addCandidate)
+                      if (combinedLeads.size >= resultsPerSearch) break
                     } catch (error) {
                       searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
                     }

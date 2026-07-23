@@ -292,7 +292,10 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
     let nominatimLeads: LeadSearchProviderResult['leads'] = []
     try {
       nominatimLeads = await searchNominatim(city, categories, request.limit, signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000))
-      if (nominatimLeads.length >= request.limit) {
+      // Três resultados rápidos já são úteis para a rotação entre cidades.
+      // O chamador combina várias cidades até completar o lote, evitando ficar
+      // preso esperando o Overpass para uma única região.
+      if (nominatimLeads.length >= Math.min(request.limit, 3)) {
         const result: LeadSearchProviderResult = {
           leads: nominatimLeads,
           sources: ['OpenStreetMap / Nominatim'],
