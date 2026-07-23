@@ -14,7 +14,7 @@ export const Button = ({
 }) => (
   <button
     className={clsx(
-      'app-button focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition',
+      'app-button focus-ring inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[0.82rem] font-semibold transition',
       variant === 'primary' && 'app-button-primary bg-[#171717] text-white hover:bg-black',
       variant === 'secondary' && 'app-button-secondary border border-gray-300 bg-white text-gray-900 hover:bg-gray-50',
       variant === 'ghost' && 'app-button-ghost text-gray-700 hover:bg-gray-100',
@@ -99,13 +99,13 @@ export const MetricCard = ({
   icon: ReactNode
   tone?: 'neutral' | 'positive' | 'warning' | 'danger'
 }) => (
-  <article className="metric-card glass-surface min-h-28 rounded-2xl border border-gray-200 p-4 shadow-sm">
+  <article className="metric-card glass-surface min-h-24 rounded-xl border border-gray-200 p-3.5 shadow-sm">
     <div className="flex items-start justify-between gap-3">
       <div>
         <p className="text-xs font-bold uppercase text-gray-500">{label}</p>
         <div
           className={clsx(
-            'mt-2 text-2xl font-semibold tracking-normal',
+            'mt-1.5 text-xl font-semibold tracking-normal',
             tone === 'positive' && 'text-emerald-700',
             tone === 'warning' && 'text-amber-700',
             tone === 'danger' && 'text-red-700',
@@ -117,7 +117,7 @@ export const MetricCard = ({
       </div>
       <div
         className={clsx(
-          'metric-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border',
+          'metric-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border',
           tone === 'positive' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
           tone === 'warning' && 'border-amber-200 bg-amber-50 text-amber-700',
           tone === 'danger' && 'border-red-200 bg-red-50 text-red-700',
@@ -127,7 +127,7 @@ export const MetricCard = ({
         {icon}
       </div>
     </div>
-    {detail ? <p className="mt-3 text-sm text-gray-500">{detail}</p> : null}
+    {detail ? <p className="mt-2 text-xs text-gray-500">{detail}</p> : null}
   </article>
 )
 
@@ -136,18 +136,20 @@ export const Panel = ({
   action,
   children,
   className,
+  id,
 }: {
   title: string
   action?: ReactNode
   children: ReactNode
   className?: string
+  id?: string
 }) => (
-  <section className={clsx('panel-surface rounded-2xl border border-gray-200 bg-white shadow-sm', className)}>
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3.5">
-      <h2 className="text-base font-semibold text-gray-950">{title}</h2>
+  <section id={id} className={clsx('panel-surface rounded-xl border border-gray-200 bg-white shadow-sm', className)}>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+      <h2 className="text-sm font-semibold text-gray-950">{title}</h2>
       {action}
     </div>
-    <div className="p-4">{children}</div>
+    <div className="p-3.5">{children}</div>
   </section>
 )
 

@@ -7,9 +7,11 @@ import {
   Bell,
   Bold,
   Briefcase,
+  Building2,
   CalendarDays,
   Camera,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -50,7 +52,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import {
   Bar,
@@ -173,6 +175,7 @@ import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './servi
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
 import { buildGoogleBusinessUrl, buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
 import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './services/leadHunter/LeadLearningService'
+import { remainingAiCalls, shouldSkipManualEnrichment } from './services/leadHunter/LeadAiUsage'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   isFirebaseConfigured,
@@ -186,6 +189,7 @@ import {
   createFirebaseWorkspaceUser,
   ensureFirebaseWorkspace,
   loadFirebaseAppState,
+  observeFirebaseWorkspace,
   saveFirebaseAppState,
   setFirebaseWorkspaceUserActive,
 } from './services/firebaseData'
@@ -195,12 +199,23 @@ import {
   createGoogleWorkspaceEvent,
   disconnectGoogleWorkspace,
   getGoogleWorkspaceConnection,
+  getStoredGoogleOAuthClientId,
   listGoogleWorkspaceEmails,
   restoreGoogleWorkspaceConnection,
   sendGoogleWorkspaceEmail,
   type GoogleMailboxMessage,
 } from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
+import {
+  acceptPublicProposal,
+  createProposalToken,
+  deletePublicProposal,
+  loadPublicProposal,
+  proposalUrl,
+  publishProposal,
+  reconcilePublicProposalAcceptances,
+  type PublicProposal,
+} from './services/publicProposal'
 import {
   appointmentStatuses,
   appointmentTypes,
@@ -376,6 +391,7 @@ interface ProposalItemDraft {
   description: string
   quantity: number
   unitPrice: number
+  pricingLabel?: 'Incluso' | 'Gratuito'
 }
 
 interface ProposalFormValues {
@@ -484,6 +500,10 @@ type GooglePlaceSearchResult = {
   place_id?: string
   name?: string
   formatted_address?: string
+  formatted_phone_number?: string
+  international_phone_number?: string
+  website?: string
+  url?: string
   rating?: number
   user_ratings_total?: number
   business_status?: string
@@ -500,6 +520,10 @@ type GooglePlacesService = {
   textSearch: (
     request: { query: string; region?: string; language?: string },
     callback: (results: GooglePlaceSearchResult[] | null, status: string) => void,
+  ) => void
+  getDetails: (
+    request: { placeId: string; fields: string[]; language?: string; region?: string },
+    callback: (result: GooglePlaceSearchResult | null, status: string) => void,
   ) => void
 }
 
@@ -570,23 +594,25 @@ const proposalPackages: Array<{
   },
 ]
 
-const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard }> = [
-  { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { page: 'leads', label: 'Comercial', icon: Handshake },
-  { page: 'clients', label: 'Contatos', icon: ContactRound },
-  { page: 'leadHunter', label: 'Lead Hunter', icon: Search },
-  { page: 'inbox', label: 'Inbox', icon: Mail },
-  { page: 'projects', label: 'Projetos', icon: Briefcase },
-  { page: 'agenda', label: 'Agenda', icon: CalendarDays },
-  { page: 'quotes', label: 'Propostas', icon: FileText },
-  { page: 'finance', label: 'Financeiro', icon: DollarSign },
-  { page: 'equipment', label: 'Equipamentos', icon: PackageCheck },
-  { page: 'reports', label: 'Relatórios', icon: BarChart3 },
-  { page: 'settings', label: 'Configurações', icon: Settings },
-  { page: 'users', label: 'Usuários', icon: UserCog },
+type NavigationGroup = 'Visão geral' | 'Relacionamento' | 'Operação' | 'Gestão'
+const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard; group: NavigationGroup }> = [
+  { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Visão geral' },
+  { page: 'leads', label: 'Comercial', icon: Handshake, group: 'Relacionamento' },
+  { page: 'clients', label: 'Contatos', icon: ContactRound, group: 'Relacionamento' },
+  { page: 'leadHunter', label: 'Lead Hunter', icon: Search, group: 'Relacionamento' },
+  { page: 'inbox', label: 'Inbox', icon: Mail, group: 'Relacionamento' },
+  { page: 'projects', label: 'Projetos', icon: Briefcase, group: 'Operação' },
+  { page: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'Operação' },
+  { page: 'quotes', label: 'Propostas', icon: FileText, group: 'Operação' },
+  { page: 'equipment', label: 'Equipamentos', icon: PackageCheck, group: 'Operação' },
+  { page: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Gestão' },
+  { page: 'reports', label: 'Relatórios', icon: BarChart3, group: 'Gestão' },
+  { page: 'settings', label: 'Configurações', icon: Settings, group: 'Gestão' },
+  { page: 'users', label: 'Usuários', icon: UserCog, group: 'Gestão' },
 ]
+const navigationGroups: NavigationGroup[] = ['Visão geral', 'Relacionamento', 'Operação', 'Gestão']
 
-const chartColors = ['#d8a500', '#16a34a', '#2563eb', '#dc2626', '#7c3aed', '#0891b2']
+const chartColors = ['#2563eb', '#0d9488', '#7c3aed', '#e11d48', '#f59e0b', '#64748b']
 const heroLogoSrc = './hero-drone-logo.png'
 const appName = 'FlyFlow by Hero Drone'
 const appShortName = 'FlyFlow'
@@ -654,23 +680,53 @@ const searchGooglePlacesLeads = async ({
   const service = new PlacesService(container)
   const leads: LeadSearchProviderResult['leads'] = []
   const warnings: string[] = []
-  const categoryQueries = [...new Set(categories.map((category) => category.trim()).filter(Boolean))].slice(0, 2)
+  const categoryQueries = [...new Set(categories.map((category) => category.trim()).filter(Boolean))].slice(0, 3)
+
+  const getDetails = (placeId: string) => new Promise<GooglePlaceSearchResult | null>((resolve) => {
+    let settled = false
+    const finish = (result: GooglePlaceSearchResult | null) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeout)
+      resolve(result)
+    }
+    const timeout = window.setTimeout(() => finish(null), 6_000)
+    service.getDetails({
+      placeId,
+      fields: ['place_id', 'name', 'formatted_address', 'formatted_phone_number', 'international_phone_number', 'website', 'url', 'rating', 'user_ratings_total', 'business_status', 'geometry'],
+      language: 'pt-BR',
+      region: 'br',
+    }, (result, status) => finish(status === 'OK' ? result : null))
+  })
 
   for (const category of categoryQueries) {
     const results = await new Promise<GooglePlaceSearchResult[]>((resolve) => {
+      let settled = false
+      const finish = (items: GooglePlaceSearchResult[]) => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timeout)
+        resolve(items)
+      }
+      const timeout = window.setTimeout(() => {
+        warnings.push(`Google Places: a consulta de “${category}” excedeu o tempo limite.`)
+        finish([])
+      }, 8_000)
       service.textSearch(
         { query: `${category} em ${city}, Paraná, Brasil`, region: 'br', language: 'pt-BR' },
         (items, status) => {
-          if (status === 'OK' || status === 'ZERO_RESULTS') resolve(items ?? [])
+          if (status === 'OK' || status === 'ZERO_RESULTS') finish(items ?? [])
           else {
             warnings.push(`Google Places: consulta de “${category}” não concluída (${status}).`)
-            resolve([])
+            finish([])
           }
         },
       )
     })
 
-    for (const place of results) {
+    for (const summary of results) {
+      const details = summary.place_id ? await getDetails(summary.place_id) : null
+      const place = { ...summary, ...(details || {}) }
       if (!place.place_id || !place.name || place.business_status === 'CLOSED_PERMANENTLY') continue
       const latitude = place.geometry?.location?.lat()
       const longitude = place.geometry?.location?.lng()
@@ -690,16 +746,16 @@ const searchGooglePlacesLeads = async ({
         address: place.formatted_address?.trim() || '',
         latitude,
         longitude,
-        phone: '',
+        phone: (place.international_phone_number || place.formatted_phone_number || '').trim(),
         whatsapp: '',
         email: '',
         instagram: '',
-        website: '',
+        website: place.website?.trim() || '',
         googleMapsUrl,
         googleRating: place.rating,
         googleReviewCount: place.user_ratings_total,
         sources: ['Google Places'],
-        sourceUrls: [googleMapsUrl],
+        sourceUrls: [...new Set([googleMapsUrl, place.website || '', place.url || ''].filter(Boolean))],
         score: Math.min(88, 60 + reviewPoints),
         scoreReasons: [
           { id: 'google-confirmed', label: 'Empresa e categoria confirmadas no Google', points: 60, evidence: `Google Place ID ${place.place_id}` },
@@ -813,6 +869,9 @@ const contactDisplayName = (contact: Pick<Lead | Client, 'fullName' | 'companyNa
   contact.instagram ||
   contact.city ||
   'Contato sem nome'
+
+const buildQuickWhatsAppMessage = (lead: Lead) =>
+  `Olá! Tudo bem? Aqui é o Emerson, da Hero Drone. Gostaria de conversar sobre ${lead.serviceInterest.toLocaleLowerCase('pt-BR')}.`
 
 const projectContactLabel = (state: AppState, project: Project) => {
   const contact = projectClient(state, project)
@@ -1099,13 +1158,51 @@ const hasWorkspaceData = (candidate: AppState) =>
   candidate.users.length > 1
 
 const resolveFirebaseState = (cloudState: AppState | null, localState: AppState) => {
-  const localUpdatedAt = new Date(localState.updatedAt || 0).getTime()
-  const cloudUpdatedAt = new Date(cloudState?.updatedAt || 0).getTime()
   const localHasData = hasWorkspaceData(localState)
   const cloudHasData = Boolean(cloudState && hasWorkspaceData(cloudState))
   const shouldMigrateLocal = Boolean(
-    cloudState && localHasData && (!cloudHasData || localUpdatedAt > cloudUpdatedAt),
+    cloudState && localHasData && !cloudHasData,
   )
+  if (cloudState && cloudHasData) {
+    const mergeById = <T extends { id: string; updatedAt?: string }>(cloudItems: T[] = [], localItems: T[] = []) => {
+      let changed = false
+      const merged = new Map(cloudItems.map((item) => [item.id, item]))
+      localItems.forEach((localItem) => {
+        const cloudItem = merged.get(localItem.id)
+        if (!cloudItem || (localItem.updatedAt || '') > (cloudItem.updatedAt || '')) {
+          merged.set(localItem.id, localItem)
+          changed = true
+        }
+      })
+      return { items: [...merged.values()], changed }
+    }
+
+    const recordSections = [
+      'users', 'leads', 'leadInteractions', 'clients', 'companies',
+      'leadHunterCities', 'leadHunterCategories', 'leadHunterProspects',
+      'leadHunterSearches', 'leadHunterRoutes', 'services', 'projects',
+      'projectChecklistItems', 'appointments', 'quotes', 'quoteItems',
+      'payments', 'expenses', 'recurringExpenses', 'bankAccounts',
+      'bankTransfers', 'files', 'projectRevisions', 'equipment',
+      'notifications', 'tasks', 'statusHistory', 'projectAdjustments',
+    ] as const
+    const mergedState: AppState = { ...cloudState }
+    const writableState = mergedState as unknown as Record<string, unknown>
+    let localRecoveryRequired = false
+
+    recordSections.forEach((section) => {
+      const cloudItems = cloudState[section] as Array<{ id: string; updatedAt?: string }> | undefined
+      const localItems = localState[section] as Array<{ id: string; updatedAt?: string }> | undefined
+      const result = mergeById(cloudItems, localItems)
+      writableState[section] = result.items
+      localRecoveryRequired ||= result.changed
+    })
+
+    return {
+      state: normalizeAppState(mergedState),
+      shouldSave: localRecoveryRequired,
+    }
+  }
   return {
     state: normalizeAppState(shouldMigrateLocal ? localState : cloudState ?? localState),
     shouldSave: !cloudState || shouldMigrateLocal,
@@ -1113,15 +1210,16 @@ const resolveFirebaseState = (cloudState: AppState | null, localState: AppState)
 }
 
 function App() {
+  const publicProposalToken = new URLSearchParams(window.location.search).get('proposal')?.trim() || ''
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [authSession, setAuthSession] = useState(() => getAuthSession())
   const [firebaseAuthReady, setFirebaseAuthReady] = useState(!isFirebaseConfigured)
   const firebaseLoginInProgress = useRef(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light'
-    const stored = window.localStorage.getItem('hero-drone-manager:theme:v2')
+    const stored = window.localStorage.getItem('hero-drone-manager:theme:v3')
     if (stored === 'light' || stored === 'dark') return stored
-    return 'dark'
+    return 'light'
   })
   const [page, setPage] = useState<Page>('dashboard')
   const [modal, setModal] = useState<ModalType>(null)
@@ -1148,6 +1246,8 @@ function App() {
   const [selectedProposalLeadId, setSelectedProposalLeadId] = useState<string>('')
   const [selectedProposalQuoteId, setSelectedProposalQuoteId] = useState<string>('')
   const [selectedLeadId, setSelectedLeadId] = useState<string>('')
+  const [newOpportunityContactId, setNewOpportunityContactId] = useState('')
+  const [creatingContactForOpportunity, setCreatingContactForOpportunity] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState<string>('')
   const [selectedCloseDealLeadId, setSelectedCloseDealLeadId] = useState<string>('')
   const [selectedCloseDealQuoteId, setSelectedCloseDealQuoteId] = useState<string>('')
@@ -1172,9 +1272,14 @@ function App() {
   const [emailComposer, setEmailComposer] = useState<EmailComposerState | null>(null)
   const [toast, setToast] = useState('')
   const googleRestoreAttempted = useRef('')
+  const latestState = useRef(state)
 
   useEffect(() => {
-    const clientId = state.companySettings.googleOAuthClientId?.trim() || ''
+    latestState.current = state
+  }, [state])
+
+  useEffect(() => {
+    const clientId = state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
     if (!clientId || googleRestoreAttempted.current === clientId || getGoogleWorkspaceConnection().connected) return
     googleRestoreAttempted.current = clientId
     void restoreGoogleWorkspaceConnection(clientId).catch(() => {
@@ -1215,7 +1320,7 @@ function App() {
           const localState = loadAppState()
           const cloudState = await loadFirebaseAppState(localState)
           const resolved = resolveFirebaseState(cloudState, localState)
-          const resolvedState = resolved.state
+          const resolvedState = await reconcilePublicProposalAcceptances(resolved.state)
           const internalUser = resolvedState.users.find(
             (user) => user.email.toLowerCase() === firebaseUser.email?.toLowerCase(),
           )
@@ -1265,6 +1370,52 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (!isFirebaseConfigured || !authSession) return
+
+    let disposed = false
+    let refreshing = false
+    let refreshAgain = false
+
+    const refreshFromFirebase = async () => {
+      if (refreshing) {
+        refreshAgain = true
+        return
+      }
+
+      refreshing = true
+      try {
+        const cloudState = await loadFirebaseAppState(latestState.current)
+        if (!cloudState || disposed) return
+        const nextState = normalizeAppState(cloudState)
+        latestState.current = nextState
+        setState(nextState)
+      } catch (error) {
+        if (!disposed) {
+          setToast(error instanceof Error ? error.message : 'Nao foi possivel receber as atualizacoes em tempo real.')
+        }
+      } finally {
+        refreshing = false
+        if (refreshAgain && !disposed) {
+          refreshAgain = false
+          void refreshFromFirebase()
+        }
+      }
+    }
+
+    const unsubscribe = observeFirebaseWorkspace(
+      () => { void refreshFromFirebase() },
+      () => {
+        if (!disposed) setToast('A conexao em tempo real foi interrompida. As alteracoes locais continuam salvas.')
+      },
+    )
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [authSession])
+
+  useEffect(() => {
     const refreshAutomations = () => setState((current) => synchronizeOperationalState(current))
     const interval = window.setInterval(refreshAutomations, 30 * 60_000)
     window.addEventListener('focus', refreshAutomations)
@@ -1276,7 +1427,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    window.localStorage.setItem('hero-drone-manager:theme:v2', theme)
+    window.localStorage.setItem('hero-drone-manager:theme:v3', theme)
   }, [theme])
 
   useEffect(() => {
@@ -1284,23 +1435,29 @@ function App() {
   }, [leadView])
 
   useEffect(() => {
-    saveAppState(state)
-    if (!authSession) return
+    const localTimeout = window.setTimeout(() => saveAppState(state), 350)
+    if (!authSession) return () => window.clearTimeout(localTimeout)
 
     if (isFirebaseConfigured) {
       const timeout = window.setTimeout(() => {
         void saveFirebaseAppState(state).catch((error) =>
           setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar as alterações com o Firebase.'),
         )
-      }, 600)
-      return () => window.clearTimeout(timeout)
+      }, 900)
+      return () => {
+        window.clearTimeout(localTimeout)
+        window.clearTimeout(timeout)
+      }
     }
 
-    if (!isSupabaseConfigured) return
+    if (!isSupabaseConfigured) return () => window.clearTimeout(localTimeout)
     const timeout = window.setTimeout(() => {
       void saveCloudAppState(state).catch(() => setToast('Não foi possível sincronizar as alterações com o Supabase.'))
-    }, 600)
-    return () => window.clearTimeout(timeout)
+    }, 900)
+    return () => {
+      window.clearTimeout(localTimeout)
+      window.clearTimeout(timeout)
+    }
   }, [authSession, state])
 
   useEffect(() => {
@@ -1341,25 +1498,26 @@ function App() {
     }
   }, [authSession, availableNavigation, currentUser, page])
 
+  const deferredQuery = useDeferredValue(query)
   const filteredLeads = useMemo(
     () =>
       state.leads.filter((lead) =>
-        query.trim()
+        deferredQuery.trim()
           ? matches(
               `${lead.fullName} ${lead.companyName} ${lead.city} ${lead.phone} ${lead.email} ${lead.serviceInterest}`,
-              query,
+              deferredQuery,
             )
           : true,
       ),
-    [query, state.leads],
+    [deferredQuery, state.leads],
   )
 
   const filteredClients = useMemo(
     () =>
-      state.clients.filter((client) =>
+      state.clients.filter((client) => !client.archived && (
         query.trim()
           ? matches(`${client.fullName} ${client.companyName} ${client.city} ${client.phone} ${client.email}`, query)
-          : true,
+          : true),
       ),
     [query, state.clients],
   )
@@ -1451,7 +1609,11 @@ function App() {
   )
 
   const updateState = (producer: (current: AppState) => AppState, message: string) => {
-    setState((current) => synchronizeOperationalState(producer(current)))
+    setState((current) => {
+      const nextState = synchronizeOperationalState(producer(current))
+      saveAppState(nextState)
+      return nextState
+    })
     setToast(message)
   }
 
@@ -1562,6 +1724,8 @@ function App() {
 
   const openLeadModal = (lead?: Lead) => {
     setSelectedLeadId(lead?.id ?? '')
+    setNewOpportunityContactId(lead?.contactId ?? '')
+    setCreatingContactForOpportunity(false)
     setModal('lead')
   }
 
@@ -1742,6 +1906,9 @@ Emerson
 Hero Drone`
     setEmailComposer({
       lead,
+      whatsappUrl: lead.whatsapp || lead.phone
+        ? `${whatsappLink(lead.whatsapp || lead.phone)}?text=${encodeURIComponent(buildQuickWhatsAppMessage(lead))}`
+        : undefined,
       to: lead.email,
       displayName: contactDisplayName(lead),
       subject,
@@ -1816,6 +1983,13 @@ Hero Drone`,
       ] : current.statusHistory,
     }), composer.quote ? 'Proposta enviada por e-mail com o PDF anexado.' : 'E-mail enviado pelo Gmail e registrado no histórico.')
     setEmailComposer(null)
+    showNotice({
+      title: composer.quote ? 'Proposta enviada com sucesso!' : 'E-mail enviado com sucesso!',
+      description: composer.quote
+        ? `A proposta ${composer.quote.quoteNumber} foi enviada para ${composer.to}, com o PDF e o link de aceite. A oportunidade avançou para “Proposta enviada”.`
+        : `A mensagem foi enviada para ${composer.to} e registrada no histórico do CRM.`,
+      buttonLabel: 'Entendi',
+    })
   }
 
   const openAppointmentModal = (defaults: AppointmentFormDefaults = {}, appointment?: Appointment) => {
@@ -1881,9 +2055,17 @@ Hero Drone`,
       try {
         const credential = await signInWithFirebase(values.email, values.password, values.remember)
         await ensureFirebaseWorkspace(credential.user)
+        const provisionalUser = state.users.find(
+          (item) => item.email.toLowerCase() === values.email.trim().toLowerCase() && item.active,
+        )
+        if (provisionalUser) {
+          saveAuthSession({ userId: provisionalUser.id, email: provisionalUser.email }, values.remember)
+          setAuthSession(getAuthSession())
+          setPage(canOpenPage(provisionalUser, 'dashboard') ? 'dashboard' : availableNavigation[0]?.page ?? 'dashboard')
+        }
         const cloudState = await loadFirebaseAppState(state)
         const resolved = resolveFirebaseState(cloudState, state)
-        const resolvedState = resolved.state
+        const resolvedState = await reconcilePublicProposalAcceptances(resolved.state)
         const internalUser = resolvedState.users.find(
           (item) => item.email.toLowerCase() === values.email.trim().toLowerCase(),
         )
@@ -2015,18 +2197,32 @@ Hero Drone`,
       (current) => {
         const linkedContact = current.clients.find((contact) => contact.id === normalizedValues.contactId)
         if (!linkedContact) return current
+        const syncedContact = {
+          ...linkedContact,
+          fullName: normalizedValues.fullName,
+          companyName: normalizedValues.companyName,
+          phone: normalizedValues.phone,
+          whatsapp: normalizedValues.whatsapp,
+          email: normalizedValues.email,
+          instagram: normalizedValues.instagram,
+          city: normalizedValues.city,
+          neighborhood: normalizedValues.neighborhood,
+          address: normalizedValues.address,
+          source: normalizedValues.source,
+          updatedAt: now,
+        }
         const opportunityValues = {
           ...normalizedValues,
-          fullName: linkedContact.fullName,
-          companyName: (current.companies || []).find((company) => company.id === linkedContact.companyId)?.tradeName || linkedContact.companyName,
-          phone: linkedContact.phone,
-          whatsapp: linkedContact.whatsapp,
-          email: linkedContact.email,
-          instagram: linkedContact.instagram,
-          city: linkedContact.city,
-          neighborhood: linkedContact.neighborhood || '',
-          address: linkedContact.address,
-          source: linkedContact.source,
+          fullName: syncedContact.fullName,
+          companyName: (current.companies || []).find((company) => company.id === syncedContact.companyId)?.tradeName || syncedContact.companyName,
+          phone: syncedContact.phone,
+          whatsapp: syncedContact.whatsapp,
+          email: syncedContact.email,
+          instagram: syncedContact.instagram,
+          city: syncedContact.city,
+          neighborhood: syncedContact.neighborhood || '',
+          address: syncedContact.address,
+          source: syncedContact.source,
         }
         const existing = selectedLeadId
           ? current.leads.find((lead) => lead.id === selectedLeadId)
@@ -2035,6 +2231,8 @@ Hero Drone`,
         if (existing) {
           return {
             ...current,
+            clients: current.clients.map((contact) => contact.id === syncedContact.id ? syncedContact : contact),
+            leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.contactId === syncedContact.id ? { ...prospect, contactName: syncedContact.fullName, name: syncedContact.companyName || syncedContact.fullName, phone: syncedContact.phone, whatsapp: syncedContact.whatsapp, email: syncedContact.email, instagram: syncedContact.instagram, city: syncedContact.city, neighborhood: syncedContact.neighborhood, address: syncedContact.address, updatedAt: now } : prospect),
             leads: current.leads.map((lead) =>
               lead.id === existing.id
                 ? {
@@ -2075,6 +2273,7 @@ Hero Drone`,
 
         return {
           ...current,
+          clients: current.clients.map((contact) => contact.id === syncedContact.id ? syncedContact : contact),
           leads: [lead, ...current.leads],
           leadInteractions: [
             {
@@ -2117,15 +2316,23 @@ Hero Drone`,
     }
 
     const now = new Date().toISOString()
+    const newClientId = selectedClientId || createId('client')
     updateState((current) => selectedClientId ? {
       ...current,
       clients: current.clients.map((client) => client.id === selectedClientId ? { ...client, ...normalizedValues, updatedAt: now } : client),
       leads: current.leads.map((lead) => lead.contactId === selectedClientId ? { ...lead, fullName: normalizedValues.fullName, companyName: (current.companies || []).find((company) => company.id === normalizedValues.companyId)?.tradeName || normalizedValues.companyName, phone: normalizedValues.phone, whatsapp: normalizedValues.whatsapp, email: normalizedValues.email, instagram: normalizedValues.instagram, city: normalizedValues.city, neighborhood: normalizedValues.neighborhood, address: normalizedValues.address, updatedAt: now } : lead),
+      leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.contactId === selectedClientId ? { ...prospect, name: normalizedValues.companyName || normalizedValues.fullName, contactName: normalizedValues.fullName, phone: normalizedValues.phone, whatsapp: normalizedValues.whatsapp, email: normalizedValues.email, instagram: normalizedValues.instagram, city: normalizedValues.city, neighborhood: normalizedValues.neighborhood, address: normalizedValues.address, updatedAt: now } : prospect),
     } : {
       ...current,
-      clients: [{ id: createId('client'), ...normalizedValues, tags: [], archived: false, createdAt: now, updatedAt: now }, ...current.clients],
+      clients: [{ id: newClientId, ...normalizedValues, tags: [], archived: false, createdAt: now, updatedAt: now }, ...current.clients],
     }, selectedClientId ? 'Contato atualizado em todo o CRM.' : 'Contato cadastrado na base central.')
-    setModal(null)
+    if (creatingContactForOpportunity && !selectedClientId) {
+      setNewOpportunityContactId(newClientId)
+      setCreatingContactForOpportunity(false)
+      setModal('lead')
+    } else {
+      setModal(null)
+    }
     setSelectedClientId('')
   }
 
@@ -3622,6 +3829,7 @@ Hero Drone`,
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
+          pricingLabel: item.pricingLabel,
           totalPrice: item.quantity * item.unitPrice,
           createdAt: now,
         }))
@@ -3907,14 +4115,22 @@ Hero Drone`,
     payments: state.payments.filter((payment) => payment.quoteId === quote.id && !payment.deletedAt).length,
     receipts: state.files.filter((file) => file.quoteId === quote.id && file.paymentId && !file.deletedAt).length,
     projects: state.projects.filter((project) => project.quoteId === quote.id && !project.deletedAt).length,
-    sentOrApproved: Boolean(quote.sentAt || quote.approvedAt || ['Enviada', 'Visualizada', 'Em negociação', 'Aprovada', 'Aguardando entrada', 'Entrada recebida', 'Convertida em projeto'].includes(quote.status)),
+    approvedOrConverted: Boolean(quote.approvedAt || ['Aprovada', 'Aguardando entrada', 'Entrada recebida', 'Convertida em projeto'].includes(quote.status)),
   })
 
-  const softDeleteProposal = (quote: Quote, reason: string) => {
+  const softDeleteProposal = async (quote: Quote, reason: string) => {
     const links = proposalLinks(quote)
-    if (links.payments || links.receipts || links.projects || links.sentOrApproved) {
+    if (links.payments || links.receipts || links.projects || links.approvedOrConverted) {
       setToast('Esta proposta possui registros relacionados. Cancele ou arquive para preservar os vínculos.')
       return
+    }
+    if (quote.publicToken) {
+      try {
+        await deletePublicProposal(quote.publicToken)
+      } catch {
+        setToast('Não foi possível remover o link público da proposta. Tente novamente.')
+        return
+      }
     }
     const now = new Date().toISOString()
     const detail = reason.trim() || 'Sem motivo informado.'
@@ -4295,26 +4511,38 @@ Hero Drone`,
     applyMove()
   }
 
-  const deleteLead = (lead: Lead) => {
+  const deleteConnectedContact = (input: { lead?: Lead; client?: Client; prospect?: LeadHunterProspect }) => {
+    const initialContactId = input.client?.id || input.lead?.contactId || input.prospect?.contactId
+    const initialLeadId = input.lead?.id || input.prospect?.leadId
+    const label = input.client ? contactDisplayName(input.client) : input.lead ? contactDisplayName(input.lead) : input.prospect?.name || 'Este registro'
     requestConfirm({
       title: 'Excluir contato?',
-      description: `${contactDisplayName(lead)} será removido das telas principais. Propostas, projetos, pagamentos e histórico continuarão preservados.`,
+      description: `${label} será removido de Contatos, Comercial e Lead Hunter. Propostas, projetos, pagamentos e históricos continuarão preservados.`,
       confirmLabel: 'Excluir contato',
       tone: 'danger',
       onConfirm: () => {
         const now = new Date().toISOString()
         updateState(
-          (current) => ({
-            ...current,
-            leads: current.leads.map((item) => item.id === lead.id ? { ...item, deletedAt: now, deletedBy: activeUserId, deletionReason: undefined, updatedAt: now } : item),
-            statusHistory: [createStatusHistory('Contato', lead.id, 'Contato excluído', 'Contato removido das telas principais sem apagar os relacionamentos.', activeUserId, lead.pipelineStage, lead.pipelineStage, now), ...current.statusHistory],
-          }),
-          'Contato excluído. O histórico foi preservado.',
+          (current) => {
+            const contactId = initialContactId || current.leads.find((item) => item.id === initialLeadId)?.contactId
+            const linkedLeadIds = new Set(current.leads.filter((item) => item.id === initialLeadId || (contactId && item.contactId === contactId)).map((item) => item.id))
+            const linkedProspectIds = new Set((current.leadHunterProspects || []).filter((item) => item.id === input.prospect?.id || (contactId && item.contactId === contactId) || (item.leadId && linkedLeadIds.has(item.leadId))).map((item) => item.id))
+            return {
+              ...current,
+              clients: current.clients.map((item) => item.id === contactId ? { ...item, archived: true, updatedAt: now } : item),
+              leads: current.leads.map((item) => linkedLeadIds.has(item.id) ? { ...item, archived: true, archivedAt: now, archivedBy: activeUserId, deletedAt: now, deletedBy: activeUserId, updatedAt: now } : item),
+              leadHunterProspects: (current.leadHunterProspects || []).map((item) => linkedProspectIds.has(item.id) ? { ...item, decision: 'Rejeitado' as const, decisionAt: now, status: 'Descartado' as const, discardedPermanently: true, isNew: false, updatedAt: now } : item),
+              statusHistory: [createStatusHistory('Contato', contactId || initialLeadId || input.prospect?.id || 'unknown', 'Contato excluído', 'Identidade removida de Contatos, Comercial e Lead Hunter. Registros operacionais preservados.', activeUserId, undefined, undefined, now), ...current.statusHistory],
+            }
+          },
+          'Contato excluído em todos os módulos conectados. O histórico foi preservado.',
         )
         setSelectedLeadId('')
       },
     })
   }
+
+  const deleteLead = (lead: Lead) => deleteConnectedContact({ lead })
 
   const closeLeadDeal = (values: CloseDealFormValues) => {
     const lead = state.leads.find((item) => item.id === values.leadId)
@@ -4945,8 +5173,8 @@ Hero Drone`,
       doc.setTextColor(31, 41, 55)
       doc.text(descriptionLines, margin + 2, y + 4, { lineHeightFactor: 1.15 })
       doc.text(String(item.quantity), margin + descriptionWidth + quantityWidth / 2, y + 4, { align: 'center' })
-      doc.text(formatCurrency(item.unitPrice), margin + descriptionWidth + quantityWidth + unitWidth - 2, y + 4, { align: 'right' })
-      doc.text(formatCurrency(item.totalPrice), pageWidth - margin - 2, y + 4, { align: 'right' })
+      doc.text(item.pricingLabel || formatCurrency(item.unitPrice), margin + descriptionWidth + quantityWidth + unitWidth - 2, y + 4, { align: 'right' })
+      doc.text(item.pricingLabel || formatCurrency(item.totalPrice), pageWidth - margin - 2, y + 4, { align: 'right' })
       y += rowHeight
     })
     if (hiddenItems > 0) {
@@ -5051,32 +5279,65 @@ Hero Drone`,
   const emailQuote = async (quote: Quote) => {
     const recipient = getQuoteRecipient(state, quote)
     if (!recipient.email) {
-      setToast('O contato desta proposta não possui e-mail informado.')
+      showNotice({
+        title: 'E-mail do cliente não informado',
+        description: 'Edite o contato, informe um e-mail válido e tente enviar a proposta novamente.',
+        tone: 'warning',
+      })
       return
     }
-    const pdf = await downloadQuotePdf(quote, false)
-    const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
-    setEmailComposer({
-      lead,
-      quote,
-      to: recipient.email,
-      displayName: recipient.company || recipient.name || 'Cliente',
-      subject: `Proposta ${quote.quoteNumber} · Hero Drone`,
-      body: `Olá, ${recipient.name || recipient.company || 'tudo bem'}!
+    setToast('Preparando PDF, link de aceite e envio pelo Gmail…')
+    try {
+      const googleConnection = getGoogleWorkspaceConnection()
+      const googleClientId = state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
+      if (!googleConnection.connected) {
+        if (!googleClientId) throw new Error('A conta Google ainda não está configurada. Abra Configurações → Google Workspace e informe o OAuth Client ID.')
+        await connectGoogleWorkspace(googleClientId)
+      }
+
+      const token = quote.publicToken || createProposalToken()
+      const publishedQuote = { ...quote, publicToken: token, publicUrl: proposalUrl(token) }
+      const [link, pdf] = await Promise.all([
+        publishProposal(state, publishedQuote, token),
+        downloadQuotePdf(publishedQuote, false),
+      ])
+      updateState((current) => ({
+        ...current,
+        quotes: current.quotes.map((item) => item.id === quote.id ? { ...item, publicToken: token, publicUrl: link, updatedAt: new Date().toISOString() } : item),
+      }), 'Proposta pronta para envio pelo Gmail.')
+      const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
+      setEmailComposer({
+        lead,
+        quote: { ...quote, publicToken: token, publicUrl: link },
+        to: recipient.email,
+        displayName: recipient.company || recipient.name || 'Cliente',
+        subject: 'Proposta comercial · Hero Drone',
+        body: `Olá, ${recipient.name || recipient.company || 'tudo bem'}!
 
 Conforme conversamos, estou enviando em anexo a proposta comercial da Hero Drone para o seu projeto.
 
 No documento você encontra o escopo, investimento, condições de pagamento e prazo previsto. Se quiser ajustar algum ponto, fico à disposição.
 
+Você também pode visualizar e aceitar a proposta online por este link:
+${link}
+
 Abraço,
 Emerson
 Hero Drone`,
-      attachment: {
-        fileName: pdf.fileName,
-        mimeType: 'application/pdf',
-        data: pdf.blob,
-      },
-    })
+        attachment: {
+          fileName: pdf.fileName,
+          mimeType: 'application/pdf',
+          data: pdf.blob,
+        },
+      })
+    } catch (preparationError) {
+      showNotice({
+        title: 'Não foi possível preparar o envio',
+        description: preparationError instanceof Error ? preparationError.message : 'Ocorreu um erro ao preparar a proposta. Tente novamente.',
+        buttonLabel: 'Entendi',
+        tone: 'danger',
+      })
+    }
   }
 
   const restoreDemo = () => {
@@ -5092,7 +5353,11 @@ Hero Drone`,
     })
   }
 
-  if (isFirebaseConfigured && !firebaseAuthReady) {
+  if (publicProposalToken) {
+    return <PublicProposalPage token={publicProposalToken} />
+  }
+
+  if (isFirebaseConfigured && !firebaseAuthReady && !authSession) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0f1012] text-sm font-bold text-white">
         Carregando FlyFlow...
@@ -5123,55 +5388,48 @@ Hero Drone`,
       {emailComposer ? (
         <EmailComposer
           composer={emailComposer}
+          googleOAuthClientId={state.companySettings.googleOAuthClientId || getStoredGoogleOAuthClientId()}
           onClose={() => setEmailComposer(null)}
           onSend={(to, subject, body, htmlBody, attachment) => submitCommercialEmail({ ...emailComposer, to, attachment }, subject, body, htmlBody)}
         />
       ) : null}
       <aside className="app-sidebar hidden border-r border-gray-200 bg-[#171717] text-white lg:block">
         <div className="sticky top-0 flex h-screen flex-col">
-          <div className="app-brand border-b border-white/10 px-4 py-5">
+          <div className="app-brand border-b border-white/10 px-3.5 py-4">
             <div className="flex items-center gap-3">
-              <img className="h-11 w-11 shrink-0 object-contain" src={heroLogoSrc} alt="FlyFlow by Hero Drone" />
+              <img className="h-9 w-9 shrink-0 object-contain" src={heroLogoSrc} alt="FlyFlow by Hero Drone" />
               <div>
-                <h1 className="text-base font-black tracking-tight">{appShortName}</h1>
+                <h1 className="text-sm font-black tracking-tight">{appShortName}</h1>
                 <p className="text-xs font-bold text-[#d4af37]">{appSubtitle}</p>
-                <p className="text-xs text-white/55">CRM, projetos e gestão financeira</p>
               </div>
             </div>
           </div>
-          <nav className="no-scrollbar flex-1 space-y-1 overflow-auto px-3 py-4">
-            {availableNavigation.map((item) => {
-              const Icon = item.icon
-              return (
-                <button
-                  key={item.page}
-                  className={`app-nav-item focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition ${
-                    page === item.page ? 'is-active bg-white text-gray-950' : 'text-white/65 hover:bg-white/10 hover:text-white'
-                  }`}
-                  type="button"
-                  onClick={() => setPage(item.page)}
-                >
-                  <Icon size={18} />
-                  {item.label}
-                </button>
-              )
+          <nav className="no-scrollbar flex-1 overflow-auto px-2.5 py-3">
+            {navigationGroups.map((group) => {
+              const items = availableNavigation.filter((item) => item.group === group)
+              if (!items.length) return null
+              return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => {
+                const Icon = item.icon
+                return <button key={item.page} className={`app-nav-item focus-ring flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold transition ${page === item.page ? 'is-active bg-white text-gray-950' : 'text-white/65 hover:bg-white/10 hover:text-white'}`} type="button" onClick={() => setPage(item.page)}><Icon size={16} strokeWidth={1.8} />{item.label}</button>
+              })}</div></div>
             })}
           </nav>
-          <div className="app-sidebar-footer space-y-3 border-t border-white/10 p-4 text-xs text-white/55">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+          <div className="app-sidebar-footer space-y-2 border-t border-white/10 p-3 text-[0.7rem] text-white/50">
+            <div className="app-user-summary rounded-lg border border-white/10 bg-white/5 p-2.5">
               <p className="font-bold text-white">{currentUser.name}</p>
               <p className="mt-1 truncate">{currentUser.email}</p>
               <p className="mt-1">{permissionSummary(currentUser)}</p>
             </div>
             <p>{isFirebaseConfigured ? 'Firebase sincronizado' : isSupabaseConfigured ? 'Supabase configurado' : 'Banco local vazio no navegador'}</p>
-            <Button className="w-full border border-white/10 bg-white/5 text-white hover:bg-white/10" type="button" onClick={restoreDemo}>
-              Limpar banco
-            </Button>
+            <details className="app-admin-menu">
+              <summary>Administração</summary>
+              <Button className="mt-2 w-full text-white/55 hover:bg-white/5 hover:text-red-300" variant="ghost" type="button" onClick={restoreDemo}>Limpar banco</Button>
+            </details>
           </div>
         </div>
       </aside>
 
-      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-3">{availableNavigation.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><Icon size={19} />{item.label}</button> })}</nav><div className="mobile-drawer-footer space-y-3 border-t border-white/10 p-4"><div className="grid grid-cols-2 gap-2"><label className="text-xs text-white/60">Período<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={period} onChange={(event) => setPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option className="text-black" key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-xs text-white/60">Regime<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={regime} onChange={(event) => setRegime(event.target.value as AccountingRegime)}><option className="text-black" value="cash">Caixa</option><option className="text-black" value="accrual">Competência</option></select></label></div><div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs"><strong className="block text-white">{currentUser.name}</strong><span className="mt-1 block truncate text-white/60">{currentUser.email}</span></div><Button className="w-full border border-white/15 bg-white/10 text-white" type="button" onClick={handleLogout}><LogOut size={16} /> Sair</Button></div></aside></div> : null}
+      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">{navigationGroups.map((group) => { const items = availableNavigation.filter((item) => item.group === group); if (!items.length) return null; return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><Icon size={17} />{item.label}</button> })}</div></div> })}</nav><div className="mobile-drawer-footer space-y-3 border-t border-white/10 p-4">{['dashboard', 'finance', 'reports'].includes(page) ? <div className="grid grid-cols-2 gap-2"><label className="text-xs text-white/60">Período<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={period} onChange={(event) => setPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option className="text-black" key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-xs text-white/60">Regime<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={regime} onChange={(event) => setRegime(event.target.value as AccountingRegime)}><option className="text-black" value="cash">Caixa</option><option className="text-black" value="accrual">Competência</option></select></label></div> : null}<div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs"><strong className="block text-white">{currentUser.name}</strong><span className="mt-1 block truncate text-white/60">{currentUser.email}</span></div><Button className="w-full border border-white/15 bg-white/10 text-white" type="button" onClick={handleLogout}><LogOut size={16} /> Sair</Button></div></aside></div> : null}
 
       <main className="min-w-0">
         <header className="app-header sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
@@ -5195,7 +5453,7 @@ Hero Drone`,
               <GlobalSearchResults query={query} state={state} onNavigate={setPage} />
             </div>
             <div className="app-header-controls order-2 ml-auto flex shrink-0 items-center gap-2 lg:order-3">
-              <div className="hidden w-28 shrink-0 sm:block">
+              <div className={`w-28 shrink-0 ${['dashboard', 'finance', 'reports'].includes(page) ? 'hidden sm:block' : 'hidden'}`}>
                 <select className="field-input min-h-9 py-1.5 text-sm" aria-label="Período" value={period} onChange={(event) => setPeriod(event.target.value as PeriodPreset)}>
                   {periodOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -5204,7 +5462,7 @@ Hero Drone`,
                   ))}
                 </select>
               </div>
-              <div className="hidden w-28 shrink-0 md:block">
+              <div className={`w-28 shrink-0 ${['dashboard', 'finance', 'reports'].includes(page) ? 'hidden md:block' : 'hidden'}`}>
                 <select className="field-input min-h-9 py-1.5 text-sm" aria-label="Regime financeiro" value={regime} onChange={(event) => setRegime(event.target.value as AccountingRegime)}>
                   <option value="cash">Caixa</option>
                   <option value="accrual">Competência</option>
@@ -5241,7 +5499,7 @@ Hero Drone`,
           </div>
         </header>
 
-        <div className="app-content space-y-5 p-3 sm:p-4 lg:p-5 xl:p-6">
+        <div className={`app-content app-page-${page} space-y-4 p-3 sm:p-4 lg:p-5`}>
           {page === 'dashboard' ? (
             <DashboardPage
               metrics={metrics}
@@ -5251,6 +5509,15 @@ Hero Drone`,
               state={state}
               onOpenModal={setModal}
               onNavigate={setPage}
+              onSendEmail={sendCommercialEmail}
+              onOpenWhatsApp={(lead) => {
+                const phone = lead.whatsapp || lead.phone
+                if (!phone) {
+                  setToast('Este contato não possui WhatsApp informado.')
+                  return
+                }
+                window.open(`${whatsappLink(phone)}?text=${encodeURIComponent(buildQuickWhatsAppMessage(lead))}`, '_blank', 'noopener,noreferrer')
+              }}
               onCompleteTask={(taskId) => { const task = state.tasks.find((item) => item.id === taskId); if (task) setTaskStatus(task, 'Concluída') }}
             />
           ) : null}
@@ -5272,6 +5539,7 @@ Hero Drone`,
               onRegisterInteraction={registerLeadInteraction}
               onSendWhatsAppApproach={sendCommercialWhatsAppApproach}
               onSendEmail={sendCommercialEmail}
+              onEmailQuote={emailQuote}
               onScheduleReturn={(lead) => openAppointmentModal({ title: `Retorno - ${contactDisplayName(lead)}`, appointmentType: 'Follow-up', leadId: lead.id })}
               onRegisterDeposit={openQuotePayment}
               onDownloadQuote={(quote) => { void downloadQuotePdf(quote) }}
@@ -5293,6 +5561,7 @@ Hero Drone`,
               onOpenModal={setModal}
               onGenerateProposal={openProposalGenerator}
               onEditContact={(client) => { setSelectedClientId(client.id); setModal('client') }}
+              onDeleteContact={(client) => deleteConnectedContact({ client })}
             />
           ) : null}
           {page === 'leadHunter' && state.leadHunterSettings ? (
@@ -5352,8 +5621,8 @@ Hero Drone`,
                 const searchId = createId('lh-search')
                 try {
                   const provider = new OpenStreetMapLeadProvider()
-                  const resultsPerSearch = 20
-                  const providerLimit = filters.cityIds.length ? 30 : 16
+                  const resultsPerSearch = Math.min(20, Math.max(10, state.leadHunterSettings?.maxResultsPerSearch || 20))
+                  const providerLimit = filters.cityIds.length ? Math.min(30, resultsPerSearch + 10) : Math.max(10, Math.ceil(resultsPerSearch / candidateCities.length) + 6)
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
@@ -5374,7 +5643,6 @@ Hero Drone`,
                   const combinedSources = new Set<string>()
                   const searchWarnings: string[] = []
                   const addCandidate = (lead: (typeof result.leads)[number]) => {
-                    if (isAlreadyKnown(lead)) return
                     const normalizedKey = `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
                     const matchingEntry = [...combinedLeads.entries()].find(([, existing]) =>
                       `${normalizeLeadText(existing.name)}|${normalizeLeadText(existing.city)}` === normalizedKey,
@@ -5402,24 +5670,27 @@ Hero Drone`,
                       sourceUrls: [...new Set([...(existing.sourceUrls || []), ...(lead.sourceUrls || [])])],
                     })
                   }
-                  for (const searchCity of candidateCities) {
-                    try {
-                      const cityResult = await provider.search(
-                        { cityNames: [searchCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
-                        AbortSignal.timeout(18_000),
-                      )
-                      cityResult.sources.forEach((source) => combinedSources.add(source))
-                      cityResult.leads.forEach(addCandidate)
-                      if (combinedLeads.size >= resultsPerSearch) break
-                    } catch (error) {
-                      searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
+                  const citySearches = await Promise.allSettled(candidateCities.map(async (searchCity) => ({
+                    city: searchCity,
+                    result: await provider.search(
+                      { cityNames: [searchCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
+                      AbortSignal.timeout(18_000),
+                    ),
+                  })))
+                  citySearches.forEach((searchResult, index) => {
+                    if (searchResult.status === 'rejected') {
+                      const error = searchResult.reason
+                      searchWarnings.push(`${candidateCities[index].name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
+                      return
                     }
-                  }
+                    searchResult.value.result.sources.forEach((source) => combinedSources.add(source))
+                    searchResult.value.result.leads.forEach(addCandidate)
+                  })
                   try {
                     const googleResult = await searchGooglePlacesLeads({
                       city: candidateCities[0].name,
                       categories: selectedCategories.map((item) => item.name),
-                      limit: 8,
+                      limit: Math.min(20, resultsPerSearch),
                     })
                     googleResult.sources.forEach((source) => combinedSources.add(source))
                     googleResult.warnings.forEach((warning) => searchWarnings.push(warning))
@@ -5430,7 +5701,12 @@ Hero Drone`,
                   if (!combinedLeads.size && searchWarnings.length === candidateCities.length) {
                     throw new Error('As fontes públicas não responderam nesta rodada. Tente novamente em instantes.')
                   }
-                  const rankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
+                  const allRankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
+                  const newRankedLeads = allRankedLeads.filter((lead) => !isAlreadyKnown(lead))
+                  const eligibleKnownLeads = allRankedLeads.filter(isAlreadyKnown)
+                  const rankedLeads = filters.onlyNew
+                    ? newRankedLeads
+                    : [...newRankedLeads, ...(filters.includeEligibleKnown || newRankedLeads.length < 10 ? eligibleKnownLeads : [])]
                   const leadBuckets = new Map<string, typeof rankedLeads>()
                   rankedLeads.forEach((lead) => {
                     const bucketKey = `${normalizeLeadText(lead.city)}|${normalizeLeadText(lead.categoryName)}`
@@ -5447,9 +5723,10 @@ Hero Drone`,
                   result = { ...result, leads: mixedLeads, sources: [...combinedSources], warnings: searchWarnings }
                   let tokenUsage = 0
                   let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
-                  const aiCallsToday = (state.leadHunterSearches || []).filter((search) => search.createdAt.slice(0, 10) === now.slice(0, 10) && search.tokenUsage > 0).length
-                  const effectiveDailyAiLimit = state.leadHunterSettings?.maxDailyCalls || 50
-                  const aiBudgetAvailable = aiCallsToday < effectiveDailyAiLimit
+                  const aiBudgetAvailable = remainingAiCalls(
+                    state.leadHunterSearches || [],
+                    state.leadHunterSettings || { maxDailyCalls: 50 },
+                  ) > 0
                   if (isOpenAILeadEnrichmentConfigured && aiBudgetAvailable) {
                     try {
                       const enrichmentPriority = (raw: typeof result.leads[number]) => {
@@ -5479,18 +5756,21 @@ Hero Drone`,
                           Boolean(googlePlaceId && item.externalIds.googlePlaces === googlePlaceId) ||
                           (item.normalizedName === normalizedName && normalizeLeadText(item.city) === normalizedCity),
                         )
-                        return !alreadyKnown
+                        return filters.includeEligibleKnown || !alreadyKnown || newRankedLeads.length < 10
                       }).sort((a, b) => enrichmentPriority(b) - enrichmentPriority(a))
-                        .slice(0, 3).map((raw) => ({
+                        .slice(0, resultsPerSearch).map((raw) => ({
                         externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '',
                         sources: [], sourceUrls: [], score: 0, scoreReasons: [], normalizedName: normalizeLeadText(raw.name), categoryId: '', status: 'Descoberto' as const,
                         isNew: true, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, changedSinceLastDisplay: false,
                         discardedPermanently: false, notes: '', createdAt: now, updatedAt: now, ...raw,
                         id: raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`,
                       }))
-                      const enrichment = await enrichLeadsWithOpenAI(enrichmentInput, AbortSignal.timeout(110_000))
-                      tokenUsage = enrichment.tokenUsage
-                      enrichmentById = new Map(enrichment.leads.map((lead) => [lead.id, lead]))
+                      if (enrichmentInput.length) {
+                        const batches = Array.from({ length: Math.ceil(enrichmentInput.length / 3) }, (_, index) => enrichmentInput.slice(index * 3, index * 3 + 3))
+                        const enrichments = await Promise.all(batches.map((batch) => enrichLeadsWithOpenAI(batch, AbortSignal.timeout(110_000))))
+                        tokenUsage = enrichments.reduce((total, enrichment) => total + enrichment.tokenUsage, 0)
+                        enrichmentById = new Map(enrichments.flatMap((enrichment) => enrichment.leads).map((lead) => [lead.id, lead]))
+                      }
                     } catch (error) {
                       setToast(`${error instanceof Error ? error.message : 'A pesquisa de contatos falhou.'} Os resultados públicos foram mantidos.`)
                     }
@@ -5507,6 +5787,7 @@ Hero Drone`,
                       const enrichedRaw = enrichment ? {
                         ...raw,
                         contactName: enrichment.contactName || undefined,
+                        address: enrichment.address || raw.address,
                         phone: enrichment.phone || raw.phone,
                         whatsapp: enrichment.whatsapp || raw.whatsapp,
                         email: enrichment.email || raw.email,
@@ -5562,10 +5843,15 @@ Hero Drone`,
                       newCount += 1
                       const created = { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], ...evaluatedRaw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
                       return { ...created, contactValidation: validateLeadContacts(created as LeadHunterProspect, now) }
+                    }).filter((lead) => {
+                      const hasLocation = Boolean(lead.address.trim() || (lead.latitude != null && lead.longitude != null))
+                      const hasDirectContact = Boolean(lead.phone.trim() || lead.whatsapp.trim() || lead.email.trim())
+                      const hasPublicEvidence = lead.sourceUrls.some((url) => /^https?:\/\//i.test(url))
+                      return hasLocation && hasDirectContact && hasPublicEvidence
                     })
                     const incomingIds = new Set(incoming.map((item) => item.id))
                     const searchedCityIds = new Set(candidateCities.map((item) => item.id))
-                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => searchedCityIds.has(item.id) ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.filter((lead) => lead.cityId === item.id).length, newLeadCount: item.newLeadCount + incoming.filter((lead) => lead.cityId === item.id && lead.isNew).length, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: candidateCities.map((item) => item.id), categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: isOpenAILeadEnrichmentConfigured ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
+                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => searchedCityIds.has(item.id) ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.filter((lead) => lead.cityId === item.id).length, newLeadCount: item.newLeadCount + incoming.filter((lead) => lead.cityId === item.id && lead.isNew).length, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: candidateCities.map((item) => item.id), categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: tokenUsage > 0 ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
                   }, newCount
                     ? `${newCount} novo(s) adicionado(s) no topo. Os anteriores foram mantidos abaixo.`
                     : 'Nenhuma empresa inédita foi encontrada nesta rodada. A próxima busca alternará cidades e categorias.')
@@ -5586,6 +5872,14 @@ Hero Drone`,
                   setToast('A integração com a OpenAI não está disponível.')
                   return
                 }
+                if (remainingAiCalls(state.leadHunterSearches || [], state.leadHunterSettings || { maxDailyCalls: 50 }) <= 0) {
+                  setToast('O limite diário de IA foi atingido. A busca pública gratuita continua disponível.')
+                  return
+                }
+                if (shouldSkipManualEnrichment(prospect)) {
+                  setToast('Este lead já foi analisado hoje. Mantive a análise atual para não gastar créditos novamente.')
+                  return
+                }
                 try {
                   const enrichment = await enrichLeadsWithOpenAI([prospect], AbortSignal.timeout(110_000))
                   const enriched = enrichment.leads.find((item) => item.id === prospect.id)
@@ -5600,6 +5894,7 @@ Hero Drone`,
                     leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospect.id ? {
                       ...item,
                       contactName: enriched.contactName || item.contactName,
+                      address: enriched.address || item.address,
                       phone: enriched.phone || item.phone,
                       whatsapp: enriched.whatsapp || item.whatsapp,
                       email: enriched.email || item.email,
@@ -5739,6 +6034,7 @@ Hero Drone`,
                   ),
                 }), 'Lead rejeitado e removido das próximas buscas.')
               }}
+              onDelete={(prospect) => deleteConnectedContact({ prospect })}
               onCreateRoute={(input) => {
                 const now = new Date().toISOString()
                 updateState((current) => ({ ...current, leadHunterRoutes: [{ id: createId('lh-route'), ...input, visitedProspectIds: [], status: 'Planejada', notes: '', createdBy: activeUserId, createdAt: now, updatedAt: now }, ...(current.leadHunterRoutes || [])] }), 'Rota salva no Lead Hunter.')
@@ -5915,8 +6211,8 @@ Hero Drone`,
           return (
             <button
               key={item.page}
-              className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${
-                page === item.page ? 'text-[#171717]' : 'text-gray-500'
+              className={`mobile-nav-item ${page === item.page ? 'is-active' : ''} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${
+                page === item.page ? 'text-[#b58b00]' : 'text-gray-500'
               }`}
               type="button"
               onClick={() => setPage(item.page)}
@@ -5926,7 +6222,7 @@ Hero Drone`,
             </button>
           )
         })}
-        <button className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? 'text-gray-500' : 'text-[#171717]'}`} type="button" aria-label="Abrir menu completo" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />Menu</button>
+        <button className={`mobile-nav-item ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? '' : 'is-active'} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? 'text-gray-500' : 'text-[#b58b00]'}`} type="button" aria-label="Abrir menu completo" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />Menu</button>
       </nav>
 
       <div className="quick-actions-dock fixed bottom-20 right-4 z-40 lg:bottom-6">
@@ -5934,11 +6230,11 @@ Hero Drone`,
           <Button
             aria-expanded={quickActionsOpen}
             aria-label="Ações rápidas"
-            className="h-14 w-14 rounded-full bg-[#d8a500] p-0 text-black shadow-xl hover:bg-[#c69700]"
+            className="h-11 w-11 min-h-11 rounded-full bg-[#d8a500] p-0 text-black shadow-md hover:bg-[#c69700]"
             type="button"
             onClick={() => setQuickActionsOpen((open) => !open)}
           >
-            <Plus size={26} />
+            <Plus size={19} />
           </Button>
           {quickActionsOpen ? (
           <div className="quick-actions-menu absolute bottom-16 right-0 w-52 space-y-1 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
@@ -6047,9 +6343,15 @@ Hero Drone`,
           }}
         >
           <LeadForm
-            key={selectedLead?.id ?? 'new-lead'}
+            key={`${selectedLead?.id ?? 'new-lead'}-${newOpportunityContactId}`}
             lead={selectedLead}
+            initialContactId={newOpportunityContactId}
             contacts={state.clients.filter((contact) => !contact.archived)}
+            onCreateContact={() => {
+              setCreatingContactForOpportunity(true)
+              setSelectedClientId('')
+              setModal('client')
+            }}
             onCancel={() => {
               setModal(null)
               setSelectedLeadId('')
@@ -6059,8 +6361,8 @@ Hero Drone`,
         </Modal>
       ) : null}
       {modal === 'client' ? (
-        <Modal title={selectedClient ? 'Editar contato' : 'Novo contato'} onClose={() => { setModal(null); setSelectedClientId('') }}>
-          <ClientForm client={selectedClient} companies={(state.companies || []).filter((company) => !company.archived)} onCancel={() => { setModal(null); setSelectedClientId('') }} onSubmit={addClient} />
+        <Modal title={selectedClient ? 'Editar contato' : creatingContactForOpportunity ? 'Novo contato para a oportunidade' : 'Novo contato'} onClose={() => { setModal(creatingContactForOpportunity ? 'lead' : null); setCreatingContactForOpportunity(false); setSelectedClientId('') }}>
+          <ClientForm client={selectedClient} companies={(state.companies || []).filter((company) => !company.archived)} onCancel={() => { setModal(creatingContactForOpportunity ? 'lead' : null); setCreatingContactForOpportunity(false); setSelectedClientId('') }} onSubmit={addClient} />
         </Modal>
       ) : null}
       {modal === 'company' ? (
@@ -6347,16 +6649,16 @@ function ProposalCancelForm({ quote, onSubmit, onCancel }: {
 
 function ProposalDeleteForm({ quote, links, onDelete, onCancelQuote, onArchive, onClose }: {
   quote: Quote
-  links: { payments: number; receipts: number; projects: number; sentOrApproved: boolean }
-  onDelete: (reason: string) => void
+  links: { payments: number; receipts: number; projects: number; approvedOrConverted: boolean }
+  onDelete: (reason: string) => void | Promise<void>
   onCancelQuote: () => void
   onArchive: () => void
   onClose: () => void
 }) {
   const [reason, setReason] = useState('')
   const [confirmation, setConfirmation] = useState('')
-  const hasImportantLinks = links.payments > 0 || links.receipts > 0 || links.projects > 0 || links.sentOrApproved
-  if (hasImportantLinks) return <div className="space-y-4"><div className="rounded-xl border border-red-200 bg-red-50 p-4"><h3 className="font-black text-red-900">Esta proposta possui registros relacionados e não pode ser excluída definitivamente.</h3><p className="mt-2 text-sm leading-6 text-red-800">Use cancelamento ou arquivamento para preservar a integridade do histórico.</p></div><div className="grid gap-2 sm:grid-cols-4">{[['Pagamentos', links.payments], ['Comprovantes', links.receipts], ['Projetos', links.projects], ['Enviada/aprovada', links.sentOrApproved ? 'Sim' : 'Não']].map(([label, value]) => <SmallStat key={String(label)} label={String(label)} value={String(value)} />)}</div><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" type="button" onClick={onClose}>Voltar</Button><Button variant="secondary" type="button" onClick={onArchive}>Arquivar proposta</Button><Button variant="danger" type="button" onClick={onCancelQuote}>Cancelar proposta</Button></div></div>
+  const hasImportantLinks = links.payments > 0 || links.receipts > 0 || links.projects > 0 || links.approvedOrConverted
+  if (hasImportantLinks) return <div className="space-y-4"><div className="rounded-xl border border-red-200 bg-red-50 p-4"><h3 className="font-black text-red-900">Esta proposta possui registros relacionados e não pode ser excluída definitivamente.</h3><p className="mt-2 text-sm leading-6 text-red-800">Use cancelamento ou arquivamento para preservar a integridade do histórico.</p></div><div className="grid gap-2 sm:grid-cols-4">{[['Pagamentos', links.payments], ['Comprovantes', links.receipts], ['Projetos', links.projects], ['Aprovada/convertida', links.approvedOrConverted ? 'Sim' : 'Não']].map(([label, value]) => <SmallStat key={String(label)} label={String(label)} value={String(value)} />)}</div><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="ghost" type="button" onClick={onClose}>Voltar</Button><Button variant="secondary" type="button" onClick={onArchive}>Arquivar proposta</Button><Button variant="danger" type="button" onClick={onCancelQuote}>Cancelar proposta</Button></div></div>
   return <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (confirmation === quote.quoteNumber) onDelete(reason) }}><p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">A proposta será excluída logicamente e deixará de aparecer entre as ativas. O histórico será mantido.</p><InputField label="Motivo da exclusão (opcional)"><textarea className="field-input min-h-20" value={reason} onChange={(event) => setReason(event.target.value)} /></InputField><InputField label={`Digite ${quote.quoteNumber} para confirmar`}><input className="field-input" required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></InputField><div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="secondary" type="button" onClick={onClose}>Voltar</Button><Button variant="danger" disabled={confirmation !== quote.quoteNumber} type="submit">Excluir logicamente</Button></div></form>
 }
 
@@ -6376,10 +6678,12 @@ function NoticeDialog({ dialog, onClose }: { dialog: NoticeDialogState; onClose:
 
 function EmailComposer({
   composer,
+  googleOAuthClientId,
   onClose,
   onSend,
 }: {
   composer: EmailComposerState
+  googleOAuthClientId: string
   onClose: () => void
   onSend: (to: string, subject: string, body: string, htmlBody: string, attachment?: EmailComposerState['attachment']) => Promise<void>
 }) {
@@ -6390,8 +6694,11 @@ function EmailComposer({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [attachment, setAttachment] = useState(composer.attachment)
+  const [gmailConnected, setGmailConnected] = useState(() => getGoogleWorkspaceConnection().connected)
+  const [connectingGmail, setConnectingGmail] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
   const canSend = Boolean(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()) && subject.trim() && body.trim() && !sending)
+  const mailtoUrl = `mailto:${encodeURIComponent(to.trim())}?subject=${encodeURIComponent(subject.trim())}&body=${encodeURIComponent(body.trim())}`
 
   useEffect(() => {
     const editor = editorRef.current
@@ -6437,7 +6744,9 @@ function EmailComposer({
       }
     } catch (sendError) {
       whatsAppWindow?.close()
-      setError(sendError instanceof Error ? sendError.message : 'Não foi possível enviar o e-mail.')
+      const message = sendError instanceof Error ? sendError.message : 'Não foi possível enviar o e-mail.'
+      if (/401|conecte novamente|autorização/i.test(message)) setGmailConnected(false)
+      setError(message)
       setSending(false)
     }
   }
@@ -6445,6 +6754,23 @@ function EmailComposer({
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     await send(false)
+  }
+
+  const connectGmail = async () => {
+    if (!googleOAuthClientId.trim()) {
+      setError('Configure o OAuth Client ID em Configurações → Google Workspace.')
+      return
+    }
+    setConnectingGmail(true)
+    setError('')
+    try {
+      await connectGoogleWorkspace(googleOAuthClientId)
+      setGmailConnected(true)
+    } catch (connectionError) {
+      setError(connectionError instanceof Error ? connectionError.message : 'Não foi possível conectar o Gmail.')
+    } finally {
+      setConnectingGmail(false)
+    }
   }
 
   return (
@@ -6544,15 +6870,20 @@ function EmailComposer({
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs text-gray-500">O envio será registrado automaticamente no histórico do CRM.</p>
+          <p className="text-xs text-gray-500">{gmailConnected ? 'O envio será confirmado pelo Gmail e registrado automaticamente no CRM.' : 'Conecte o Gmail para enviar diretamente e receber a confirmação.'}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
-            {composer.whatsappUrl ? (
+            {composer.whatsappUrl && gmailConnected ? (
               <Button variant="secondary" disabled={!canSend} type="button" onClick={() => void send(true)}>
                 <MessageCircle size={16} /> {sending ? 'Enviando...' : 'E-mail + WhatsApp'}
               </Button>
             ) : null}
-            <Button disabled={!canSend} type="submit"><Mail size={16} /> {sending ? 'Enviando...' : 'Enviar e-mail'}</Button>
+            {!gmailConnected ? <Button variant="secondary" disabled={connectingGmail} type="button" onClick={() => void connectGmail()}><Mail size={16} /> {connectingGmail ? 'Conectando…' : 'Conectar Gmail'}</Button> : null}
+            {gmailConnected ? (
+              <Button disabled={!canSend} type="submit"><Mail size={16} /> {sending ? 'Enviando...' : 'Enviar e-mail'}</Button>
+            ) : (
+              <a className={`app-button app-button-ghost inline-flex min-h-11 items-center justify-center rounded-xl px-3 py-2 text-xs font-bold ${canSend ? '' : 'pointer-events-none opacity-50'}`} href={canSend ? mailtoUrl : undefined}>Usar app de e-mail</a>
+            )}
           </div>
         </footer>
       </form>
@@ -6611,6 +6942,119 @@ function ConfirmDialog({
   )
 }
 
+const isValidAcceptanceDocument = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (![11, 14].includes(digits.length) || /^(\d)\1+$/.test(digits)) return false
+  const calculateDigit = (base: string, weights: number[]) => {
+    const total = [...base].reduce((sum, digit, index) => sum + Number(digit) * weights[index], 0)
+    const remainder = total % 11
+    return remainder < 2 ? 0 : 11 - remainder
+  }
+  if (digits.length === 11) {
+    const first = calculateDigit(digits.slice(0, 9), [10, 9, 8, 7, 6, 5, 4, 3, 2])
+    const second = calculateDigit(digits.slice(0, 10), [11, 10, 9, 8, 7, 6, 5, 4, 3, 2])
+    return digits.endsWith(`${first}${second}`)
+  }
+  const first = calculateDigit(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+  const second = calculateDigit(digits.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+  return digits.endsWith(`${first}${second}`)
+}
+
+function PublicProposalPage({ token }: { token: string }) {
+  const [proposal, setProposal] = useState<PublicProposal | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [acceptedBy, setAcceptedBy] = useState('')
+  const [document, setDocument] = useState('')
+  const [accepting, setAccepting] = useState(false)
+
+  useEffect(() => {
+    void loadPublicProposal(token)
+      .then((result) => {
+        setProposal(result)
+        if (!result) setError('Esta proposta não existe ou não está mais disponível.')
+      })
+      .catch(() => setError('Não foi possível carregar a proposta. Tente novamente.'))
+      .finally(() => setLoading(false))
+  }, [token])
+
+  const accept = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!proposal || acceptedBy.trim().length < 3) return
+    if (!isValidAcceptanceDocument(document)) {
+      setError('Informe um CPF ou CNPJ válido para registrar o aceite.')
+      return
+    }
+    setAccepting(true)
+    setError('')
+    try {
+      const acceptedAt = await acceptPublicProposal(token, acceptedBy, document)
+      setProposal({ ...proposal, status: 'Aprovada', acceptedAt, acceptedBy: acceptedBy.trim(), acceptanceDocument: document.trim() })
+    } catch (acceptError) {
+      setError(acceptError instanceof Error ? acceptError.message : 'Não foi possível registrar o aceite.')
+    } finally {
+      setAccepting(false)
+    }
+  }
+
+  if (loading) return <main className="grid min-h-screen place-items-center bg-[#111315] p-5 text-white"><p className="font-bold">Carregando proposta…</p></main>
+  if (!proposal) return <main className="grid min-h-screen place-items-center bg-[#111315] p-5 text-center text-white"><div><AlertTriangle className="mx-auto text-amber-400" size={36} /><h1 className="mt-3 text-xl font-black">Proposta indisponível</h1><p className="mt-2 text-sm text-white/60">{error}</p></div></main>
+
+  const approved = proposal.status === 'Aprovada'
+  return (
+    <main className="public-proposal-page min-h-screen">
+      <header className="public-proposal-header">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
+          <div className="flex min-w-0 items-center gap-3"><img className="h-12 w-12 object-contain" src={heroLogoSrc} alt="Hero Drone" /><div><strong className="block text-base">{proposal.companyName}</strong><span className="text-xs font-bold text-[#e0b936]">Proposta comercial</span></div></div>
+          <span className="public-proposal-reference">Referência {proposal.quoteNumber}</span>
+        </div>
+      </header>
+      <div className="mx-auto max-w-5xl px-4 py-7 sm:px-8 sm:py-10">
+        <section className="public-proposal-hero">
+          <div className="relative z-10 max-w-2xl">
+            <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-[#e0b936]">Proposta comercial para</p>
+            <h1 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">{proposal.customerName}</h1>
+            <div className="mt-4 flex flex-wrap gap-3 text-xs text-white/65"><span>Emissão {formatDate(proposal.issueDate)}</span><span>•</span><span>Válida até {formatDate(proposal.expirationDate)}</span></div>
+          </div>
+          <div className={`public-proposal-status ${approved ? 'is-approved' : ''}`}>{approved ? <CheckCircle2 size={15} /> : null}{proposal.status}</div>
+        </section>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_0.8fr]">
+          <section className="public-proposal-card">
+            <div className="public-proposal-card-heading"><div><p className="public-proposal-eyebrow">Investimento</p><h2>Serviços incluídos</h2></div><span>{proposal.items.length} {proposal.items.length === 1 ? 'item' : 'itens'}</span></div>
+            <div className="mt-5 divide-y divide-[#ece8dc]">{proposal.items.map((item, index) => <div key={`${item.description}-${index}`} className="flex items-start justify-between gap-5 py-4 first:pt-0"><div><strong className="text-[0.95rem]">{item.description}</strong><p className="mt-1 text-xs text-[#77736a]">{item.pricingLabel ? `${item.quantity} × ${item.pricingLabel}` : `${item.quantity} × ${formatCurrency(item.unitPrice)}`}</p></div><strong className="whitespace-nowrap">{item.pricingLabel || formatCurrency(item.totalPrice)}</strong></div>)}</div>
+            <dl className="ml-auto mt-4 grid max-w-sm gap-2 border-t border-[#ded9cd] pt-4 text-sm">
+              <div className="flex justify-between text-[#77736a]"><dt>Subtotal</dt><dd>{formatCurrency(proposal.subtotal)}</dd></div>
+              {proposal.discount ? <div className="flex justify-between text-emerald-700"><dt>Desconto</dt><dd>- {formatCurrency(proposal.discount)}</dd></div> : null}
+              {proposal.travelFee ? <div className="flex justify-between text-[#77736a]"><dt>Deslocamento</dt><dd>{formatCurrency(proposal.travelFee)}</dd></div> : null}
+              <div className="mt-2 flex justify-between border-t border-[#ded9cd] pt-4 text-xl font-black"><dt>Total</dt><dd>{formatCurrency(proposal.totalValue)}</dd></div>
+              <div className="flex justify-between rounded-lg bg-[#f7f2df] px-3 py-2 text-sm"><dt>Sinal de reserva</dt><dd className="font-black">{formatCurrency(proposal.depositValue)}</dd></div>
+            </dl>
+          </section>
+
+          <div className="grid gap-5">
+            <section className="public-proposal-card">
+              <p className="public-proposal-eyebrow">Informações</p><h2 className="mt-1">Condições comerciais</h2>
+              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[#5f5b53]">{proposal.paymentTerms || 'Conforme combinado.'}</p>
+              {proposal.serviceLocation ? <div className="mt-5 border-t border-[#ece8dc] pt-4 text-sm"><p><span className="block text-xs font-bold text-[#89847a]">Local do serviço</span><strong>{proposal.serviceLocation}</strong></p></div> : null}
+            </section>
+          </div>
+        </div>
+
+        <section className={`public-proposal-acceptance mt-5 ${approved ? 'is-approved' : ''}`}>
+          {approved ? <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-center"><div className="public-proposal-check"><CheckCircle2 size={30} /></div><div><p className="public-proposal-eyebrow">Aceite eletrônico confirmado</p><h2 className="mt-1 text-2xl font-black">Proposta aceita</h2><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3"><div><dt>Responsável</dt><dd>{proposal.acceptedBy || 'Cliente'}</dd></div><div><dt>CPF/CNPJ</dt><dd>{proposal.acceptanceDocument || 'Documento não registrado'}</dd></div><div><dt>Data e hora do aceite</dt><dd>{formatDateTime(proposal.acceptedAt)}</dd></div></dl></div></div> : (
+            <form className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]" onSubmit={accept}>
+              <div><p className="public-proposal-eyebrow">Próximo passo</p><h2 className="mt-1 text-2xl font-black">Aprovar esta proposta</h2><p className="mt-3 text-sm leading-6 text-[#68645c]">Informe os dados do responsável. O nome, CPF ou CNPJ e a data do aceite ficarão registrados nesta proposta.</p></div>
+              <div className="grid gap-3 sm:grid-cols-2"><InputField label="Nome completo"><input className="field-input" value={acceptedBy} onChange={(event) => setAcceptedBy(event.target.value)} required minLength={3} /></InputField><InputField label="CPF ou CNPJ"><input className="field-input" value={document} onChange={(event) => setDocument(event.target.value)} required inputMode="numeric" placeholder="Digite somente os números" /></InputField><div className="sm:col-span-2"><Button className="w-full" disabled={accepting || acceptedBy.trim().length < 3 || !isValidAcceptanceDocument(document)} type="submit"><CheckCircle2 size={17} /> {accepting ? 'Registrando aceite…' : 'Aceitar proposta'}</Button>{error ? <p className="mt-3 text-sm font-bold text-red-600">{error}</p> : null}</div></div>
+            </form>
+          )}
+        </section>
+        <p className="mt-7 text-center text-xs text-[#8a867f]">Proposta digital segura · Hero Drone · FlyFlow</p>
+      </div>
+    </main>
+  )
+}
+
 function LoginScreen({
   onSubmit,
   onPasswordReset,
@@ -6622,7 +7066,7 @@ function LoginScreen({
     register,
     handleSubmit,
     watch,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<LoginFormInput, unknown, LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -6633,8 +7077,8 @@ function LoginScreen({
   })
 
   return (
-    <main className="grid min-h-screen bg-[#171717] lg:grid-cols-[1.15fr_0.85fr]">
-      <section className="flex min-h-[42vh] flex-col justify-between overflow-hidden bg-[#171717] p-6 text-white lg:min-h-screen lg:p-10">
+    <main className="login-screen grid min-h-screen bg-[#171717] lg:grid-cols-[1.15fr_0.85fr]">
+      <section className="login-hero flex min-h-[42vh] flex-col justify-between overflow-hidden bg-[#171717] p-6 text-white lg:min-h-screen lg:p-10">
         <div className="flex items-center gap-3">
           <img className="h-16 w-16 shrink-0 object-contain" src={heroLogoSrc} alt="FlyFlow by Hero Drone" />
           <div>
@@ -6643,7 +7087,7 @@ function LoginScreen({
             <p className="text-sm text-white/60">CRM, projetos e gestão financeira</p>
           </div>
         </div>
-        <div className="max-w-3xl py-12">
+        <div className="login-pitch max-w-3xl py-12">
           <p className="text-sm font-bold uppercase text-[#d8a500]">Operação de drones</p>
           <h2 className="mt-3 max-w-2xl text-4xl font-black leading-tight text-white sm:text-5xl">
             Controle contatos, propostas, captações, entregas e financeiro em uma rotina simples.
@@ -6656,9 +7100,9 @@ function LoginScreen({
             ))}
           </div>
         </div>
-        <p className="text-xs text-white/50">Fuso horário padrão: America/Sao_Paulo</p>
+        <p className="login-timezone text-xs text-white/50">Fuso horário padrão: America/Sao_Paulo</p>
       </section>
-      <section className="flex items-center justify-center bg-white p-4 sm:p-8">
+      <section className="login-form-section flex items-center justify-center bg-white p-4 sm:p-8">
         <form className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 shadow-xl" onSubmit={handleSubmit(onSubmit)}>
           <h2 className="text-2xl font-black text-gray-950">Entrar</h2>
           <p className="mt-1 text-sm text-gray-500">Digite seu e-mail e sua senha para acessar o FlyFlow.</p>
@@ -6678,8 +7122,8 @@ function LoginScreen({
                 Recuperar senha
               </button>
             </div>
-            <Button className="w-full" type="submit">
-              Entrar no sistema
+            <Button className="w-full" disabled={isSubmitting} type="submit">
+              {isSubmitting ? 'Entrando…' : 'Entrar no sistema'}
             </Button>
           </div>
         </form>
@@ -6696,6 +7140,8 @@ function DashboardPage({
   state,
   onOpenModal,
   onNavigate,
+  onSendEmail,
+  onOpenWhatsApp,
   onCompleteTask,
 }: {
   metrics: ReturnType<typeof calculateDashboardMetrics>
@@ -6705,6 +7151,8 @@ function DashboardPage({
   state: AppState
   onOpenModal: (modal: ModalType) => void
   onNavigate: (page: Page) => void
+  onSendEmail: (lead: Lead) => void
+  onOpenWhatsApp: (lead: Lead) => void
   onCompleteTask: (taskId: string) => void
 }) {
   const visibleProjects = state.projects.filter(isVisibleProject)
@@ -6726,6 +7174,8 @@ function DashboardPage({
     .slice(0, 6)
 
   const attentionLeads = state.leads.filter(leadNeedsContact).slice(0, 6)
+  const quickContactLead = attentionLeads.find((lead) => lead.whatsapp || lead.phone || lead.email)
+    || state.leads.find((lead) => lead.whatsapp || lead.phone || lead.email)
   const today = dateInput()
   const weekEnd = addCalendarDays(today, 7)
   const operational = {
@@ -6752,25 +7202,39 @@ function DashboardPage({
   const supportingMetrics = [
     { label: 'Margem', value: `${metrics.margin.toFixed(1)}%`, icon: <BarChart3 size={17} />, tone: metrics.margin >= 25 ? 'positive' as const : 'warning' as const },
     { label: 'Pagamentos atrasados', value: metrics.overduePayments, icon: <AlertTriangle size={17} />, tone: metrics.overduePayments > 0 ? 'danger' as const : 'neutral' as const },
-    { label: 'Novos contatos', value: metrics.newLeads, icon: <UserPlus size={17} />, tone: 'neutral' as const },
-    { label: 'Serviços agendados', value: metrics.scheduledServices, icon: <CalendarDays size={17} />, tone: 'neutral' as const },
-    { label: 'Projetos em edição', value: metrics.editingProjects, icon: <Camera size={17} />, tone: 'neutral' as const },
     { label: 'Entregas próximas', value: metrics.upcomingDeliveries, icon: <CheckCircle2 size={17} />, tone: criticalDeliveryCount ? 'danger' as const : 'warning' as const },
-    { label: 'Despesas', value: formatCurrency(metrics.expenses), icon: <DollarSign size={17} />, tone: 'danger' as const },
     { label: 'Previsão no funil', value: formatCurrency(metrics.predictedPipelineValue), icon: <Briefcase size={17} />, tone: 'neutral' as const },
   ]
+  const operationItems = [
+    { label: 'Propostas em rascunho', value: operational.draftQuotes, page: 'quotes' as Page },
+    { label: 'Aguardando aprovação', value: operational.waitingApproval, page: 'quotes' as Page },
+    { label: 'Propostas expirando', value: operational.expiringQuotes, page: 'quotes' as Page },
+    { label: 'Propostas expiradas', value: operational.expiredQuotes, page: 'quotes' as Page },
+    { label: 'Entradas pendentes', value: operational.waitingDeposits, page: 'finance' as Page },
+    { label: 'Aguardando agendamento', value: operational.waitingSchedule, page: 'projects' as Page },
+    { label: 'Captações hoje', value: operational.capturesToday, page: 'agenda' as Page },
+    { label: 'Projetos atrasados', value: operational.delayedProjects, page: 'projects' as Page },
+    { label: 'Pagamentos finais', value: operational.finalPayments, page: 'finance' as Page },
+  ].filter((item) => item.value > 0)
 
   return (
     <div className="dashboard-page space-y-4">
-      <section className="dashboard-intro flex flex-col gap-4 rounded-2xl border border-gray-200 px-5 py-5 shadow-sm sm:flex-row sm:items-center sm:justify-between lg:px-6">
+      <section className="dashboard-command-bar">
         <div>
-          <p className="dashboard-eyebrow text-[0.68rem] font-black uppercase tracking-[0.18em]">Visão geral</p>
-          <h1 className="mt-1 text-xl font-black tracking-tight text-gray-950 sm:text-2xl">Seu negócio em um só olhar</h1>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">Financeiro, agenda e operação reunidos de forma simples para você decidir o próximo passo.</p>
+          <p className="dashboard-eyebrow">Resumo do negócio</p>
+          <h1>O que precisa da sua atenção</h1>
+          <p>Financeiro, comercial e operação no período selecionado.</p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="secondary" type="button" onClick={() => onNavigate('leads')}><Handshake size={16} /> Abrir comercial</Button>
-          <Button variant="secondary" type="button" onClick={() => onNavigate('clients')}><ContactRound size={16} /> Ver contatos</Button>
+        <div className="dashboard-command-actions">
+          <details className="action-menu">
+            <summary className="app-button app-button-secondary focus-ring inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[0.82rem] font-semibold">Atalhos <ChevronDown size={14} /></summary>
+            <div className="action-menu-popover">
+              <button type="button" onClick={() => onNavigate('leads')}><Handshake size={15} /> Abrir comercial</button>
+              <button type="button" onClick={() => onNavigate('clients')}><ContactRound size={15} /> Ver contatos</button>
+              {quickContactLead?.whatsapp || quickContactLead?.phone ? <button type="button" onClick={() => onOpenWhatsApp(quickContactLead)}><MessageCircle size={15} /> WhatsApp para {contactDisplayName(quickContactLead)}</button> : null}
+              {quickContactLead?.email ? <button type="button" onClick={() => onSendEmail(quickContactLead)}><Mail size={15} /> E-mail para {contactDisplayName(quickContactLead)}</button> : null}
+            </div>
+          </details>
           <Button type="button" onClick={() => onOpenModal('appointment')}><CalendarDays size={16} /> Novo agendamento</Button>
         </div>
       </section>
@@ -6782,34 +7246,17 @@ function DashboardPage({
         <MetricCard icon={<TrendingUp size={20} />} label="Lucro líquido" value={formatCurrency(metrics.netProfit)} tone={metrics.netProfit >= 0 ? 'positive' : 'danger'} />
       </div>
 
-      <section className="dashboard-supporting-metrics rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-black text-gray-950">Indicadores do período</h2>
-            <p className="mt-0.5 text-xs text-gray-500">Os números complementares mais importantes.</p>
-          </div>
-          <span className="dashboard-period-chip rounded-full px-2.5 py-1 text-[0.68rem] font-black">Atualizado agora</span>
-        </div>
-        <div className="dashboard-indicator-grid grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+      <section className="dashboard-supporting-metrics rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+        <div className="dashboard-indicator-grid grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {supportingMetrics.map((item) => <DashboardIndicator key={item.label} {...item} />)}
         </div>
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <Panel title="Pulso da operação">
-          <p className="-mt-1 mb-3 text-xs text-gray-500">Pendências do fluxo atualizadas automaticamente.</p>
-          <dl className="dashboard-operation-grid grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            <SmallStat label="Rascunhos" value={operational.draftQuotes} />
-            <SmallStat label="Aguardando aprovação" value={operational.waitingApproval} />
-            <SmallStat label="Expirando" value={operational.expiringQuotes} />
-            <SmallStat label="Expiradas" value={operational.expiredQuotes} />
-            <SmallStat label="Entradas pendentes" value={operational.waitingDeposits} />
-            <SmallStat label="Aguardando agenda" value={operational.waitingSchedule} />
-            <SmallStat label="Captações hoje" value={operational.capturesToday} />
-            <SmallStat label="Captações na semana" value={operational.capturesWeek} />
-            <SmallStat label="Projetos atrasados" value={operational.delayedProjects} />
-            <SmallStat label="Pagamentos finais" value={operational.finalPayments} />
-          </dl>
+          <div className="dashboard-attention-list">
+            {operationItems.length ? operationItems.slice(0, 6).map((item) => <button key={item.label} type="button" onClick={() => onNavigate(item.page)}><span>{item.label}</span><strong>{item.value}</strong><ChevronRight size={15} /></button>) : <DashboardEmptyState icon={<CheckCircle2 size={20} />} message="Nenhuma pendência operacional no momento." />}
+          </div>
         </Panel>
 
         <Panel title="Próximas ações" action={<button className="text-xs font-black text-gray-500 hover:text-gray-950" type="button" onClick={() => onNavigate('agenda')}>Ver agenda</button>}>
@@ -6828,6 +7275,9 @@ function DashboardPage({
         </Panel>
       </div>
 
+      <details className="dashboard-more">
+        <summary><span><strong>Análises e detalhes</strong><small>Gráficos, agenda, entregas, recebimentos e desempenho</small></span><ChevronDown size={17} /></summary>
+        <div className="dashboard-more-content">
       <div className="grid gap-4 xl:grid-cols-[1.45fr_0.9fr]">
         <Panel
           title="Faturamento, lucro e despesas"
@@ -7009,6 +7459,8 @@ function DashboardPage({
           </div>
         </Panel>
       </div>
+        </div>
+      </details>
     </div>
   )
 }
@@ -7053,12 +7505,14 @@ function ClientsPage({
   onOpenModal,
   onGenerateProposal,
   onEditContact,
+  onDeleteContact,
 }: {
   clients: Client[]
   state: AppState
   onOpenModal: (modal: ModalType) => void
   onGenerateProposal: (clientId: string) => void
   onEditContact: (client: Client) => void
+  onDeleteContact: (client: Client) => void
 }) {
   return (
     <div className="space-y-4">
@@ -7066,13 +7520,16 @@ function ClientsPage({
         title="Contatos"
         description="Base central conectada ao comercial, propostas, projetos e financeiro."
         action={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" type="button" onClick={() => onOpenModal('company')}><Plus size={16} /> Nova empresa</Button>
-            <Button variant="secondary" type="button" onClick={() => onGenerateProposal(clients[0]?.id ?? '')}>
-              <Wand2 size={16} /> Gerar proposta
-            </Button>
+          <>
+            <details className="action-menu">
+              <summary className="app-button app-button-secondary focus-ring inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[0.82rem] font-semibold">Mais ações <ChevronDown size={14} /></summary>
+              <div className="action-menu-popover">
+                <button type="button" onClick={() => onOpenModal('company')}><Building2 size={15} /> Nova empresa</button>
+                <button type="button" onClick={() => onGenerateProposal(clients[0]?.id ?? '')}><Wand2 size={15} /> Gerar proposta</button>
+              </div>
+            </details>
             <Button type="button" onClick={() => onOpenModal('client')}><Plus size={16} /> Novo contato</Button>
-          </div>
+          </>
         }
       />
       <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
@@ -7101,12 +7558,11 @@ function ClientsPage({
                     .reduce((sum, payment) => sum + payment.amount, 0)
                   return (
                     <tr key={client.id}>
-                      <td data-label="Canais">
+                      <td data-label="Contato">
                         <div className="font-black text-gray-950">{contactDisplayName(client)}</div>
                         <div className="text-sm text-gray-500">{contactDisplayDetail(client)}</div>
                       </td>
-                      <td data-label="Empresa">{company?.tradeName || client.companyName || '-'}</td>
-                      <td data-label="Contato">
+                      <td data-label="Canais">
                         <div className="flex gap-2">
                           {client.whatsapp || client.phone ? (
                             <a className="rounded-lg border border-gray-200 p-2" href={whatsappLink(client.whatsapp || client.phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /></a>
@@ -7115,12 +7571,13 @@ function ClientsPage({
                           {!client.whatsapp && !client.phone && !client.email ? <span className="text-sm font-bold text-gray-400">Sem contato</span> : null}
                         </div>
                       </td>
+                      <td data-label="Empresa">{company?.tradeName || client.companyName || '-'}</td>
                       <td data-label="Cidade">{client.city}</td>
                       <td data-label="Total">{formatCurrency(total)}</td>
                       <td data-label="Recebido">{formatCurrency(received)}</td>
                       <td data-label="Projetos">{projects.length}</td>
                       <td data-label="Ações">
-                        <div className="flex gap-2"><Button variant="secondary" type="button" onClick={() => onEditContact(client)}><Pencil size={16} /> Editar</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal(client.id)}><Wand2 size={16} /> Proposta</Button></div>
+                        <div className="flex gap-2"><Button variant="secondary" type="button" onClick={() => onEditContact(client)}><Pencil size={16} /> Editar</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal(client.id)}><Wand2 size={16} /> Proposta</Button><IconActionButton label="Excluir contato" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDeleteContact(client)} /></div>
                       </td>
                     </tr>
                   )
@@ -7269,7 +7726,7 @@ function ProjectsPage({
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
             <div className="flex items-center justify-between gap-3"><p className="text-[0.68rem] font-black uppercase text-gray-400">Captação</p><StatusBadge>{captureAppointment?.status || 'Sem agendamento'}</StatusBadge></div>
             <p className="mt-1 text-sm font-black text-gray-900">{captureAppointment ? formatDateTime(captureAppointment.startAt) : project.captureDate ? `${formatDate(project.captureDate)} · horário pendente` : 'Data ainda não definida'}</p>
-            <button className="mt-1 inline-flex items-center gap-1 text-xs font-black text-[#9a7900] hover:underline" type="button" onClick={() => onScheduleCapture(project)}><CalendarDays size={14} /> {captureAppointment ? 'Editar agendamento' : 'Agendar agora'}</button>
+            <button className="mt-1 inline-flex items-center gap-1 text-xs font-black text-blue-600 hover:underline" type="button" onClick={() => onScheduleCapture(project)}><CalendarDays size={14} /> {captureAppointment ? 'Editar agendamento' : 'Agendar agora'}</button>
           </div>
 
           <div>
@@ -7291,12 +7748,9 @@ function ProjectsPage({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+      <PageToolbar title="Projetos" description="Acompanhe execução, agenda e situação financeira em um só fluxo." action={<Button type="button" onClick={onCreateProject}><Plus size={15} /> Novo projeto</Button>} />
+      <section className="list-control-bar">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div><h2 className="text-lg font-black text-gray-950">Projetos</h2><p className="text-sm text-gray-500">Agenda, andamento e financeiro sem excesso de informação.</p></div>
-          <Button className="min-h-9 self-start px-3 py-1 text-xs" type="button" onClick={onCreateProject}><Plus size={15} /> Novo projeto</Button>
-        </div>
-        <div className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
             <button className={`min-h-9 rounded-md px-4 text-sm font-black ${scope === 'active' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setScope('active')}>Ativos <span className="ml-1 text-xs">{activeProjects.length}</span></button>
             <button className={`min-h-9 rounded-md px-4 text-sm font-black ${scope === 'completed' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setScope('completed')}>Finalizados <span className="ml-1 text-xs">{completedProjects.length}</span></button>
@@ -7495,46 +7949,59 @@ function AgendaPage({
   const selectedDayAppointments = sortedAppointments.filter((appointment) =>
     appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === selectedDateKey,
   )
+  const todayKey = dateInput()
+  const todayAppointments = sortedAppointments.filter((appointment) =>
+    appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === todayKey,
+  )
+  const nextSevenDays = addCalendarDays(todayKey, 7)
+  const upcomingAppointments = sortedAppointments.filter((appointment) => {
+    const key = dateInputFromDate(new Date(appointment.startAt))
+    return appointment.status !== 'Cancelado' && key >= todayKey && key <= nextSevenDays
+  })
 
   return (
-    <div className="space-y-4">
+    <div className="agenda-page space-y-4">
       <PageToolbar
         title="Agenda"
-        description="Captações, reuniões, follow-ups, entregas, vencimentos e manutenção."
-        action={
-          <div className="flex flex-wrap gap-2">
-            {([['mensal', 'Mensal'], ['semanal', 'Semanal'], ['diaria', 'Diário'], ['lista', 'Lista']] as const).map(([view, label]) => (
-              <Button key={view} variant={calendarView === view ? 'primary' : 'secondary'} type="button" onClick={() => onCalendarViewChange(view)}>
-                {label}
-              </Button>
-            ))}
-            <Button type="button" onClick={() => onCreateTask()}><Plus size={16} /> Tarefa</Button>
-          </div>
-        }
+        description="Planeje compromissos, captações e retornos sem perder conflitos de horário."
+        action={<Button type="button" onClick={() => onCreateTask()}><Plus size={16} /> Novo compromisso</Button>}
       />
 
-      <section className="grid overflow-hidden rounded-xl border border-gray-200 bg-white lg:grid-cols-[320px_1fr]">
+      <section className="agenda-summary-strip">
+        <div><span>Hoje</span><strong>{todayAppointments.length}</strong><small>compromissos</small></div>
+        <div><span>Próximos 7 dias</span><strong>{upcomingAppointments.length}</strong><small>itens planejados</small></div>
+        <div><span>Captações</span><strong>{upcomingAppointments.filter((item) => item.appointmentType === 'Captação').length}</strong><small>na próxima semana</small></div>
+        <div className={conflicts.length ? 'is-warning' : ''}><span>Conflitos</span><strong>{conflicts.length}</strong><small>{conflicts.length ? 'precisam de ajuste' : 'agenda organizada'}</small></div>
+      </section>
+
+      <section className="agenda-control-bar">
+        <div className="erp-segmented-control" aria-label="Visualização da agenda">
+          {([['mensal', 'Mês'], ['semanal', 'Semana'], ['diaria', 'Dia'], ['lista', 'Lista']] as const).map(([view, label]) => (
+            <button key={view} className={calendarView === view ? 'is-active' : ''} type="button" onClick={() => onCalendarViewChange(view)}>{label}</button>
+          ))}
+        </div>
+        <div className="agenda-period-navigation">
+          <button type="button" aria-label="Período anterior" onClick={() => moveCalendar(-1)}><ChevronLeft size={16} /></button>
+          <strong className="capitalize">{calendarLabel}</strong>
+          <button type="button" aria-label="Próximo período" onClick={() => moveCalendar(1)}><ChevronRight size={16} /></button>
+          <button className="agenda-today-button" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</button>
+        </div>
+      </section>
+
+      <section className="agenda-date-context grid overflow-hidden rounded-xl border border-gray-200 bg-white lg:grid-cols-[270px_1fr]">
         <MiniAgendaCalendar
           appointments={sortedAppointments}
           selectedDate={calendarDate}
           onSelectDate={setCalendarDate}
         />
-        <div className="flex min-h-36 flex-col justify-between border-t border-gray-100 p-4 lg:border-l lg:border-t-0">
+        <div className="border-t border-gray-100 p-4 lg:border-l lg:border-t-0">
           <div>
-            <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Período selecionado</p>
-            <h2 className="mt-1 text-xl font-black capitalize text-gray-950">{calendarLabel}</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              {calendarDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-              {' · '}
-              {selectedDayAppointments.length
-                ? `${selectedDayAppointments.length} compromisso(s)`
-                : 'Nenhum compromisso'}
-            </p>
+            <p className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-gray-400">Dia selecionado</p>
+            <h2 className="mt-1 text-base font-semibold capitalize text-gray-950">{calendarDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => moveCalendar(-1)}><ChevronLeft size={15} /> Anterior</Button>
-            <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</Button>
-            <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => moveCalendar(1)}>Próximo <ChevronRight size={15} /></Button>
+          <div className="agenda-day-preview mt-3">
+            {selectedDayAppointments.slice(0, 4).map((appointment) => <button key={appointment.id} type="button" onClick={() => onOpenAppointment(appointment)}><i style={{ backgroundColor: appointment.color }} /><span><strong>{appointment.title}</strong><small>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {appointment.appointmentType}</small></span></button>)}
+            {!selectedDayAppointments.length ? <p>Nenhum compromisso neste dia. Clique no calendário para criar um horário.</p> : null}
           </div>
         </div>
       </section>
@@ -7577,7 +8044,7 @@ function AgendaPage({
             return (
               <article
                 key={appointment.id}
-                className="cursor-pointer rounded-lg border border-gray-200 p-3 transition hover:border-[#d8a500] hover:bg-amber-50"
+                className="agenda-list-row cursor-pointer rounded-lg border border-gray-200 p-3 transition"
                 role="button"
                 tabIndex={0}
                 onClick={() => onOpenAppointment(appointment)}
@@ -7723,11 +8190,9 @@ function QuotesPage({
                   <h3 className="mt-1 truncate text-sm font-black text-gray-950 sm:text-base">{displayTitle}</h3>
                   <p className="mt-0.5 truncate text-xs text-gray-500">{recipientCompany} · {items.length} item(ns) · validade {formatDate(quote.expirationDate)}</p>
                 </button>
-                <div className="grid grid-cols-3 gap-4 text-right text-xs lg:min-w-[260px]"><div><p className="font-bold text-gray-400">Total</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.totalValue)}</p></div><div><p className="font-bold text-gray-400">Sinal</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.depositValue)}</p></div><div><p className="font-bold text-gray-400">Entrega</p><p className="mt-0.5 font-black text-gray-900">{formatDate(quote.deliveryDeadline)}</p></div></div>
+                <div className="grid grid-cols-2 gap-4 text-right text-xs lg:min-w-[170px]"><div><p className="font-bold text-gray-400">Total</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.totalValue)}</p></div><div><p className="font-bold text-gray-400">Sinal</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.depositValue)}</p></div></div>
                 <div className="quote-card-primary-actions flex flex-wrap items-center gap-1.5 lg:justify-end">
                   {quote.archivedAt || quote.deletedAt ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onRestoreQuote(quote)}>Restaurar</Button> : primaryAction}
-                  {!quote.archivedAt && !quote.deletedAt && canApprove && !approvalIsPrimary ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onApprove(quote)}><CheckCircle2 size={15} /> Aprovar</Button> : null}
-                  {!(quote.archivedAt || quote.deletedAt) ? <><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEmailQuote(quote)}><Mail size={15} /><span className="hidden sm:inline">Enviar</span></Button><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onDownloadPdf(quote)}><Download size={15} /><span className="hidden sm:inline">PDF</span></Button></> : null}
                   <button className="focus-ring min-h-9 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-600 hover:bg-gray-50" type="button" onClick={() => setExpandedQuoteId(expanded ? '' : quote.id)}>{expanded ? 'Fechar' : 'Detalhes'}</button>
                 </div>
               </div>
@@ -7816,7 +8281,9 @@ function QuotesPage({
                     </div>
                   </div>
                 </div>
+                {quote.approvedAt ? <div className="mt-3 grid gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm sm:grid-cols-3"><div><p className="text-xs font-black uppercase text-emerald-700">Aceite registrado por</p><strong>{quote.approvedBy || 'Cliente'}</strong></div><div><p className="text-xs font-black uppercase text-emerald-700">CPF/CNPJ</p><strong>{quote.approvalDocument || 'Não informado'}</strong></div><div><p className="text-xs font-black uppercase text-emerald-700">Data e hora</p><strong>{formatDateTime(quote.approvedAt)}</strong></div></div> : null}
                 <div className="quote-card-actions mt-3 flex flex-wrap items-center gap-1.5">
+                  {!quote.archivedAt && !quote.deletedAt ? <><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEmailQuote(quote)}><Mail size={14} /> Enviar</Button>{quote.publicUrl ? <a className="app-button app-button-secondary inline-flex min-h-9 items-center gap-1 rounded-lg border px-3 py-1 text-xs font-semibold" href={quote.publicUrl} target="_blank" rel="noreferrer"><Link2 size={14} /> Link</a> : null}<Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onDownloadPdf(quote)}><Download size={14} /> PDF</Button>{canApprove && !approvalIsPrimary ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onApprove(quote)}><CheckCircle2 size={14} /> Aprovar</Button> : null}</> : null}
                   {!quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Arquivada', 'Excluída logicamente'].includes(quote.status) ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onEditQuote(quote)}><Pencil size={14} /> Editar</Button> : null}
                   <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onCopyQuote(quote)}><Copy size={14} /> Copiar</Button>
                   {whatsapp ? <a className="focus-ring inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1 text-xs font-bold text-gray-900" href={whatsappLink(whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={14} /> WhatsApp</a> : null}
@@ -7928,48 +8395,53 @@ function FinancePage({
         title="Financeiro"
         description="Receitas, despesas, contas a receber, fluxo de caixa e pagamentos parciais."
         action={
-          <div className="flex flex-wrap gap-2">
-            {receiptShortcut ? <Button variant="secondary" type="button" onClick={() => onOpenReceipt(receiptShortcut)}><Paperclip size={16} /> {pendingReceipts ? 'Anexar comprovante' : 'Comprovantes'}</Button> : null}
+          <div className="flex items-center gap-2">
             <Button type="button" onClick={() => onOpenPayment()}><Plus size={16} /> Receita</Button>
-            <Button variant="secondary" type="button" onClick={() => onOpenExpense()}><Plus size={16} /> Despesa</Button>
-            <Button variant="secondary" type="button" onClick={() => onOpenBankTransfer()}><ArrowRightLeft size={16} /> Transferir</Button>
-            <Button variant="secondary" type="button" onClick={exportFinancialCsv}><Download size={16} /> Exportar CSV</Button>
+            <details className="action-menu relative">
+              <summary className="app-button app-button-secondary focus-ring inline-flex min-h-9 cursor-pointer list-none items-center rounded-lg border px-3 text-[0.82rem] font-semibold">Mais ações <ChevronDown size={14} /></summary>
+              <div className="action-menu-popover absolute right-0 top-11 z-20 w-52 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
+                <button type="button" onClick={() => onOpenExpense()}><Plus size={14} /> Nova despesa</button>
+                {receiptShortcut ? <button type="button" onClick={() => onOpenReceipt(receiptShortcut)}><Paperclip size={14} /> {pendingReceipts ? 'Anexar comprovante' : 'Comprovantes'}</button> : null}
+                <button type="button" onClick={() => onOpenBankTransfer()}><ArrowRightLeft size={14} /> Transferir</button>
+                <button type="button" onClick={exportFinancialCsv}><Download size={14} /> Exportar CSV</button>
+              </div>
+            </details>
           </div>
         }
       />
-      <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+      <section className="finance-overview rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
           <div><h2 className="flex items-center gap-2 text-sm font-black text-gray-950"><Wallet className="text-amber-600" size={17} /> Posição financeira acumulada</h2><p className="mt-0.5 text-xs text-gray-500">Saldos atuais e todos os compromissos em aberto; use o Dashboard abaixo para analisar períodos.</p></div>
           <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">{receivableProgress.toFixed(0)}% recebido</span>
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
-          <article className="relative overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-4 xl:col-span-4">
-            <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-amber-200/50" />
-            <div className="relative"><p className="text-xs font-black uppercase tracking-wide text-amber-800">Disponível hoje</p><p className="mt-2 text-3xl font-black tracking-tight text-gray-950">{formatCurrency(currentBalance)}</p><p className="mt-2 text-xs text-gray-600">Saldo consolidado das suas contas bancárias.</p></div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-[0.68rem] font-black uppercase tracking-wide text-gray-500">Disponível hoje</p><p className="mt-1 text-xl font-black tracking-tight text-gray-950">{formatCurrency(currentBalance)}</p>
           </article>
-          <article className="rounded-xl border border-gray-200 bg-gray-50 p-4 xl:col-span-3">
-            <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-gray-500">Depois de receber</p><p className="mt-2 text-2xl font-black text-gray-950">{formatCurrency(projectedBalance)}</p></div><TrendingUp className="text-amber-600" size={20} /></div>
-            <p className="mt-2 text-xs text-gray-500">Inclui {formatCurrency(pendingTotal)} pendentes.</p>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-[0.68rem] font-black uppercase tracking-wide text-gray-500">Recebido</p><p className="mt-1 text-xl font-black text-emerald-600">{formatCurrency(receivedTotal)}</p>
           </article>
-          <article className="rounded-xl border border-gray-200 p-4 xl:col-span-2">
-            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Recebido acumulado</p><p className="mt-2 text-xl font-black text-emerald-600">{formatCurrency(receivedTotal)}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(receivableProgress, 100)}%` }} /></div>
-          </article>
-          <article className="rounded-xl border border-gray-200 p-4 xl:col-span-3">
-            <p className="text-xs font-black uppercase tracking-wide text-gray-500">Ainda falta receber</p><p className="mt-2 text-xl font-black text-amber-600">{formatCurrency(pendingTotal)}</p><p className={`mt-2 text-xs font-bold ${overdueTotal > 0 ? 'text-red-600' : 'text-gray-500'}`}>{overdueTotal > 0 ? `${formatCurrency(overdueTotal)} já vencidos` : 'Nenhum valor vencido'}</p>
+          <article className="rounded-lg border border-gray-200 p-3">
+            <p className="text-[0.68rem] font-black uppercase tracking-wide text-gray-500">A receber</p><p className="mt-1 text-xl font-black text-amber-600">{formatCurrency(pendingTotal)}</p><p className={`mt-1 text-[0.7rem] ${overdueTotal > 0 ? 'text-red-600' : 'text-gray-500'}`}>{overdueTotal > 0 ? `${formatCurrency(overdueTotal)} vencidos` : 'Em dia'}</p>
           </article>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm">
-          <span className="text-gray-600">Contas a pagar: <strong className="text-gray-950">{formatCurrency(pendingExpenseTotal)}</strong></span>
-          <span className="text-gray-600">Projeção líquida: <strong className={projectedNetBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(projectedNetBalance)}</strong></span>
-        </div>
+        <details className="progressive-section mt-3"><summary>Ver projeções e compromissos</summary><div className="mt-3 grid gap-3 text-sm sm:grid-cols-3"><SmallStat label="Depois de receber" value={formatCurrency(projectedBalance)} /><SmallStat label="Contas a pagar" value={formatCurrency(pendingExpenseTotal)} /><SmallStat label="Projeção líquida" value={formatCurrency(projectedNetBalance)} /></div></details>
       </section>
       {pendingReceipts ? <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-bold text-amber-800" type="button" onClick={() => receiptShortcut && onOpenReceipt(receiptShortcut)}><span>{pendingReceipts} comprovante(s) pendente(s) de anexação ou conferência.</span><span className="whitespace-nowrap underline">Anexar agora</span></button> : null}
-      <div className="flex flex-wrap gap-2">
-        {(['dashboard', 'receitas', 'despesas', 'receber', 'fluxo', 'contas', 'arquivados'] as const).map((tab) => (
+      <div className="finance-tabs flex flex-wrap items-center gap-1">
+        {(['dashboard', 'receber', 'receitas', 'despesas'] as const).map((tab) => (
           <Button key={tab} variant={financeTab === tab ? 'primary' : 'secondary'} type="button" onClick={() => onFinanceTabChange(tab)}>
-            {tab === 'dashboard' ? 'Dashboard' : tab === 'receber' ? 'contas a receber' : tab === 'contas' ? 'contas bancárias' : tab}
+            {tab === 'dashboard' ? 'Dashboard' : tab === 'receber' ? 'Contas a receber' : tab === 'receitas' ? 'Receitas' : 'Despesas'}
           </Button>
         ))}
+        <details className="action-menu relative">
+          <summary className="app-button app-button-secondary focus-ring inline-flex min-h-9 cursor-pointer list-none items-center rounded-lg border px-3 text-[0.82rem] font-semibold">Mais <ChevronDown size={14} /></summary>
+          <div className="action-menu-popover absolute left-0 top-11 z-20 w-48 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
+            <button type="button" onClick={() => onFinanceTabChange('fluxo')}>Fluxo de caixa</button>
+            <button type="button" onClick={() => onFinanceTabChange('contas')}>Contas bancárias</button>
+            <button type="button" onClick={() => onFinanceTabChange('arquivados')}>Arquivados</button>
+          </div>
+        </details>
       </div>
       {financeTab === 'dashboard' ? (
         <FinancialDashboard state={state} />
@@ -8081,20 +8553,24 @@ function FinancialDashboard({ state }: { state: AppState }) {
 
   return (
     <div className="space-y-4">
-      <Panel title="Dashboard por período" action={<Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={exportReport}><Download size={14} /> Exportar relatório</Button>}>
-        <div className="grid gap-3 md:grid-cols-3">
+      <details className="progressive-section">
+        <summary>Período e comparação <span>{periodLabel} · {reportRegime === 'cash' ? 'Caixa' : 'Competência'}</span></summary>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
           <InputField label="Período principal"><select className="field-input" value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></InputField>
           <InputField label="Comparar com"><select className="field-input" value={comparisonPeriod} onChange={(event) => setComparisonPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></InputField>
           <InputField label="Regime"><select className="field-input" value={reportRegime} onChange={(event) => setReportRegime(event.target.value as AccountingRegime)}><option value="cash">Caixa (quando pagou/recebeu)</option><option value="accrual">Competência (quando ocorreu)</option></select></InputField>
         </div>
-        <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">Comparando <strong className="text-gray-800">{periodLabel}</strong> com <strong className="text-gray-800">{comparisonLabel}</strong>.</p>
-      </Panel>
+        <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs text-gray-500">Comparando <strong>{periodLabel}</strong> com <strong>{comparisonLabel}</strong>.</p><Button className="min-h-8 px-2.5 py-1 text-xs" variant="secondary" type="button" onClick={exportReport}><Download size={13} /> Exportar</Button></div>
+      </details>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard icon={<DollarSign size={19} />} label="Recebido no período" value={formatCurrency(current.received)} tone="positive" detail={<span className="flex items-center justify-between gap-2">Comparativo <Delta value={current.received} previous={comparison.received} /></span>} />
         <MetricCard icon={<AlertTriangle size={19} />} label="Despesas no período" value={formatCurrency(current.expenses)} tone="danger" detail={<span className="flex items-center justify-between gap-2">Comparativo <Delta inverse value={current.expenses} previous={comparison.expenses} /></span>} />
         <MetricCard icon={<TrendingUp size={19} />} label="Resultado do período" value={formatCurrency(current.result)} tone={current.result >= 0 ? 'positive' : 'danger'} detail={<span className="flex items-center justify-between gap-2">Comparativo <Delta value={current.result} previous={comparison.result} /></span>} />
         <MetricCard icon={<Clock size={19} />} label="A receber no período" value={formatCurrency(current.pending)} tone="warning" detail={`${formatCurrency(current.overdue)} vencidos`} />
       </div>
+      <details className="progressive-section">
+        <summary>Análises e relatórios <span>Gráficos, DRE, previsão e lançamentos</span></summary>
+        <div className="mt-4 space-y-4">
       <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
         <Panel title="Comparação dos períodos">
           <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={comparisonData}><CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" /><XAxis dataKey="metric" /><YAxis /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Legend /><Bar dataKey="atual" name={periodLabel} fill="#d8a500" radius={[5, 5, 0, 0]} /><Bar dataKey="comparacao" name={comparisonLabel} fill="#64748b" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div>
@@ -8118,6 +8594,8 @@ function FinancialDashboard({ state }: { state: AppState }) {
         <div className="mb-3 flex flex-wrap gap-2">{([['all', 'Todos'], ['received', 'Recebidos'], ['pending', 'A receber'], ['expenses', 'Despesas']] as const).map(([value, label]) => <Button className="min-h-9 px-3 py-1 text-xs" key={value} variant={drilldown === value ? 'primary' : 'secondary'} type="button" onClick={() => setDrilldown(value)}>{label}</Button>)}</div>
         <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Status</th><th>Valor</th></tr></thead><tbody>{visibleReportRows.map((row) => <tr key={row.id}><td data-label="Data">{formatDate(row.date)}</td><td data-label="Tipo"><StatusBadge>{row.type}</StatusBadge></td><td data-label="Descrição">{row.description}</td><td data-label="Status">{row.status}</td><td data-label="Valor"><strong className={row.value >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(row.value)}</strong></td></tr>)}</tbody></table>{!visibleReportRows.length ? <p className="rounded-xl bg-gray-50 p-8 text-center text-sm text-gray-500">Nenhum lançamento encontrado neste filtro.</p> : null}</div>
       </Panel>
+        </div>
+      </details>
     </div>
   )
 }
@@ -8409,6 +8887,7 @@ function ProposalGenerator({
         description: item.description,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
+        pricingLabel: item.pricingLabel,
       }))
     : [{ description: '', quantity: 1, unitPrice: 0 }]
   const initialTotal = editingQuote?.totalValue ?? 0
@@ -8511,10 +8990,6 @@ function ProposalGenerator({
       setError('Informe o serviço e a quantidade de cada item.')
       return
     }
-    if (items.some((item) => item.unitPrice <= 0)) {
-      setError('Digite manualmente um valor maior que zero para cada serviço.')
-      return
-    }
     if (depositPercentage < 0 || depositPercentage > 100) {
       setError('O percentual de sinal deve ficar entre 0 e 100.')
       return
@@ -8568,10 +9043,11 @@ function ProposalGenerator({
         <datalist id="proposal-service-options">{serviceOptions.map((service) => <option key={service} value={service} />)}</datalist>
         <div className="mt-3 space-y-3">
           {items.map((item, index) => (
-            <div key={index} className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_5rem_9rem_2.75rem]">
+            <div key={index} className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_4.5rem_8rem_7rem_2.75rem]">
               <InputField label="Serviço"><input className="field-input" list="proposal-service-options" placeholder="Digite o serviço" value={item.description} onChange={(event) => updateItem(index, { description: event.target.value })} /></InputField>
               <InputField label="Qtd."><input className="field-input text-center" min="1" type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} /></InputField>
               <InputField label="Valor unitário"><CurrencyInput value={item.unitPrice} onChange={(value) => updateItem(index, { unitPrice: value })} /></InputField>
+              <InputField label="Exibição"><select className="field-input" value={item.pricingLabel || 'Cobrado'} onChange={(event) => { const value = event.target.value; updateItem(index, value === 'Cobrado' ? { pricingLabel: undefined } : { pricingLabel: value as 'Incluso' | 'Gratuito', unitPrice: 0 }) }}><option>Cobrado</option><option>Incluso</option><option>Gratuito</option></select></InputField>
               <button aria-label="Remover item" className="focus-ring flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-red-600" disabled={items.length === 1} type="button" onClick={() => removeItem(index)}><Trash2 size={16} /></button>
             </div>
           ))}
@@ -8631,13 +9107,55 @@ function EquipmentPage({
   onEdit: (equipment: Equipment) => void
   onDelete: (equipment: Equipment) => void
 }) {
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('all')
+  const [availability, setAvailability] = useState<'all' | 'active' | 'inactive' | 'maintenance'>('all')
+  const today = dateInput()
+  const categories = [...new Set(state.equipment.map((item) => item.category).filter(Boolean))].sort()
+  const maintenanceDue = state.equipment.filter((item) => item.active && item.nextMaintenanceDate && item.nextMaintenanceDate <= today)
+  const activeEquipment = state.equipment.filter((item) => item.active)
+  const inventoryValue = state.equipment.reduce((total, item) => total + item.purchaseValue, 0)
+  const filteredEquipment = state.equipment.filter((item) => {
+    const haystack = `${item.name} ${item.category} ${item.brand} ${item.model} ${item.serialNumber}`.toLocaleLowerCase('pt-BR')
+    if (search.trim() && !haystack.includes(search.trim().toLocaleLowerCase('pt-BR'))) return false
+    if (category !== 'all' && item.category !== category) return false
+    if (availability === 'active' && !item.active) return false
+    if (availability === 'inactive' && item.active) return false
+    if (availability === 'maintenance' && !(item.active && item.nextMaintenanceDate && item.nextMaintenanceDate <= today)) return false
+    return true
+  })
+
   return (
-    <div className="space-y-4">
+    <div className="equipment-page space-y-4">
       <PageToolbar
         title="Equipamentos"
-        description="Inventário, estado, manutenção e itens disponíveis para operação."
-        action={<Button type="button" onClick={onCreate}><Plus size={16} /> Novo equipamento</Button>}
+        description="Controle disponibilidade, patrimônio e manutenção dos ativos operacionais."
+        action={<Button type="button" onClick={onCreate}><Plus size={16} /> Cadastrar equipamento</Button>}
       />
+      <section className="equipment-summary-strip">
+        <div><span>Inventário</span><strong>{state.equipment.length}</strong><small>itens cadastrados</small></div>
+        <div><span>Disponíveis</span><strong>{activeEquipment.length}</strong><small>ativos para operação</small></div>
+        <div className={maintenanceDue.length ? 'is-warning' : ''}><span>Manutenção</span><strong>{maintenanceDue.length}</strong><small>{maintenanceDue.length ? 'revisões vencidas' : 'nenhuma pendência'}</small></div>
+        <div><span>Valor patrimonial</span><strong>{formatCurrency(inventoryValue)}</strong><small>valor de aquisição</small></div>
+      </section>
+
+      <section className="equipment-control-bar">
+        <label className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <input className="field-input field-input-with-leading-icon" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar equipamento, marca, modelo ou série…" />
+        </label>
+        <select className="field-input" aria-label="Categoria" value={category} onChange={(event) => setCategory(event.target.value)}>
+          <option value="all">Todas as categorias</option>
+          {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select className="field-input" aria-label="Disponibilidade" value={availability} onChange={(event) => setAvailability(event.target.value as typeof availability)}>
+          <option value="all">Todos os status</option>
+          <option value="active">Disponíveis</option>
+          <option value="maintenance">Manutenção vencida</option>
+          <option value="inactive">Inativos</option>
+        </select>
+      </section>
+
       {state.equipment.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center">
           <PackageCheck className="mx-auto text-gray-400" size={34} />
@@ -8646,36 +9164,26 @@ function EquipmentPage({
           <Button className="mt-4" type="button" onClick={onCreate}><Plus size={16} /> Cadastrar equipamento</Button>
         </div>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {state.equipment.map((item) => (
-          <article key={item.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold uppercase text-gray-500">{item.category}</p>
-                <h3 className="text-lg font-black text-gray-950">{item.name}</h3>
-                <p className="text-sm text-gray-500">{item.brand} {item.model}</p>
-                {item.serialNumber ? <p className="mt-1 text-xs font-bold text-gray-400">S/N {item.serialNumber}</p> : null}
+      {state.equipment.length && !filteredEquipment.length ? <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center"><h3 className="font-semibold text-gray-950">Nenhum item encontrado</h3><p className="mt-1 text-sm text-gray-500">Altere a busca ou os filtros para visualizar o inventário.</p></div> : null}
+      {filteredEquipment.length ? (
+        <section className="equipment-table-shell">
+          <div className="equipment-table-header"><span>Equipamento</span><span>Condição</span><span>Manutenção</span><span>Patrimônio</span><span aria-hidden="true" /></div>
+          {filteredEquipment.map((item) => {
+            const overdue = Boolean(item.active && item.nextMaintenanceDate && item.nextMaintenanceDate <= today)
+            return <article key={item.id} className="equipment-row">
+              <div className="equipment-identity">
+                <span className="equipment-category-icon"><PackageCheck size={17} /></span>
+                <div className="min-w-0"><p>{item.category}</p><h3>{item.name}</h3><small>{[item.brand, item.model, item.serialNumber ? `S/N ${item.serialNumber}` : ''].filter(Boolean).join(' · ') || 'Sem identificação complementar'}</small></div>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <div className="flex gap-1">
-                  <IconActionButton label="Editar equipamento" icon={<Pencil size={15} />} onClick={() => onEdit(item)} />
-                  <IconActionButton label="Excluir equipamento" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDelete(item)} />
-                </div>
-                <StatusBadge>{item.active ? item.condition : 'Inativo'}</StatusBadge>
-              </div>
-            </div>
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <SmallStat label="Compra" value={formatCurrency(item.purchaseValue)} />
-              <SmallStat label="Próxima revisão" value={formatDate(item.nextMaintenanceDate)} />
-            </dl>
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <SmallStat label="Comprado em" value={item.purchaseDate ? formatDate(item.purchaseDate) : '-'} />
-              <SmallStat label="Última revisão" value={item.lastMaintenanceDate ? formatDate(item.lastMaintenanceDate) : '-'} />
-            </div>
-            {item.notes ? <p className="mt-3 text-sm text-gray-600">{item.notes}</p> : null}
-          </article>
-        ))}
-      </div>
+              <div className="equipment-cell" data-label="Condição"><StatusBadge>{item.active ? item.condition : 'Inativo'}</StatusBadge><small>{item.active ? 'Disponível para uso' : 'Fora de operação'}</small></div>
+              <div className={`equipment-cell ${overdue ? 'is-overdue' : ''}`} data-label="Manutenção"><strong>{item.nextMaintenanceDate ? formatDate(item.nextMaintenanceDate) : 'Não programada'}</strong><small>{overdue ? 'Revisão vencida' : item.lastMaintenanceDate ? `Última em ${formatDate(item.lastMaintenanceDate)}` : 'Sem histórico'}</small></div>
+              <div className="equipment-cell" data-label="Patrimônio"><strong>{formatCurrency(item.purchaseValue)}</strong><small>{item.purchaseDate ? `Compra em ${formatDate(item.purchaseDate)}` : 'Data não informada'}</small></div>
+              <div className="equipment-actions"><IconActionButton label="Editar equipamento" icon={<Pencil size={15} />} onClick={() => onEdit(item)} /><IconActionButton label="Excluir equipamento" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDelete(item)} /></div>
+              {item.notes ? <p className="equipment-notes">{item.notes}</p> : null}
+            </article>
+          })}
+        </section>
+      ) : null}
     </div>
   )
 }
@@ -9017,6 +9525,12 @@ function ReportsPage({
         <MetricCard icon={<Landmark size={20} />} label="Saldo bancário" value={formatCurrency(getTotalBankBalance(state))} tone={getTotalBankBalance(state) >= 0 ? 'positive' : 'danger'} />
       </div>
 
+      <details className="report-advanced">
+        <summary>
+          <span><strong>Análises detalhadas</strong><small>Gráficos, composição financeira, funil e rentabilidade</small></span>
+          <ChevronDown size={17} />
+        </summary>
+        <div className="report-advanced-content">
       <section className="report-mini-grid grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <DashboardIndicator icon={<DollarSign size={17} />} label="Despesas do período" value={formatCurrency(metrics.expenses)} tone="danger" />
         <DashboardIndicator icon={<Clock size={17} />} label="A receber" value={formatCurrency(metrics.pendingReceivable)} tone="warning" />
@@ -9086,7 +9600,7 @@ function ReportsPage({
         <Panel title="Origem dos contatos">
           <div className="report-ranking space-y-3">
             {sortedLeadSources.length ? sortedLeadSources.slice(0, 7).map((item) => (
-              <div key={item.source}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="font-bold text-gray-700">{item.source}</span><strong className="text-gray-950">{item.total}</strong></div><div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#d8a500]" style={{ width: `${(item.total / maxLeadSource) * 100}%` }} /></div></div>
+              <div key={item.source}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="font-bold text-gray-700">{item.source}</span><strong className="text-gray-950">{item.total}</strong></div><div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${(item.total / maxLeadSource) * 100}%` }} /></div></div>
             )) : <DashboardEmptyState icon={<Users size={20} />} message="Cadastre contatos para acompanhar as origens." />}
           </div>
         </Panel>
@@ -9109,6 +9623,8 @@ function ReportsPage({
       <Panel title="Rentabilidade dos projetos">
         {profitableProjects.length ? <div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Projeto</th><th>Cliente</th><th>Contratado</th><th>Recebido</th><th>Custos diretos</th><th>Resultado contratado</th><th>Resultado realizado</th><th>Margem contratada</th><th>Horas</th><th>Receita/hora</th></tr></thead><tbody>{profitableProjects.map(({ project, profit }) => <tr key={project.id}><td data-label="Projeto"><strong>{project.projectCode}</strong><span className="mt-0.5 block text-xs text-gray-500">{project.name}</span></td><td data-label="Cliente">{projectClient(state, project)?.companyName || 'Sem cliente'}</td><td data-label="Contratado">{formatCurrency(profit.contractedRevenue)}</td><td data-label="Recebido">{formatCurrency(profit.paid)}</td><td data-label="Custos diretos">{formatCurrency(profit.directCosts)}</td><td data-label="Resultado contratado"><strong className={profit.contractedProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.contractedProfit)}</strong></td><td data-label="Resultado realizado"><strong className={profit.profit >= 0 ? 'text-emerald-600' : 'text-red-600'}>{formatCurrency(profit.profit)}</strong></td><td data-label="Margem contratada"><StatusBadge>{`${profit.contractedMargin.toFixed(1)}%`}</StatusBadge></td><td data-label="Horas">{project.workedHours || project.estimatedHours || 0}h</td><td data-label="Receita/hora">{project.workedHours ? formatCurrency(project.totalValue / project.workedHours) : '-'}</td></tr>)}</tbody></table></div> : <DashboardEmptyState icon={<Briefcase size={20} />} message="Nenhum projeto disponível para análise." />}
       </Panel>
+        </div>
+      </details>
 
       <section className="report-insights grid gap-3 md:grid-cols-3">
         <div className="report-insight-card"><span className="report-insight-icon"><TrendingUp size={18} /></span><div><p className="text-xs font-bold uppercase text-gray-500">Saúde financeira</p><strong className="mt-1 block text-gray-950">{metrics.netProfit > 0 ? 'Resultado positivo' : metrics.netProfit < 0 ? 'Resultado negativo' : 'Ponto de equilíbrio'}</strong><p className="mt-1 text-xs leading-5 text-gray-500">{metrics.margin >= 25 ? 'A margem está em uma faixa saudável.' : 'Revise preços e custos para melhorar a margem.'}</p></div></div>
@@ -9199,7 +9715,7 @@ function InboxPage({
                 <div className="flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-sm ${message.unread ? 'font-black text-gray-950' : 'font-bold text-gray-700'}`}>{message.sent ? message.to : message.from}</span><span className="shrink-0 text-[0.65rem] text-gray-400">{message.date ? new Date(message.date).toLocaleDateString('pt-BR') : ''}</span></div>
                 <p className={`mt-1 truncate text-sm ${message.unread ? 'font-black text-gray-900' : 'font-medium text-gray-600'}`}>{message.subject}</p>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-400">{message.snippet}</p>
-                <div className="mt-2 flex items-center gap-2">{message.unread ? <span className="h-2 w-2 rounded-full bg-[#d8a500]" title="Não lido" /> : null}{lead ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.62rem] font-black text-emerald-700">Contato CRM</span> : null}{message.hasAttachments ? <span className="inline-flex items-center gap-1 text-[0.65rem] text-gray-400"><Paperclip size={12} /> Anexo</span> : null}</div>
+                <div className="mt-2 flex items-center gap-2">{message.unread ? <span className="h-2 w-2 rounded-full bg-blue-600" title="Não lido" /> : null}{lead ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.62rem] font-black text-emerald-700">Contato CRM</span> : null}{message.hasAttachments ? <span className="inline-flex items-center gap-1 text-[0.65rem] text-gray-400"><Paperclip size={12} /> Anexo</span> : null}</div>
               </button>
             })}
             {!loading && !filtered.length ? <p className="p-8 text-center text-sm text-gray-400">Nenhum e-mail encontrado.</p> : null}
@@ -9228,7 +9744,10 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
     formState: { errors },
   } = useForm<SettingsFormInput, unknown, SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: state.companySettings,
+    defaultValues: {
+      ...state.companySettings,
+      googleOAuthClientId: state.companySettings.googleOAuthClientId || getStoredGoogleOAuthClientId(),
+    },
   })
 
   const companyAddress = watch('address') ?? ''
@@ -9271,9 +9790,16 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
   return (
     <div className="space-y-4">
       <PageToolbar title="Configurações da empresa" description="Dados da proposta, padrão de entrada, entrega, PIX e deslocamento." />
+      <nav className="settings-nav" aria-label="Seções das configurações">
+        <a href="#settings-company">Empresa</a>
+        <a href="#settings-commercial">Comercial</a>
+        <a href="#settings-google">Integrações</a>
+        <a href="#settings-billing">Cobrança</a>
+        <a href="#settings-travel">Deslocamento</a>
+      </nav>
       <form className="grid gap-4 xl:grid-cols-[1fr_0.72fr]" onSubmit={handleSubmit(onSubmit)}>
         <div className="space-y-4">
-          <Panel title="Dados da empresa">
+          <Panel id="settings-company" title="Dados da empresa">
             <div className="grid gap-4 md:grid-cols-2">
               <InputField label="Nome da empresa" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} /></InputField>
               <InputField label="CPF/CNPJ" error={getError(errors.document?.message)}><input className="field-input" {...register('document')} /></InputField>
@@ -9296,7 +9822,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
             </div>
           </Panel>
 
-          <Panel title="Padrão comercial">
+          <Panel id="settings-commercial" title="Padrão comercial">
             <div className="grid gap-4 md:grid-cols-3">
               <InputField label="Entrada padrão (%)" error={getError(errors.defaultDepositPercentage?.message)}><input className="field-input" type="number" min="0" max="100" {...register('defaultDepositPercentage')} /></InputField>
               <InputField label="Entrega padrão (dias)" error={getError(errors.defaultDeliveryDays?.message)}><input className="field-input" type="number" min="1" {...register('defaultDeliveryDays')} /></InputField>
@@ -9309,7 +9835,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         </div>
 
         <div className="space-y-4">
-          <Panel title="Google Workspace">
+          <Panel id="settings-google" title="Google Workspace">
             <div className="space-y-3">
               <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial. O Client ID fica salvo no Firebase e a sessão autorizada permanece vinculada neste navegador até você desconectar ou o Google revogar o acesso.</p>
               <InputField label="OAuth Client ID do Google" error={getError(errors.googleOAuthClientId?.message)}><input className="field-input" {...register('googleOAuthClientId')} placeholder="000000000000-xxxx.apps.googleusercontent.com" /></InputField>
@@ -9363,7 +9889,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
             </div>
           </Panel>
 
-          <Panel title="PIX e cobrança">
+          <Panel id="settings-billing" title="PIX e cobrança">
             <div className="space-y-4">
               <InputField label="Chave PIX" error={getError(errors.pixKey?.message)}><input className="field-input" {...register('pixKey')} /></InputField>
               <InputField label="Titular do PIX" error={getError(errors.pixHolderName?.message)}><input className="field-input" {...register('pixHolderName')} /></InputField>
@@ -9374,7 +9900,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
             </div>
           </Panel>
 
-          <Panel title="Deslocamento">
+          <Panel id="settings-travel" title="Deslocamento">
             <div className="space-y-4">
               <InputField label="Consumo médio do veículo (km/l)" error={getError(errors.vehicleAverageConsumption?.message)}><input className="field-input" type="number" step="0.1" {...register('vehicleAverageConsumption')} /></InputField>
               <InputField label="Preço médio do combustível" error={getError(errors.fuelAveragePrice?.message)}>
@@ -9410,13 +9936,13 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
 
 function PageToolbar({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
   return (
-    <div className="page-toolbar flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3.5 shadow-sm sm:px-5">
-      <div>
-        <h2 className="text-lg font-black tracking-tight text-gray-950 sm:text-xl">{title}</h2>
-        <p className="mt-0.5 text-sm text-gray-500">{description}</p>
+    <header className="page-toolbar flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight text-gray-950 sm:text-2xl">{title}</h1>
+        <p className="mt-1 max-w-3xl text-sm text-gray-500">{description}</p>
       </div>
-      {action}
-    </div>
+      {action ? <div className="page-toolbar-actions flex flex-wrap items-center gap-2">{action}</div> : null}
+    </header>
   )
 }
 
@@ -9710,8 +10236,8 @@ function MonthCalendar({
   const cells = Array.from({ length: offset + daysInMonth }, (_, index) => (index < offset ? 0 : index - offset + 1))
 
   return (
-    <Panel title="Calendário mensal">
-      <div className="grid grid-cols-7 gap-2 text-sm">
+    <Panel className="month-calendar-panel" title="Calendário mensal">
+      <div className="month-calendar-grid grid grid-cols-7 gap-1 text-sm">
         {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
           <div key={day} className="p-2 text-center text-xs font-bold uppercase text-gray-500">{day}</div>
         ))}
@@ -9723,7 +10249,7 @@ function MonthCalendar({
           return (
             <div
               key={index}
-              className="min-h-24 rounded-lg border border-gray-200 bg-gray-50 p-2 text-left transition hover:border-[#d8a500] hover:bg-amber-50"
+              className="month-calendar-cell min-h-24 rounded-lg border border-gray-200 bg-gray-50 p-2 text-left transition"
               role={cell ? 'button' : undefined}
               tabIndex={cell ? 0 : undefined}
               onClick={() => {
@@ -9860,7 +10386,7 @@ function TimeGridCalendar({
   }
 
   return (
-    <Panel title={view === 'semanal' ? 'Calendário semanal' : 'Planejamento do dia'}>
+    <Panel className="time-grid-panel" title={view === 'semanal' ? 'Calendário semanal' : 'Planejamento do dia'}>
       <div className="overflow-x-auto">
         <div className={view === 'diaria' ? 'min-w-[620px]' : 'min-w-[980px]'}>
           <div className="grid border-b border-gray-200" style={{ gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` }}>
@@ -9907,7 +10433,7 @@ function TimeGridCalendar({
                 return (
                   <div
                     key={`${dayKey}-${hour}`}
-                    className="absolute left-0 right-0 border-b border-gray-200 p-2 text-left transition hover:bg-amber-50"
+                    className="calendar-time-slot absolute left-0 right-0 border-b border-gray-200 p-2 text-left transition"
                     style={{ top: index * hourHeight, height: hourHeight }}
                     role="button"
                     tabIndex={0}
@@ -10010,7 +10536,7 @@ function MiniAgendaCalendar({
   }
 
   return (
-    <div className="p-3" aria-label="Calendário para escolher uma data">
+    <div className="mini-agenda-calendar p-3" aria-label="Calendário para escolher uma data">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-gray-400">Escolha uma data</p>
@@ -10043,7 +10569,7 @@ function MiniAgendaCalendar({
               key={key}
               className={`relative flex h-7 flex-col items-center justify-center rounded-md text-[0.68rem] font-bold transition ${
                 isSelected
-                  ? 'bg-[#e0b936] text-gray-950 shadow-sm'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : isToday
                     ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-300'
                     : isCurrentMonth
@@ -10098,30 +10624,35 @@ function createDefaultChecklist(projectId: string, createdAt: string): ProjectCh
 
 function LeadForm({
   lead,
+  initialContactId,
   contacts,
+  onCreateContact,
   onSubmit,
   onCancel,
 }: {
   lead?: Lead
+  initialContactId?: string
   contacts: Client[]
+  onCreateContact: () => void
   onSubmit: (values: LeadFormValues) => void
   onCancel: () => void
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
+  const initialContact = contacts.find((contact) => contact.id === (lead?.contactId || initialContactId))
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeadFormInput, unknown, LeadFormValues>({
     resolver: zodResolver(leadFormSchema),
     defaultValues: {
-      contactId: lead?.contactId ?? '',
-      fullName: lead?.fullName ?? '',
-      companyName: lead?.companyName ?? '',
-      phone: lead?.phone ?? '',
-      whatsapp: lead?.whatsapp ?? '',
-      email: lead?.email ?? '',
-      instagram: lead?.instagram ?? '',
-      city: lead?.city ?? 'Curitiba',
-      neighborhood: lead?.neighborhood ?? '',
-      address: lead?.address ?? '',
-      source: lead?.source ?? 'Instagram',
+      contactId: lead?.contactId ?? initialContactId ?? '',
+      fullName: lead?.fullName ?? initialContact?.fullName ?? '',
+      companyName: lead?.companyName ?? initialContact?.companyName ?? '',
+      phone: lead?.phone ?? initialContact?.phone ?? '',
+      whatsapp: lead?.whatsapp ?? initialContact?.whatsapp ?? '',
+      email: lead?.email ?? initialContact?.email ?? '',
+      instagram: lead?.instagram ?? initialContact?.instagram ?? '',
+      city: lead?.city ?? initialContact?.city ?? 'Curitiba',
+      neighborhood: lead?.neighborhood ?? initialContact?.neighborhood ?? '',
+      address: lead?.address ?? initialContact?.address ?? '',
+      source: lead?.source ?? initialContact?.source ?? 'Instagram',
       serviceInterest: lead?.serviceInterest ?? 'Fotos e vídeo',
       pipelineStage: lead?.pipelineStage ?? 'Entrada',
       temperature: lead?.temperature ?? 'Morno',
@@ -10145,27 +10676,32 @@ function LeadForm({
       <input type="hidden" {...register('nextContactAt')} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <InputField label="Contato vinculado" error={getError(errors.contactId?.message)}>
-            <select className="field-input" {...register('contactId')} onChange={(event) => {
-              register('contactId').onChange(event)
-              const contact = contacts.find((item) => item.id === event.currentTarget.value)
-              if (!contact) return
-              setValue('fullName', contact.fullName)
-              setValue('companyName', contact.companyName)
-              setValue('phone', contact.phone)
-              setValue('whatsapp', contact.whatsapp)
-              setValue('email', contact.email)
-              setValue('instagram', contact.instagram)
-              setValue('city', contact.city)
-              setValue('neighborhood', contact.neighborhood)
-              setValue('address', contact.address)
-              setValue('source', contact.source)
-            }}>
-              <option value="">Selecione um contato</option>
-              {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contactDisplayName(contact)}{contact.companyName ? ` · ${contact.companyName}` : ''}</option>)}
-            </select>
-          </InputField>
-          {!contacts.length ? <p className="mt-1 text-xs font-bold text-amber-700">Cadastre um contato na aba Contatos antes de criar a oportunidade.</p> : null}
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <InputField label="Contato vinculado" error={getError(errors.contactId?.message)}>
+                <select className="field-input" {...register('contactId')} onChange={(event) => {
+                  register('contactId').onChange(event)
+                  const contact = contacts.find((item) => item.id === event.currentTarget.value)
+                  if (!contact) return
+                  setValue('fullName', contact.fullName)
+                  setValue('companyName', contact.companyName)
+                  setValue('phone', contact.phone)
+                  setValue('whatsapp', contact.whatsapp)
+                  setValue('email', contact.email)
+                  setValue('instagram', contact.instagram)
+                  setValue('city', contact.city)
+                  setValue('neighborhood', contact.neighborhood)
+                  setValue('address', contact.address)
+                  setValue('source', contact.source)
+                }}>
+                  <option value="">Selecione um contato</option>
+                  {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contactDisplayName(contact)}{contact.companyName ? ` · ${contact.companyName}` : ''}</option>)}
+                </select>
+              </InputField>
+            </div>
+            <Button className="shrink-0" variant="secondary" type="button" onClick={onCreateContact}><UserPlus size={16} /><span className="hidden sm:inline">Novo contato</span></Button>
+          </div>
+          {!contacts.length ? <p className="mt-1 text-xs font-bold text-amber-700">Nenhum contato ainda. Use “Novo contato” para cadastrar sem sair deste fluxo.</p> : null}
         </div>
         <InputField label="Nome" error={getError(errors.fullName?.message)}><input className="field-input" {...register('fullName')} /></InputField>
         <InputField label="Empresa ou estabelecimento" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} /></InputField>

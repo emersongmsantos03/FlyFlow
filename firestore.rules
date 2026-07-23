@@ -60,5 +60,23 @@ service cloud.firestore {
           && (sectionId != 'users' || isWorkspaceOwner(workspaceId));
       }
     }
+
+    match /publicProposals/{proposalToken} {
+      allow read: if true;
+      allow create, delete: if signedIn();
+      allow update: if signedIn()
+        || (
+          resource.data.status in ['Gerada', 'Enviada', 'Visualizada', 'Em negociação']
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'acceptedAt', 'acceptedBy', 'acceptanceDocument', 'acceptanceIpNotice'])
+          && request.resource.data.status == 'Aprovada'
+          && request.resource.data.acceptedBy is string
+          && request.resource.data.acceptedBy.size() >= 3
+          && request.resource.data.acceptedBy.size() <= 120
+          && request.resource.data.acceptanceDocument is string
+          && request.resource.data.acceptanceDocument.size() >= 11
+          && request.resource.data.acceptanceDocument.size() <= 18
+        );
+    }
   }
 }

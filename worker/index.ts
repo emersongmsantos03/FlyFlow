@@ -73,6 +73,7 @@ const schema = {
         properties: {
           id: { type: 'string' },
           contactName: { type: 'string' },
+          address: { type: 'string' },
           phone: { type: 'string' },
           whatsapp: { type: 'string' },
           email: { type: 'string' },
@@ -86,7 +87,7 @@ const schema = {
           aiFirstMessage: { type: 'string' },
           sourceUrls: { type: 'array', items: { type: 'string' } },
         },
-        required: ['id', 'contactName', 'phone', 'whatsapp', 'email', 'website', 'instagram', 'aiSummary', 'aiApproach', 'aiOpportunityLevel', 'aiSocialInsight', 'aiContactHook', 'aiFirstMessage', 'sourceUrls'],
+        required: ['id', 'contactName', 'address', 'phone', 'whatsapp', 'email', 'website', 'instagram', 'aiSummary', 'aiApproach', 'aiOpportunityLevel', 'aiSocialInsight', 'aiContactHook', 'aiFirstMessage', 'sourceUrls'],
       },
     },
   },
@@ -137,7 +138,7 @@ export default {
         model: 'gpt-5.6-luna',
         reasoning: { effort: 'none' },
         store: false,
-        tools: [{ type: 'web_search', search_context_size: 'low' }],
+        tools: [{ type: 'web_search', search_context_size: 'medium' }],
         include: ['web_search_call.action.sources'],
         instructions: [
           'Enriqueça leads B2B brasileiros usando somente informações públicas verificáveis.',
@@ -145,6 +146,9 @@ export default {
           'Procure primeiro no Google Business, site oficial e página de contato; depois no Instagram oficial, bio, Linktree e Facebook comercial.',
           'Busque links wa.me, api.whatsapp.com, botões ou textos que anunciem explicitamente WhatsApp. Um telefone comum só pode preencher whatsapp quando uma fonte pública disser que ele atende por WhatsApp.',
           'Priorize WhatsApp público, telefone, e-mail, Instagram oficial e o nome de proprietário, gerente ou responsável comercial.',
+          'Confirme também o endereço comercial completo, com rua, número, bairro, cidade e estado quando publicado. Não use endereço de diretório, sede de rede ou empresa homônima.',
+          'Para cada telefone, WhatsApp ou e-mail retornado, inclua em sourceUrls a página exata onde o dado aparece. Não use agregadores sem confirmação cruzada com Google Business, site ou rede oficial.',
+          'Diferencie telefone de WhatsApp: só preencha whatsapp quando houver botão, link wa.me/api.whatsapp.com ou indicação pública explícita de atendimento por WhatsApp.',
           'Avalie como oportunidade real para um profissional de drone que está começando: negócio local e independente, qualidade e frequência das redes sociais, apelo visual do imóvel ou operação, facilidade de contato e chance de contratar.',
           'Grandes redes e marcas nacionais devem ter menor prioridade, salvo evidência clara de decisão local.',
           'Em aiSummary, escreva em português uma observação comercial objetiva de até 240 caracteres: classifique como Excelente, Boa, Média ou Ruim; diga por que vale abordar, qual serviço de drone é mais aderente e cite uma evidência pública.',
@@ -176,6 +180,7 @@ export default {
     const enriched = (parsed.leads || []).filter((lead) => requestedIds.has(clean(lead.id, 100))).map((lead) => ({
       id: clean(lead.id, 100),
       contactName: clean(lead.contactName, 160),
+      address: clean(lead.address, 300),
       phone: clean(lead.phone, 60),
       whatsapp: clean(lead.whatsapp, 60),
       email: clean(lead.email, 160),

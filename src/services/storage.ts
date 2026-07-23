@@ -262,7 +262,7 @@ export const saveAppState = (state: AppState) => {
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
-      ...normalizeAppState(state),
+      ...state,
       updatedAt: new Date().toISOString(),
     }),
   )

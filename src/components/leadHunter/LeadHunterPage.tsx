@@ -23,6 +23,7 @@ import {
   Search,
   Settings2,
   Target,
+  Trash2,
   Trophy,
   X,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import {
   buildGoogleMapsRouteUrl,
   recommendDailyMission,
 } from "../../services/leadHunter/LeadRouteService";
+import { aiUsageToday } from "../../services/leadHunter/LeadAiUsage";
 
 type View = "results" | "routes" | "mission" | "history" | "settings";
 
@@ -76,6 +78,7 @@ export function LeadHunterPage({
   onCreateManual,
   onEnrich,
   onReject,
+  onDelete,
   onCreateRoute,
   onToggleVisited,
 }: {
@@ -121,6 +124,7 @@ export function LeadHunterPage({
   }) => void;
   onEnrich: (prospectId: string) => Promise<void> | void;
   onReject: (prospectId: string) => void;
+  onDelete: (prospect: LeadHunterProspect) => void;
   onCreateRoute: (input: {
     name: string;
     startAddress: string;
@@ -151,11 +155,11 @@ export function LeadHunterPage({
   const [sortMode, setSortMode] = useState<"priority" | "score" | "newest">("priority");
   const [searchBatchId, setSearchBatchId] = useState("");
   const [showMetrics, setShowMetrics] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
-  const todaySearches = searches.filter((search) => search.createdAt.slice(0, 10) === today);
-  const aiCallsToday = todaySearches.filter((search) => (search.tokenUsage || 0) > 0).length;
+  const [rejectDialog, setRejectDialog] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
+  const usageToday = aiUsageToday(searches);
+  const aiCallsToday = usageToday.calls;
   const effectiveDailyAiLimit = settings.maxDailyCalls;
-  const tokensToday = todaySearches.reduce((total, search) => total + (search.tokenUsage || 0), 0);
+  const tokensToday = usageToday.tokens;
   const searchRank = useMemo(
     () => new globalThis.Map(searches.map((search, index) => [search.id, index])),
     [searches],
@@ -199,6 +203,13 @@ export function LeadHunterPage({
         }),
     [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, searchBatchId, searchRank, sortMode],
   );
+  const availableProspectCount = useMemo(
+    () => deduplicateLeadHunterProspects(prospects).filter((lead) =>
+      !lead.discardedPermanently && lead.status !== "Descartado" && lead.status !== "Importado" && !lead.leadId,
+    ).length,
+    [prospects],
+  );
+  const hasResultFilters = Boolean(cityId || categoryId || minimumScore || searchBatchId || onlyNew || resultQuery.trim() || contactFilter !== "all");
   const runSearch = async () => {
     if (searching) return;
     setSearching(true);
@@ -224,7 +235,7 @@ export function LeadHunterPage({
       <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#9a7900]">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
               Prospecção inteligente
             </p>
             <h1 className="mt-1 text-2xl font-semibold text-gray-950">
@@ -346,7 +357,7 @@ export function LeadHunterPage({
               <label className="text-xs font-medium text-gray-600">
                 Raio: {radiusKm} km
                 <input
-                  className="mt-3 w-full accent-[#c9a227]"
+                  className="mt-3 w-full accent-blue-600"
                   type="range"
                   min="20"
                   max="100"
@@ -558,9 +569,15 @@ export function LeadHunterPage({
                     type="button"
                     disabled={!selectedIds.length}
                     onClick={() => {
-                      if (!window.confirm(`Rejeitar ${selectedIds.length} lead(s) selecionado(s) e impedir que apareçam novamente?`)) return;
-                      selectedIds.forEach(onReject);
-                      setSelectedIds([]);
+                      const ids = [...selectedIds];
+                      setRejectDialog({
+                        title: `Rejeitar ${ids.length} leads?`,
+                        description: "Eles serão removidos da lista e não aparecerão novamente em buscas futuras.",
+                        onConfirm: () => {
+                          ids.forEach(onReject);
+                          setSelectedIds([]);
+                        },
+                      });
                     }}
                   >
                     <X size={15} /> Rejeitar selecionados
@@ -569,9 +586,15 @@ export function LeadHunterPage({
                     className="lead-batch-quiet-reject inline-flex h-9 items-center rounded-lg px-3 text-xs font-semibold transition"
                     type="button"
                     onClick={() => {
-                      if (!window.confirm(`Rejeitar todos os ${filtered.length} leads visíveis e impedir que apareçam novamente?`)) return;
-                      filtered.forEach((lead) => onReject(lead.id));
-                      setSelectedIds([]);
+                      const visibleLeads = [...filtered];
+                      setRejectDialog({
+                        title: `Rejeitar ${visibleLeads.length} leads visíveis?`,
+                        description: "Todos os resultados exibidos serão removidos e não aparecerão novamente.",
+                        onConfirm: () => {
+                          visibleLeads.forEach((lead) => onReject(lead.id));
+                          setSelectedIds([]);
+                        },
+                      });
                     }}
                   >
                     Rejeitar todos
@@ -679,10 +702,23 @@ export function LeadHunterPage({
                           title="Rejeitar lead"
                           aria-label={`Rejeitar ${lead.name}`}
                           onClick={() => {
-                            if (window.confirm(`Rejeitar ${lead.name} e impedir que apareça novamente?`)) onReject(lead.id);
+                            setRejectDialog({
+                              title: `Rejeitar ${lead.name}?`,
+                              description: "Este lead será removido da lista e não aparecerá novamente em buscas futuras.",
+                              onConfirm: () => onReject(lead.id),
+                            });
                           }}
                         >
                           <X size={15} />
+                        </button>
+                        <button
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-600 transition hover:bg-red-50"
+                          type="button"
+                          title="Excluir dos módulos conectados"
+                          aria-label={`Excluir ${lead.name}`}
+                          onClick={() => onDelete(lead)}
+                        >
+                          <Trash2 size={14} />
                         </button>
                         <button className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-[#8a6d08] hover:bg-amber-50" type="button" onClick={() => setOpenedLeadId(lead.id)}>Detalhes →</button>
                       </div>
@@ -696,19 +732,25 @@ export function LeadHunterPage({
                   <Crosshair size={30} />
                 </span>
                 <h3 className="mt-3 font-semibold text-gray-800">
-                  {prospects.length ? `${prospects.length} lead(s) oculto(s) pelos filtros` : "Sua próxima oportunidade começa aqui"}
+                  {availableProspectCount
+                    ? `${availableProspectCount} lead(s) oculto(s) pelos filtros`
+                    : prospects.length
+                      ? "Nenhum lead disponível no momento"
+                      : "Sua próxima oportunidade começa aqui"}
                 </h3>
                 <p className="mt-1 max-w-lg text-sm text-gray-500">
-                  {prospects.length
-                    ? "Os dados estão salvos. Limpe os filtros para exibir todos os resultados encontrados."
-                    : "Busque empresas reais na região selecionada. Os melhores candidatos serão priorizados automaticamente."}
+                  {availableProspectCount
+                    ? "Há oportunidades disponíveis. Limpe os filtros para visualizar todos os resultados."
+                    : prospects.length
+                      ? "Os contatos anteriores já foram aceitos ou rejeitados. Faça uma nova busca para encontrar outras empresas."
+                      : "Busque empresas reais na região selecionada. Os melhores candidatos serão priorizados automaticamente."}
                 </p>
                 <Button
                   className="mt-4"
                   type="button"
                   disabled={searching}
                   onClick={() => {
-                    if (prospects.length) {
+                    if (availableProspectCount && hasResultFilters) {
                       setOnlyNew(false);
                       setMinimumScore(0);
                       setCityId("");
@@ -720,8 +762,8 @@ export function LeadHunterPage({
                     void runSearch();
                   }}
                 >
-                  {searching ? <RotateCw className="animate-spin" size={16} /> : prospects.length ? <Filter size={16} /> : <Search size={16} />}
-                  {searching ? "Buscando..." : prospects.length ? "Mostrar todos os leads" : "Buscar oportunidades"}
+                  {searching ? <RotateCw className="animate-spin" size={16} /> : availableProspectCount && hasResultFilters ? <Filter size={16} /> : <Search size={16} />}
+                  {searching ? "Buscando..." : availableProspectCount && hasResultFilters ? "Limpar filtros" : "Buscar novos leads"}
                 </Button>
               </div>
             )}
@@ -741,7 +783,14 @@ export function LeadHunterPage({
                   setEnrichingId("");
                 }
               }}
-              onReject={onReject}
+              onRequestReject={(lead, afterReject) => setRejectDialog({
+                title: `Rejeitar ${lead.name}?`,
+                description: "Este lead será removido da lista e não aparecerá novamente em buscas futuras.",
+                onConfirm: () => {
+                  onReject(lead.id);
+                  afterReject?.();
+                },
+              })}
             />
           ) : null}
           {manualLeadOpen ? (
@@ -759,6 +808,7 @@ export function LeadHunterPage({
               }}
             />
           ) : null}
+          {rejectDialog ? <RejectLeadDialog dialog={rejectDialog} onClose={() => setRejectDialog(null)} /> : null}
         </>
       ) : null}
 
@@ -946,6 +996,33 @@ function ManualLeadModal({
   );
 }
 
+function RejectLeadDialog({
+  dialog,
+  onClose,
+}: {
+  dialog: { title: string; description: string; onConfirm: () => void };
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="reject-lead-title">
+      <button className="absolute inset-0" type="button" aria-label="Cancelar rejeição" onClick={onClose} />
+      <section className="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600"><Trash2 size={16} /></div>
+          <div className="min-w-0">
+            <h2 id="reject-lead-title" className="text-base font-black text-gray-950">{dialog.title}</h2>
+            <p className="mt-1.5 text-sm leading-5 text-gray-600">{dialog.description}</p>
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
+          <Button className="min-h-9 px-3 py-1 text-xs" variant="danger" type="button" onClick={() => { dialog.onConfirm(); onClose(); }}><Trash2 size={14} /> Rejeitar</Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function LeadDetail({
   lead,
   onClose,
@@ -953,7 +1030,7 @@ function LeadDetail({
   onEmail,
   onEnrich,
   enriching,
-  onReject,
+  onRequestReject,
 }: {
   lead?: LeadHunterProspect;
   onClose: () => void;
@@ -961,7 +1038,7 @@ function LeadDetail({
   onEmail: (prospect: LeadHunterProspect) => void;
   onEnrich: (id: string) => Promise<void> | void;
   enriching: boolean;
-  onReject: (id: string) => void;
+  onRequestReject: (lead: LeadHunterProspect, afterReject?: () => void) => void;
 }) {
   const [whatsAppDraft, setWhatsAppDraft] = useState(() =>
     lead ? buildLeadWhatsAppMessage(lead) : "",
@@ -1263,7 +1340,7 @@ function LeadDetail({
           <button
             className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-red-200 px-3.5 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
             type="button"
-            onClick={() => { if (window.confirm(`Rejeitar ${lead.name} e impedir que apareça novamente?`)) { onReject(lead.id); onClose(); } }}
+            onClick={() => onRequestReject(lead, onClose)}
           >
             <X size={16} />
             Rejeitar lead

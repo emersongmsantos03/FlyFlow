@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -42,6 +43,10 @@ const ARRAY_SECTION_KEYS = [
   'projectAdjustments',
 ] as const satisfies readonly (keyof AppState)[]
 
+// As coleções granulares são a fonte canônica. Em especial, os dados do
+// LeadHunter não podem voltar a ser agregados em um único documento: além de
+// exceder o limite do Firestore conforme a prospecção cresce, um bundle antigo
+// pode ocultar registros já sincronizados ao abrir o app em outro dispositivo.
 const LEGACY_STATE_SECTION_KEYS: (keyof AppState)[] = [
   ...ARRAY_SECTION_KEYS,
   'companySettings',
@@ -267,6 +272,34 @@ export const loadFirebaseAppState = async (fallback: AppState): Promise<AppState
   }
 
   return loadLegacyAppState(fallback)
+}
+
+/**
+ * Observa a versao do workspace. O documento so e atualizado depois que todos
+ * os registros de uma gravacao foram confirmados, portanto o consumidor nunca
+ * recebe um estado parcialmente salvo.
+ */
+export const observeFirebaseWorkspace = (
+  onChange: () => void,
+  onError?: (error: Error) => void,
+) => {
+  const { db } = ensureServices()
+  if (!activeWorkspaceId) return () => undefined
+
+  let initialized = false
+  return onSnapshot(
+    doc(db, 'workspaces', activeWorkspaceId),
+    (snapshot) => {
+      if (!initialized) {
+        initialized = true
+        return
+      }
+      // A interface local ja foi atualizada de forma otimista. Esperamos apenas
+      // eventos confirmados para evitar reler dados ainda pendentes no cliente.
+      if (!snapshot.metadata.hasPendingWrites) onChange()
+    },
+    (error) => onError?.(error),
+  )
 }
 
 export const saveFirebaseAppState = async (state: AppState) => {

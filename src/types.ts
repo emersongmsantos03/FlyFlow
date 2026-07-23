@@ -688,8 +688,11 @@ export interface Quote {
   viewedAt?: string
   approvedAt?: string
   approvedBy?: string
+  approvalDocument?: string
   approvalMethod?: 'Manual' | 'Link' | 'Aceite eletrônico'
   approvalNotes?: string
+  publicToken?: string
+  publicUrl?: string
   refusalReason?: string
   cancellationReason?: string
   cancellationNotes?: string
@@ -715,6 +718,7 @@ export interface QuoteItem {
   quantity: number
   unitPrice: number
   totalPrice: number
+  pricingLabel?: 'Incluso' | 'Gratuito'
   createdAt: string
 }
 

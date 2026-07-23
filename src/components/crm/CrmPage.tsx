@@ -81,18 +81,12 @@ const buildPriorityWhatsAppMessage = (lead: Lead) => {
   const greeting = contactName && contactName.toLocaleLowerCase('pt-BR') !== company.toLocaleLowerCase('pt-BR')
     ? `Olá, ${contactName.split(/\s+/)[0]}! Tudo bem?`
     : 'Olá! Tudo bem?'
-  const service = data?.recommendedService || lead.serviceInterest || 'produção de imagens com drone'
-  const category = data?.categoryName?.trim()
-  const context = category
-    ? `Vi que vocês atuam como ${category.toLocaleLowerCase('pt-BR')} e acredito que há uma oportunidade muito boa de destacar o espaço e a experiência da ${company}.`
-    : `Estava pesquisando negócios da região e o trabalho da ${company} me chamou a atenção.`
 
   return [
     greeting,
-    'Aqui é o Emerson, da Hero Drone.',
-    context,
-    `Preparei uma ideia rápida de ${service.toLocaleLowerCase('pt-BR')} pensada para vocês.`,
-    'Posso te mostrar por aqui, sem compromisso?',
+    'Sou o Emerson, da Hero Drone. Produzimos fotos, vídeos e imagens aéreas para mostrar espaços de uma forma mais marcante e profissional.',
+    `Conheci a ${company} e achei que o ambiente de vocês tem muito potencial para um conteúdo visual especial.`,
+    'Posso compartilhar a ideia que tive?',
   ].join(' ')
 }
 
@@ -172,6 +166,7 @@ export function CrmPage({
   onRegisterInteraction,
   onSendWhatsAppApproach,
   onSendEmail,
+  onEmailQuote,
   onScheduleReturn,
   onRegisterDeposit,
   onDownloadQuote,
@@ -201,6 +196,7 @@ export function CrmPage({
   onRegisterInteraction: (lead: Lead, type: string) => void
   onSendWhatsAppApproach: (lead: Lead, message: string, context: string) => void
   onSendEmail: (lead: Lead) => void
+  onEmailQuote: (quote: Quote) => void | Promise<void>
   onScheduleReturn: (lead: Lead) => void
   onRegisterDeposit: (quote: Quote) => void
   onDownloadQuote: (quote: Quote) => void | Promise<void>
@@ -259,7 +255,7 @@ export function CrmPage({
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7900]">CRM e vendas</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">CRM e vendas</p>
             <h1 className="mt-1 text-2xl font-black text-gray-950">Comercial</h1>
             <p className="mt-1 text-sm text-gray-500">Gerencie oportunidades, negociações e próximas ações.</p>
           </div>
@@ -287,14 +283,14 @@ export function CrmPage({
               <h2 className="text-sm font-black text-gray-950">Prioridades de hoje</h2>
               <p className="mt-0.5 text-xs text-gray-500">Ordem sugerida por urgência, potencial e facilidade de contato.</p>
             </div>
-            <button className="text-xs font-bold text-[#866800]" type="button" onClick={() => { setQuickFilter('action'); onViewChange('table') }}>Ver todas</button>
+            <button className="text-xs font-bold text-blue-600" type="button" onClick={() => { setQuickFilter('action'); onViewChange('table') }}>Ver todas</button>
           </div>
           <div className="mt-3 grid gap-2 lg:grid-cols-5">
             {actionQueue.map(({ lead, priority }, index) => (
               <article key={lead.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[0.65rem] font-black uppercase tracking-wide text-gray-400">#{index + 1}</span>
-                  <strong className="text-xs text-[#806400]">{priority.score} pts</strong>
+                  <strong className="text-xs text-blue-600">{priority.score} pts</strong>
                 </div>
                 <button className="mt-1 block w-full truncate text-left text-sm font-black text-gray-950 hover:underline" type="button" onClick={() => onOpenLead(lead)}>{displayName(lead)}</button>
                 <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-gray-500">{priority.reason}</p>
@@ -492,7 +488,9 @@ export function CrmPage({
           onAttachReceipt={onAttachReceipt}
           onGenerateProposal={onGenerateProposal}
           onRegisterInteraction={onRegisterInteraction}
+          onSendWhatsAppApproach={onSendWhatsAppApproach}
           onSendEmail={onSendEmail}
+          onEmailQuote={onEmailQuote}
           onScheduleReturn={onScheduleReturn}
           onRegisterDeposit={onRegisterDeposit}
           onDownloadQuote={onDownloadQuote}
@@ -784,7 +782,7 @@ export function TaskView({ state, onOpenLead, onCreate, onEdit: _onEdit, onCompl
   })}</div></div>
 }
 
-function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onSendEmail, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
+function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onSendWhatsAppApproach, onSendEmail, onEmailQuote, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
   lead: Lead
   state: AppState
   onClose: () => void
@@ -793,7 +791,9 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
+  onSendWhatsAppApproach: (lead: Lead, message: string, context: string) => void
   onSendEmail: (lead: Lead) => void
+  onEmailQuote: (quote: Quote) => void | Promise<void>
   onScheduleReturn: (lead: Lead) => void
   onRegisterDeposit: (quote: Quote) => void
   onDownloadQuote: (quote: Quote) => void | Promise<void>
@@ -815,6 +815,9 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   const files = state.files.filter((file) => !file.deletedAt && (file.leadId === lead.id || projects.some((project) => project.id === file.projectId)))
   const tasks = state.tasks.filter((task) => (task.leadId === lead.id || task.leadIds?.includes(lead.id)) && task.status !== 'Cancelada').sort((a, b) => a.dueAt.localeCompare(b.dueAt))
   const quoteForDeposit = quotes.find((quote) => ['Aprovada', 'Aguardando entrada', 'Entrada recebida'].includes(quote.status))
+  const quoteToSend = [...quotes]
+    .filter((quote) => !quote.archivedAt && !['Aprovada', 'Convertida em projeto', 'Cancelada', 'Recusada', 'Expirada'].includes(quote.status))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
   const receiptTarget = payments.find((payment) => !payment.receiptUrl && !files.some((file) => file.paymentId === payment.id)) ?? payments[0]
   const storedLeadHunterData = lead.leadHunterData || state.leadHunterProspects?.find((prospect) => prospect.leadId === lead.id)
   const leadHunterData = storedLeadHunterData ? {
@@ -842,27 +845,23 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   return <>
     <button className="fixed inset-0 z-40 cursor-default bg-black/20" aria-label="Fechar detalhes" type="button" onClick={onClose} />
     <aside className="crm-contact-drawer">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white p-4">
+      <header className="border-b border-gray-200 bg-white p-4">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase text-gray-500">Contato e oportunidade</p><h2 className="mt-1 truncate text-xl font-black text-gray-950">{displayName(lead)}</h2><p className="text-sm text-gray-500">{lead.fullName || lead.city}</p></div><button className="focus-ring rounded-lg p-2 hover:bg-gray-100" aria-label="Fechar" type="button" onClick={onClose}><X size={20} /></button></div>
         <div className="mt-3 flex flex-wrap gap-2"><StatusBadge>{lead.pipelineStage}</StatusBadge><StatusBadge>{lead.temperature}</StatusBadge>{currentProject(state, lead.id) ? <StatusBadge>Com projeto</StatusBadge> : null}</div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {lead.whatsapp ? <a className="crm-drawer-action" href={whatsappLink(lead.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={17} /><span>WhatsApp</span></a> : null}
-          {lead.phone ? <a className="crm-drawer-action" href={phoneLink(lead.phone)}><Phone size={17} /><span>Ligar</span></a> : null}
-          {lead.email ? <button className="crm-drawer-action" type="button" onClick={() => onSendEmail(lead)}><Mail size={17} /><span>E-mail</span></button> : null}
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <Button variant="secondary" type="button" onClick={() => onEdit(lead)}><SlidersHorizontal size={16} /> Editar</Button>
-          <Button variant="danger" type="button" onClick={() => onDelete(lead)}><Trash2 size={16} /> Excluir contato</Button>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <Button className="min-h-9 py-1 text-xs" variant="secondary" type="button" onClick={() => onEdit(lead)}><SlidersHorizontal size={14} /> Editar</Button>
+          <Button className="min-h-9 py-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700" variant="secondary" type="button" onClick={() => onDelete(lead)}><Trash2 size={14} /> Excluir</Button>
         </div>
       </header>
-      <nav className="flex overflow-x-auto border-b border-gray-200 bg-white px-2">{([
+      <nav className="crm-drawer-tabs sticky top-0 z-10 flex overflow-x-auto border-b border-gray-200 bg-white px-2">{([
         ['overview', 'Visão geral'], ['activities', 'Atividades'], ['tasks', 'Tarefas'], ['quotes', 'Propostas'], ['projects', 'Projetos'], ['finance', 'Financeiro'], ['files', 'Arquivos'],
-      ] as Array<[DrawerTab, string]>).map(([value, label]) => <button key={value} className={`min-h-11 whitespace-nowrap border-b-2 px-3 text-xs font-bold ${tab === value ? 'border-[#d8a500] text-gray-950' : 'border-transparent text-gray-500'}`} type="button" onClick={() => setTab(value)}>{label}</button>)}</nav>
+      ] as Array<[DrawerTab, string]>).map(([value, label]) => <button key={value} className={`min-h-11 whitespace-nowrap border-b-2 px-3 text-xs font-bold ${tab === value ? 'border-[#d8a500] text-[#866800]' : 'border-transparent text-gray-500 hover:text-gray-800'}`} type="button" onClick={() => setTab(value)}>{label}</button>)}</nav>
       <div className="space-y-4 p-4">
         {tab === 'overview' ? <>
           <div className="grid grid-cols-2 gap-2">{[['Valor potencial', formatCurrency(lead.estimatedValue)], ['Próxima ação', lead.nextContactAt ? formatDateTime(lead.nextContactAt) : 'Não definida'], ['Serviço', lead.serviceInterest], ['Origem', lead.source]].map(([label, value]) => <div key={label} className="rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">{label}</p><p className="mt-1 text-sm font-black text-gray-950">{value}</p></div>)}</div>
-          {leadHunterData ? <LeadHunterDossier data={leadHunterData} notes={lead.notes} /> : null}
-          <section><h3 className="text-sm font-black text-gray-950">Ações principais</h3><div className="mt-2 grid gap-2 sm:grid-cols-2"><Button type="button" onClick={() => onRegisterInteraction(lead, 'Contato realizado')}><MessageCircle size={16} /> Registrar atividade</Button><Button variant="secondary" type="button" onClick={() => onCreateTask(lead)}><CheckCircle2 size={16} /> Criar tarefa</Button><Button variant="secondary" type="button" onClick={() => onScheduleReturn(lead)}><CalendarDays size={16} /> Agendar retorno</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal('', lead.id)}><FileText size={16} /> Gerar proposta</Button>{quoteForDeposit ? <Button variant="secondary" type="button" onClick={() => onRegisterDeposit(quoteForDeposit)}><CircleDollarSign size={16} /> Registrar entrada</Button> : null}{receiptTarget ? <Button variant="secondary" type="button" onClick={() => receiptTarget.receiptUrl ? setPreviewFile({ fileName: `${receiptTarget.paymentType} comprovante`, url: receiptTarget.receiptUrl, mode: getFilePreviewMode(receiptTarget.receiptUrl) }) : onAttachReceipt(receiptTarget)}><Paperclip size={16} /> {receiptTarget.receiptUrl ? 'Ver comprovante' : 'Anexar comprovante'}</Button> : null}{lead.pipelineStage === 'Serviço confirmado' && !currentProject(state, lead.id) ? <Button className="sm:col-span-2" type="button" onClick={() => onCreateProject(lead)}><Briefcase size={16} /> Criar projeto</Button> : null}</div></section>
+          {lead.whatsapp || lead.phone ? <section><div className="mb-2 flex items-center gap-2"><MessageCircle className="text-gray-500" size={15} /><h3 className="text-xs font-black uppercase tracking-wide text-gray-500">WhatsApp</h3></div><div className="grid grid-cols-3 gap-2"><a className="crm-lead-link" href={whatsappLink(lead.whatsapp || lead.phone)} target="_blank" rel="noreferrer">Abrir vazio</a><button className="crm-lead-link" type="button" onClick={() => onSendWhatsAppApproach(lead, buildContextualWhatsAppMessage(lead, 'Primeiro contato'), 'Primeiro contato')}>Apresentar</button><button className="crm-lead-link" type="button" onClick={() => onSendWhatsAppApproach(lead, buildContextualWhatsAppMessage(lead, 'Enviar proposta'), 'Enviar proposta')}>Proposta</button></div>{lead.email ? <button className="mt-2 text-xs font-bold text-gray-500 hover:text-gray-900" type="button" onClick={() => onSendEmail(lead)}><Mail className="mr-1 inline" size={13} /> Enviar e-mail</button> : null}</section> : null}
+          {leadHunterData ? <LeadHunterDossier data={leadHunterData} notes={lead.notes} hideWhatsApp /> : null}
+          <section><h3 className="text-sm font-black text-gray-950">Ações principais</h3><div className="mt-2 grid gap-2 sm:grid-cols-2"><Button type="button" onClick={() => onRegisterInteraction(lead, 'Contato realizado')}><MessageCircle size={16} /> Registrar atividade</Button><Button variant="secondary" type="button" onClick={() => onCreateTask(lead)}><CheckCircle2 size={16} /> Criar tarefa</Button><Button variant="secondary" type="button" onClick={() => onScheduleReturn(lead)}><CalendarDays size={16} /> Agendar retorno</Button>{quoteToSend ? <Button variant="secondary" type="button" onClick={() => void onEmailQuote(quoteToSend)}><Mail size={16} /> Enviar proposta</Button> : <Button variant="secondary" type="button" onClick={() => onGenerateProposal('', lead.id)}><FileText size={16} /> Gerar proposta</Button>}{quoteForDeposit ? <Button variant="secondary" type="button" onClick={() => onRegisterDeposit(quoteForDeposit)}><CircleDollarSign size={16} /> Registrar entrada</Button> : null}{receiptTarget ? <Button variant="secondary" type="button" onClick={() => receiptTarget.receiptUrl ? setPreviewFile({ fileName: `${receiptTarget.paymentType} comprovante`, url: receiptTarget.receiptUrl, mode: getFilePreviewMode(receiptTarget.receiptUrl) }) : onAttachReceipt(receiptTarget)}><Paperclip size={16} /> {receiptTarget.receiptUrl ? 'Ver comprovante' : 'Anexar comprovante'}</Button> : null}{lead.pipelineStage === 'Serviço confirmado' && !currentProject(state, lead.id) ? <Button className="sm:col-span-2" type="button" onClick={() => onCreateProject(lead)}><Briefcase size={16} /> Criar projeto</Button> : null}</div>{quoteToSend ? <p className="mt-2 text-xs text-gray-500">Envia o PDF e o link de aceite. Após a confirmação, a oportunidade avança para “Proposta enviada”.</p> : null}</section>
           <section><h3 className="text-sm font-black text-gray-950">Contato</h3><dl className="mt-2 space-y-2 rounded-lg border border-gray-200 p-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-gray-500">Telefone</dt><dd className="font-bold text-gray-950">{lead.whatsapp || lead.phone || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">E-mail</dt><dd className="break-all text-right font-bold text-gray-950">{lead.email || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-gray-500">Local</dt><dd className="text-right font-bold text-gray-950">{lead.city || 'Não informado'}</dd></div></dl></section>
         </> : null}
         {tab === 'activities' ? <Timeline items={timeline} /> : null}
@@ -1022,7 +1021,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onAttachReceipt
   </>
 }
 
-function LeadHunterDossier({ data, notes }: { data: NonNullable<Lead['leadHunterData']>; notes: string }) {
+function LeadHunterDossier({ data, notes, hideWhatsApp = false }: { data: NonNullable<Lead['leadHunterData']>; notes: string; hideWhatsApp?: boolean }) {
   const location = [data.address, data.neighborhood, data.city].filter(Boolean).join(' · ')
   const googleBusinessUrl = data.googleMapsUrl || buildGoogleBusinessUrl(data)
   const rating = data.googleRating ? `${data.googleRating} ★ · ${data.googleReviewCount || 0} avaliações` : ''
@@ -1043,18 +1042,18 @@ function LeadHunterDossier({ data, notes }: { data: NonNullable<Lead['leadHunter
       </div>
       {location ? <div className="mt-3 flex items-start gap-2 rounded-lg bg-gray-50 p-2.5 text-xs text-gray-700"><MapPin className="mt-0.5 shrink-0 text-gray-400" size={15} /><span>{location}</span></div> : null}
       <div className="mt-3 grid grid-cols-2 gap-2">
-        {data.whatsapp ? <a className="crm-lead-link" href={whatsappLink(data.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={15} /> WhatsApp</a> : null}
+        {data.whatsapp && !hideWhatsApp ? <a className="crm-lead-link" href={whatsappLink(data.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={15} /> WhatsApp vazio</a> : null}
         {data.instagram ? <a className="crm-lead-link" href={buildInstagramUrl(data.instagram)} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Instagram</a> : null}
         {data.website ? <a className="crm-lead-link" href={data.website} target="_blank" rel="noreferrer"><Globe2 size={15} /> Site</a> : null}
         <a className="crm-lead-link" href={googleBusinessUrl} target="_blank" rel="noreferrer"><MapPin size={15} /> Google Business</a>
       </div>
-      <div className="mt-3 rounded-lg border border-gray-200 p-3">
-        <p className="flex items-center gap-1.5 text-xs font-bold text-gray-700"><Sparkles size={14} /> Comentários e abordagem sugerida</p>
-        <div className="mt-3 space-y-3">
+      <details className="group mt-3 rounded-lg border border-gray-200">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-3 text-xs font-bold text-gray-700"><span className="flex items-center gap-1.5"><Sparkles size={14} /> Análise e abordagem</span><ChevronDown className="transition group-open:rotate-180" size={15} /></summary>
+        <div className="space-y-3 border-t border-gray-200 p-3">
           <div><p className="text-[0.65rem] font-black uppercase tracking-wide text-gray-500">Leitura da oportunidade</p><p className="mt-1 text-sm leading-relaxed text-gray-700">{opportunityComment}</p></div>
           <div><p className="text-[0.65rem] font-black uppercase tracking-wide text-gray-500">Como iniciar o contato</p><p className="mt-1 text-sm leading-relaxed text-gray-700">{approachComment}</p></div>
         </div>
-      </div>
+      </details>
     </div>
     <details className="group border-t border-gray-200">
       <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50">

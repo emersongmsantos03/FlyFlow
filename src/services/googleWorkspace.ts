@@ -1,6 +1,7 @@
 const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
 const GOOGLE_SESSION_KEY = 'flyflow.google.workspace.session'
 const GOOGLE_CONNECTED_KEY = 'flyflow.google.workspace.connected'
+const GOOGLE_CLIENT_ID_KEY = 'flyflow.google.workspace.client-id'
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/gmail.send',
@@ -82,6 +83,8 @@ export const getGoogleWorkspaceConnection = () => {
   return { connected: Boolean(token), email: token?.email || '' }
 }
 
+export const getStoredGoogleOAuthClientId = () => localStorage.getItem(GOOGLE_CLIENT_ID_KEY)?.trim() || ''
+
 export const connectGoogleWorkspace = async (clientId: string) => {
   if (!clientId.trim()) throw new Error('Informe o OAuth Client ID do Google.')
   await loadGoogleIdentityServices()
@@ -111,6 +114,7 @@ export const connectGoogleWorkspace = async (clientId: string) => {
           currentToken = token
           localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify(token))
           localStorage.setItem(GOOGLE_CONNECTED_KEY, 'true')
+          localStorage.setItem(GOOGLE_CLIENT_ID_KEY, clientId.trim())
           resolve({ email: token.email || '' })
         } catch (error) {
           reject(error)
@@ -125,8 +129,9 @@ export const connectGoogleWorkspace = async (clientId: string) => {
 export const restoreGoogleWorkspaceConnection = async (clientId: string) => {
   const connected = getGoogleWorkspaceConnection()
   if (connected.connected) return connected
-  if (localStorage.getItem(GOOGLE_CONNECTED_KEY) !== 'true' || !clientId.trim()) return connected
-  return { connected: true, ...(await connectGoogleWorkspace(clientId)) }
+  const effectiveClientId = clientId.trim() || getStoredGoogleOAuthClientId()
+  if (localStorage.getItem(GOOGLE_CONNECTED_KEY) !== 'true' || !effectiveClientId) return connected
+  return { connected: true, ...(await connectGoogleWorkspace(effectiveClientId)) }
 }
 
 export const disconnectGoogleWorkspace = async () => {
@@ -304,6 +309,41 @@ export interface GoogleMailboxMessage {
   hasAttachments: boolean
 }
 
+const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+
+const fetchGmailMessage = async (id: string) => {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${requireToken()}` },
+    })
+    if (response.ok) return response.json()
+    if (response.status !== 429 || attempt === 2) {
+      throw new Error(`Não foi possível abrir uma mensagem (${response.status}).`)
+    }
+    await wait(750 * (attempt + 1))
+  }
+  throw new Error('Não foi possível abrir a mensagem.')
+}
+
+const mapWithConcurrency = async <T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+) => {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      results[index] = await mapper(items[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker))
+  return results
+}
+
 type GmailPayloadPart = {
   mimeType?: string
   filename?: string
@@ -373,12 +413,7 @@ export const listGoogleWorkspaceEmails = async (input: {
   })
   if (!listResponse.ok) throw new Error(`Gmail recusou a leitura da caixa (${listResponse.status}). Reconecte sua conta Google.`)
   const list = await listResponse.json() as { messages?: Array<{ id: string }> }
-  const messages = await Promise.all((list.messages || []).map(async ({ id }) => {
-    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`, {
-      headers: { Authorization: `Bearer ${requireToken()}` },
-    })
-    if (!response.ok) throw new Error(`Não foi possível abrir uma mensagem (${response.status}).`)
-    return mapGmailMessage(await response.json())
-  }))
+  const messages = await mapWithConcurrency(list.messages || [], 3, async ({ id }) =>
+    mapGmailMessage(await fetchGmailMessage(id)))
   return messages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }

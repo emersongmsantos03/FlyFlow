@@ -26,6 +26,7 @@ export interface LeadSearchProvider {
 export interface LeadEnrichmentResult {
   id: string
   contactName?: string
+  address?: string
   phone?: string
   whatsapp?: string
   email?: string

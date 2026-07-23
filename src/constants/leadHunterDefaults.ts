@@ -38,7 +38,7 @@ export const createDefaultLeadHunterCategories = (): LeadHunterCategory[] => cat
 }))
 
 export const createDefaultLeadHunterSettings = (): LeadHunterSettings => ({
-  radiusKm: 50, maxResultsPerSearch: 20, maxAnalysesPerBatch: 10, maxDailyCalls: 50,
+  radiusKm: 50, maxResultsPerSearch: 20, maxAnalysesPerBatch: 20, maxDailyCalls: 50,
   minimumNewLeadPercentage: 70, maximumReappearances: 5,
   cooldownDays: { discovered: 30, analyzed: 21, contactedNoReply: 30, refused: 90, strongRefusal: 180, visited: 30 },
   scoringWeights: { noDroneContent: 20, outdatedInstagram: 12, largeOutdoorArea: 10, visuallyAttractive: 10, goodGoogleRating: 8, relevantReviews: 6, incompleteData: -10, outsideServiceArea: -20, recentContact: -20, duplicate: -35, professionalDroneContent: -15 },
