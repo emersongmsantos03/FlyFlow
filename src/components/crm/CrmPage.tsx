@@ -38,7 +38,7 @@ import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
 
-export type CrmView = 'kanban' | 'table' | 'tasks'
+export type CrmView = 'kanban' | 'table' | 'tasks' | 'lost'
 
 type QuickFilter =
   | 'all'
@@ -70,7 +70,6 @@ const columns: Array<{
   { id: 'deposit', title: 'Aguardando entrada', subtitle: 'Confirmar recebimento', stages: ['Aguardando entrada', 'Aguardando sinal'], target: 'Aguardando entrada' },
   { id: 'confirmed', title: 'Serviço confirmado', subtitle: 'Pronto para operar', stages: ['Serviço confirmado', 'Serviço agendado', 'Convertido em cliente'], target: 'Serviço confirmado' },
   { id: 'future', title: 'Retorno futuro', subtitle: 'Follow-up agendado', stages: ['Retorno futuro', 'Contato futuro'], target: 'Retorno futuro' },
-  { id: 'lost', title: 'Perdido', subtitle: 'Recuperar depois', stages: ['Perdido'], target: 'Perdido' },
 ]
 
 const displayName = (lead: Lead) => lead.companyName?.trim() || lead.fullName?.trim() || 'Contato sem nome'
@@ -221,9 +220,10 @@ export function CrmPage({
 
   const activeLeads = useMemo(() => leads.filter((lead) => !lead.archived && !lead.deletedAt), [leads])
   const openLeads = useMemo(() => activeLeads.filter((lead) => lead.pipelineStage !== 'Perdido'), [activeLeads])
+  const lostLeads = useMemo(() => activeLeads.filter((lead) => lead.pipelineStage === 'Perdido'), [activeLeads])
   const commercialInsights = useMemo(() => buildCommercialInsights(openLeads, state), [openLeads, state])
   const stalledIds = useMemo(() => new Set(commercialInsights.stalled.map((lead) => lead.id)), [commercialInsights.stalled])
-  const filtered = useMemo(() => activeLeads.filter((lead) => {
+  const filtered = useMemo(() => openLeads.filter((lead) => {
     const quote = newestQuote(state, lead.id)
     const project = currentProject(state, lead.id)
     const payments = relatedPayments(state, lead.id, project)
@@ -242,7 +242,7 @@ export function CrmPage({
     if (quickFilter === 'stalled') return stalledIds.has(lead.id)
     if (quickFilter === 'confirmed-no-project') return lead.pipelineStage === 'Serviço confirmado' && !project
     return true
-  }), [activeLeads, quickFilter, search, stalledIds, state])
+  }), [openLeads, quickFilter, search, stalledIds, state])
 
   const activeQuotes = state.quotes.filter((quote) => !quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Recusada', 'Expirada'].includes(quote.status))
   const potentialValue = openLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
@@ -343,6 +343,7 @@ export function CrmPage({
               ['kanban', 'Quadro', LayoutGrid],
               ['table', 'Lista', Table2],
               ['tasks', 'Minhas tarefas', CheckCircle2],
+              ['lost', `Perdidos (${lostLeads.length})`, Ban],
             ] as const).map(([value, label, Icon]) => (
               <button key={value} className={`focus-ring inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold sm:flex-none ${view === value ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => onViewChange(value)}>
                 <Icon size={16} /> {label}
@@ -442,6 +443,13 @@ export function CrmPage({
         />
       ) : null}
       {view === 'tasks' ? <TaskWorkspace state={state} onOpenLead={onOpenLead} onCreate={onCreateTask} onEdit={onEditTask} onComplete={onCompleteTask} onReopen={onReopenTask} onCancel={onCancelTask} onDelete={onDeleteTask} /> : null}
+      {view === 'lost' ? (
+        <LostOpportunities
+          leads={lostLeads}
+          onOpen={onOpenLead}
+          onReactivate={(lead) => onMoveLead(lead.id, 'Entrada')}
+        />
+      ) : null}
 
       {priorityLead ? createPortal(
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-3">
@@ -715,6 +723,47 @@ function CrmTable({ leads, state, onOpen, onEdit, onDelete, onLose, onAttachRece
             </tr>
           })}</tbody>
         </table>
+      </div>
+    </section>
+  )
+}
+
+function LostOpportunities({
+  leads,
+  onOpen,
+  onReactivate,
+}: {
+  leads: Lead[]
+  onOpen: (lead: Lead) => void
+  onReactivate: (lead: Lead) => void
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <header className="border-b border-gray-200 px-4 py-4">
+        <h2 className="font-black text-gray-950">Oportunidades perdidas</h2>
+        <p className="mt-1 text-sm text-gray-500">O histórico permanece salvo e qualquer oportunidade pode voltar ao funil.</p>
+      </header>
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+        {leads.map((lead) => (
+          <article key={lead.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3>
+                <p className="mt-1 text-xs text-gray-500">{lead.city || lead.phone || lead.email || 'Sem detalhes adicionais'}</p>
+              </div>
+              <Ban className="shrink-0 text-amber-700" size={18} />
+            </div>
+            <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+              <p className="text-[0.65rem] font-black uppercase tracking-wide text-amber-700">Motivo da perda</p>
+              <p className="mt-1 text-sm text-amber-950">{lead.lossReason || 'Motivo não informado'}</p>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button className="flex-1" variant="secondary" type="button" onClick={() => onOpen(lead)}><Eye size={15} /> Histórico</Button>
+              <Button className="flex-1" type="button" onClick={() => onReactivate(lead)}><ArrowRight size={15} /> Reativar</Button>
+            </div>
+          </article>
+        ))}
+        {!leads.length ? <div className="col-span-full rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500">Nenhuma oportunidade perdida.</div> : null}
       </div>
     </section>
   )

@@ -1221,7 +1221,7 @@ function App() {
   const [regime, setRegime] = useState<AccountingRegime>('cash')
   const [leadView, setLeadView] = useState<CrmView>(() => {
     const stored = window.localStorage.getItem('flyflow:crm-view')
-    return stored === 'table' || stored === 'tasks' ? stored : 'kanban'
+    return stored === 'table' || stored === 'tasks' || stored === 'lost' ? stored : 'kanban'
   })
   const [financeTab, setFinanceTab] = useState<FinanceTab>('dashboard')
   const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>('diaria')
@@ -4571,7 +4571,7 @@ Hero Drone`,
                   ...leadItem,
                   pipelineStage,
                   lossReason: pipelineStage === 'Perdido' ? lossReason || undefined : undefined,
-                  probability: pipelineStage === 'Perdido' ? 0 : leadItem.probability,
+                  probability: pipelineStage === 'Perdido' ? 0 : leadItem.pipelineStage === 'Perdido' ? 50 : leadItem.probability,
                   nextContactAt: pipelineStage === 'Perdido' ? undefined : leadItem.nextContactAt,
                   archived: pipelineStage === 'Perdido' ? leadItem.archived : false,
                   updatedAt: now,
