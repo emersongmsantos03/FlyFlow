@@ -5748,7 +5748,7 @@ Hero Drone`,
                       .slice(0, 2)
                     const underSearched = [...activeCities]
                       .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
-                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 5)
+                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 2)
                   })()
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
@@ -5761,8 +5761,8 @@ Hero Drone`,
                       )
                     const mixed = ranked.filter((category, index, list) =>
                       list.findIndex((candidate) => candidate.group === category.group) === index,
-                    ).slice(0, 6)
-                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 6)
+                    ).slice(0, 2)
+                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 2)
                   })()
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
@@ -5817,22 +5817,19 @@ Hero Drone`,
                       sourceUrls: [...new Set([...(existing.sourceUrls || []), ...(lead.sourceUrls || [])])],
                     })
                   }
-                  const citySearches = await Promise.allSettled(candidateCities.map(async (searchCity) => ({
-                    city: searchCity,
-                    result: await provider.search(
-                      { cityNames: [searchCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
-                      AbortSignal.timeout(18_000),
-                    ),
-                  })))
-                  citySearches.forEach((searchResult, index) => {
-                    if (searchResult.status === 'rejected') {
-                      const error = searchResult.reason
-                      searchWarnings.push(`${candidateCities[index].name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
-                      return
+                  for (const searchCity of candidateCities) {
+                    try {
+                      const cityResult = await provider.search(
+                        { cityNames: [searchCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
+                        AbortSignal.timeout(25_000),
+                      )
+                      cityResult.sources.forEach((source) => combinedSources.add(source))
+                      cityResult.warnings.forEach((warning) => searchWarnings.push(`${searchCity.name}: ${warning}`))
+                      cityResult.leads.forEach(addCandidate)
+                    } catch (error) {
+                      searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
                     }
-                    searchResult.value.result.sources.forEach((source) => combinedSources.add(source))
-                    searchResult.value.result.leads.forEach(addCandidate)
-                  })
+                  }
                   try {
                     const googleResult = await searchGooglePlacesLeads({
                       city: candidateCities[0].name,

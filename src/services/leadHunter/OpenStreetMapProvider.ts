@@ -243,7 +243,7 @@ const searchNominatimCategory = async (city: string, category: string, limit: nu
 }
 
 const searchNominatim = async (city: string, categories: string[], limit: number, signal?: AbortSignal): Promise<LeadSearchProviderResult['leads']> => {
-  const searchCategories = [...new Set(categories.map((category) => clean(category, 80)).filter(Boolean))].slice(0, 3)
+  const searchCategories = [...new Set(categories.map((category) => clean(category, 80)).filter(Boolean))].slice(0, 2)
   const collected: Array<{ result: NominatimResult; category: string }> = []
   const perCategoryLimit = Math.max(4, Math.ceil(limit / Math.max(searchCategories.length, 1)) + 2)
   for (const category of searchCategories.length ? searchCategories : ['hotel']) {
@@ -327,7 +327,23 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
         const result: LeadSearchProviderResult = { leads, sources: ['OpenStreetMap / Nominatim', 'OpenStreetMap / Overpass API'], estimatedCost: 0, warnings: leads.length ? [] : ['Nenhum estabelecimento com nome foi encontrado nesta combinação. Tente outra categoria ou cidade.'] }
         if (leads.length) localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
         return result
-      } catch (error) { if (signal?.aborted) throw error; lastError = error }
+      } catch (error) {
+        lastError = error
+        // Não descarte empresas que o Nominatim já encontrou apenas porque a
+        // fonte complementar demorou ou ficou indisponível.
+        if (signal?.aborted && nominatimLeads.length) break
+        if (signal?.aborted) throw error
+      }
+    }
+    if (nominatimLeads.length) {
+      const result: LeadSearchProviderResult = {
+        leads: nominatimLeads.slice(0, request.limit),
+        sources: ['OpenStreetMap / Nominatim'],
+        estimatedCost: 0,
+        warnings: ['Resultados parciais exibidos; a fonte complementar não respondeu a tempo.'],
+      }
+      localStorage.setItem(key, JSON.stringify({ at: Date.now(), result }))
+      return result
     }
     throw new Error(`A fonte pública está temporariamente indisponível. Tente novamente em alguns minutos. ${lastError instanceof Error ? lastError.message : ''}`.trim())
   }
