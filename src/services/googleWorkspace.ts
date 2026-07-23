@@ -4,6 +4,7 @@ const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
 const GOOGLE_SESSION_KEY = 'flyflow.google.workspace.session'
 const GOOGLE_CONNECTED_KEY = 'flyflow.google.workspace.connected'
 const GOOGLE_CLIENT_ID_KEY = 'flyflow.google.workspace.client-id'
+export const CONFIGURED_GOOGLE_OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim() || ''
 const GOOGLE_WORKSPACE_API_URL =
   import.meta.env.VITE_GOOGLE_WORKSPACE_API_URL ||
   `https://southamerica-east1-${firebaseConfig.projectId}.cloudfunctions.net/googleWorkspaceApi`
@@ -145,21 +146,22 @@ const connectLegacyGoogleWorkspace = async (clientId: string) => {
 }
 
 export const connectGoogleWorkspace = async (clientId: string) => {
-  if (!clientId.trim()) throw new Error('Informe o OAuth Client ID do Google.')
+  const effectiveClientId = CONFIGURED_GOOGLE_OAUTH_CLIENT_ID || clientId.trim()
+  if (!effectiveClientId) throw new Error('Informe o OAuth Client ID do Google.')
   await loadGoogleIdentityServices()
   const oauth2 = googleOAuth()
   if (!oauth2) throw new Error('Google Identity Services indisponível.')
   try {
     await backendRequest('/status')
   } catch {
-    const connection = await connectLegacyGoogleWorkspace(clientId)
-    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, clientId.trim())
+    const connection = await connectLegacyGoogleWorkspace(effectiveClientId)
+    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, effectiveClientId)
     return connection
   }
 
   return new Promise<{ email: string }>((resolve, reject) => {
     const client = oauth2.initCodeClient({
-      client_id: clientId.trim(),
+      client_id: effectiveClientId,
       scope: SCOPES,
       ux_mode: 'popup',
       callback: async (response) => {
@@ -174,7 +176,7 @@ export const connectGoogleWorkspace = async (clientId: string) => {
           })
           currentConnection = { connected: connection.connected, email: connection.email || '' }
           currentToken = undefined
-          localStorage.setItem(GOOGLE_CLIENT_ID_KEY, clientId.trim())
+          localStorage.setItem(GOOGLE_CLIENT_ID_KEY, effectiveClientId)
           resolve({ email: connection.email || '' })
         } catch (error) {
           reject(error)

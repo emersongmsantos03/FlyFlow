@@ -196,6 +196,7 @@ import {
 import { syncGoogleCalendarEvent } from './services/googleCalendar'
 import {
   connectGoogleWorkspace,
+  CONFIGURED_GOOGLE_OAUTH_CLIENT_ID,
   createGoogleWorkspaceEvent,
   disconnectGoogleWorkspace,
   getGoogleWorkspaceConnection,
@@ -9863,11 +9864,17 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
   const fuelCost = (distance / Number(watch('vehicleAverageConsumption') || 1)) * Number(watch('fuelAveragePrice') || 0)
   const additionalKm = Math.max(distance - Number(watch('freeKm') || 0), 0)
   const suggestedTravelFee = fuelCost + additionalKm * Number(watch('pricePerKm') || 0)
-  const googleClientId = watch('googleOAuthClientId') ?? ''
+  const googleClientId = CONFIGURED_GOOGLE_OAUTH_CLIENT_ID || watch('googleOAuthClientId') || ''
   const emailSignatureImageUrl = watch('emailSignatureImageUrl') ?? ''
   const [googleConnection, setGoogleConnection] = useState(() => getGoogleWorkspaceConnection())
   const [googleConnectionError, setGoogleConnectionError] = useState('')
   const [connectingGoogle, setConnectingGoogle] = useState(false)
+
+  useEffect(() => {
+    if (CONFIGURED_GOOGLE_OAUTH_CLIENT_ID) {
+      setValue('googleOAuthClientId', CONFIGURED_GOOGLE_OAUTH_CLIENT_ID)
+    }
+  }, [setValue])
 
   useEffect(() => {
     let active = true
@@ -9950,8 +9957,8 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         <div className="space-y-4">
           <Panel id="settings-google" title="Google Workspace">
             <div className="space-y-3">
-              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial. O Client ID fica salvo no Firebase e a sessão autorizada permanece vinculada neste navegador até você desconectar ou o Google revogar o acesso.</p>
-              <InputField label="OAuth Client ID do Google" error={getError(errors.googleOAuthClientId?.message)}><input className="field-input" {...register('googleOAuthClientId')} placeholder="000000000000-xxxx.apps.googleusercontent.com" /></InputField>
+              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial. A autorização fica salva com segurança no workspace e estará disponível em todos os seus dispositivos.</p>
+              <InputField label="OAuth Client ID do Google" error={getError(errors.googleOAuthClientId?.message)}><input className="field-input" {...register('googleOAuthClientId')} readOnly={Boolean(CONFIGURED_GOOGLE_OAUTH_CLIENT_ID)} placeholder="000000000000-xxxx.apps.googleusercontent.com" /></InputField>
               <input type="hidden" {...register('googleWorkspaceEmail')} />
               <div className={`rounded-xl border p-3 ${googleConnection.connected ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
                 <p className="text-xs font-black uppercase text-gray-500">{googleConnection.connected ? 'Google conectado' : 'Google não conectado'}</p>
