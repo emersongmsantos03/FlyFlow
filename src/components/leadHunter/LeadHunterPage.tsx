@@ -174,7 +174,10 @@ export function LeadHunterPage({
   const latestSearchId = searches[0]?.id || "";
   useEffect(() => {
     if (!latestSearchId) return;
-    setSearchBatchId(latestSearchId);
+    // O pipeline é acumulativo: depois de uma nova rodada, mantenha todas as
+    // rodadas visíveis. O seletor continua disponível apenas para uma consulta
+    // manual ao histórico.
+    setSearchBatchId("");
     setCityId("");
     setCategoryId("");
     setMinimumScore(0);
@@ -239,7 +242,8 @@ export function LeadHunterPage({
         onlyNew,
         includeEligibleKnown: includeKnown,
       });
-      // Uma busca concluída deve revelar o lote, inclusive resultados já conhecidos.
+      // Uma busca concluída deve revelar o pipeline acumulado.
+      setSearchBatchId("");
       setOnlyNew(false);
     } finally {
       setSearching(false);
