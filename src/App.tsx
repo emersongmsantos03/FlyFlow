@@ -1263,6 +1263,8 @@ function App() {
   const [inputDialog, setInputDialog] = useState<InputDialogState | null>(null)
   const [emailComposer, setEmailComposer] = useState<EmailComposerState | null>(null)
   const [toast, setToast] = useState('')
+  const [unreadEmailCount, setUnreadEmailCount] = useState(0)
+  const observedInboxIds = useRef<Set<string> | null>(null)
   const googleRestoreAttempted = useRef('')
   const latestState = useRef(state)
 
@@ -1282,6 +1284,40 @@ function App() {
       // O Google pode exigir um novo consentimento; nesse caso a tela de Configurações continua disponível.
     })
   }, [state.companySettings.googleOAuthClientId])
+
+  useEffect(() => {
+    if (!authSession) return
+    let cancelled = false
+    const checkInbox = async () => {
+      if (!getGoogleWorkspaceConnection().connected) return
+      try {
+        const messages = await listGoogleWorkspaceEmails({ box: 'inbox', maxResults: 10 })
+        if (cancelled) return
+        const currentIds = new Set(messages.map((message) => message.id))
+        const unread = messages.filter((message) => message.unread)
+        setUnreadEmailCount(unread.length)
+        if (observedInboxIds.current) {
+          const newUnread = unread.filter((message) => !observedInboxIds.current?.has(message.id))
+          if (newUnread.length) {
+            setPage('inbox')
+            setToast(newUnread.length === 1
+              ? `Novo e-mail de ${newUnread[0].from || 'um contato'}. Inbox aberto.`
+              : `${newUnread.length} novos e-mails. Inbox aberto.`)
+          }
+        }
+        observedInboxIds.current = currentIds
+      } catch {
+        // O Inbox exibe o erro completo quando o usuário o abre.
+      }
+    }
+    const initialTimer = window.setTimeout(() => void checkInbox(), 5_000)
+    const interval = window.setInterval(() => void checkInbox(), 60_000)
+    return () => {
+      cancelled = true
+      window.clearTimeout(initialTimer)
+      window.clearInterval(interval)
+    }
+  }, [authSession])
 
   useEffect(() => {
     if (!isFirebaseConfigured && !isSupabaseConfigured) void ensurePrimaryAuthAccount()
@@ -5538,11 +5574,11 @@ Hero Drone`,
               <button
                 className="app-header-icon focus-ring relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
                 type="button"
-                onClick={() => setPage('dashboard')}
-                aria-label="Notificações"
+                onClick={() => setPage(unreadEmailCount ? 'inbox' : 'dashboard')}
+                aria-label={unreadEmailCount ? `Abrir Inbox com ${unreadEmailCount} e-mail(s) não lido(s)` : 'Notificações'}
               >
                 <Bell size={17} />
-                {state.notifications.some((item) => !item.read) ? (
+                {unreadEmailCount || state.notifications.some((item) => !item.read) ? (
                   <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-600" />
                 ) : null}
               </button>
