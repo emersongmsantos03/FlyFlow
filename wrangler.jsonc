@@ -4,6 +4,12 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-07-17",
   "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "GOOGLE_OAUTH",
+      "id": "8f57465dc51e4e8a90947279c90f69bb"
+    }
+  ],
   "vars": {
     "FIREBASE_PROJECT_ID": "flyflow-a97ab"
   }

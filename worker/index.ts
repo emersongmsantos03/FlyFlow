@@ -3,6 +3,9 @@ import { createRemoteJWKSet, jwtVerify } from 'jose'
 interface Env {
   OPENAI_API_KEY: string
   FIREBASE_PROJECT_ID: string
+  GOOGLE_OAUTH_CLIENT_ID: string
+  GOOGLE_OAUTH_CLIENT_SECRET: string
+  GOOGLE_OAUTH: KVNamespace
 }
 
 type InputLead = {
@@ -35,7 +38,7 @@ const clean = (value: unknown, max = 300) => [...String(value || '')]
 const corsHeaders = (origin: string | null) => ({
   ...(origin && allowedOrigins.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}),
   'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Content-Type': 'application/json; charset=utf-8',
   Vary: 'Origin',
 })
@@ -48,17 +51,42 @@ const firebaseKeys = createRemoteJWKSet(
 )
 
 const verifyFirebaseToken = async (token: string, projectId: string) => {
-  if (!projectId) return false
+  if (!projectId) return null
   try {
     const { payload } = await jwtVerify(token, firebaseKeys, {
       algorithms: ['RS256'],
       audience: projectId,
       issuer: `https://securetoken.google.com/${projectId}`,
     })
-    return Boolean(payload.sub && payload.sub.length <= 128)
+    return payload.sub && payload.sub.length <= 128 ? payload.sub : null
   } catch {
-    return false
+    return null
   }
+}
+
+const workspaceForUser = async (token: string, userId: string, projectId: string) => {
+  const response = await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/memberships/${encodeURIComponent(userId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error('Não foi possível identificar o workspace do usuário.')
+  const body = await response.json() as { fields?: { workspaceId?: { stringValue?: string }; active?: { booleanValue?: boolean } } }
+  if (!body.fields?.active?.booleanValue || !body.fields.workspaceId?.stringValue) throw new Error('Usuário sem workspace ativo.')
+  return body.fields.workspaceId.stringValue
+}
+
+const exchangeGoogleToken = async (env: Env, parameters: Record<string, string>) => {
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: env.GOOGLE_OAUTH_CLIENT_ID,
+      client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+      ...parameters,
+    }),
+  })
+  const body = await response.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error_description?: string }
+  if (!response.ok || !body.access_token) throw new Error(body.error_description || 'O Google recusou a autorização.')
+  return body
 }
 
 const schema = {
@@ -103,14 +131,64 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) })
     const url = new URL(request.url)
     if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'flyflow-lead-api' }, 200, origin)
-    if (request.method !== 'POST' || url.pathname !== '/lead-enrichment') return json({ error: 'Rota não encontrada.' }, 404, origin)
     if (origin && !allowedOrigins.has(origin)) return json({ error: 'Origem não autorizada.' }, 403, origin)
 
     const authorization = request.headers.get('Authorization') || ''
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
-    if (!token || !(await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID))) {
+    const userId = token ? await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID) : null
+    if (!userId) {
       return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
     }
+
+    if (url.pathname.startsWith('/google/')) {
+      try {
+        const workspaceId = await workspaceForUser(token, userId, env.FIREBASE_PROJECT_ID)
+        const key = `workspace:${workspaceId}`
+        const stored = await env.GOOGLE_OAUTH.get(key, 'json') as { refreshToken?: string; email?: string; connectedAt?: string } | null
+
+        if (request.method === 'GET' && url.pathname === '/google/status') {
+          return json({ connected: Boolean(stored?.refreshToken), email: stored?.email || '', connectedAt: stored?.connectedAt || '' }, 200, origin)
+        }
+        if (request.method === 'POST' && url.pathname === '/google/connect') {
+          const body = await request.json().catch(() => null) as { code?: string; redirectUri?: string } | null
+          if (!body?.code || !body.redirectUri || !allowedOrigins.has(body.redirectUri)) return json({ error: 'Código ou origem inválida.' }, 400, origin)
+          const tokens = await exchangeGoogleToken(env, {
+            code: body.code,
+            redirect_uri: body.redirectUri,
+            grant_type: 'authorization_code',
+          })
+          const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${tokens.access_token}` },
+          })
+          const profile = await profileResponse.json() as { email?: string }
+          const refreshToken = tokens.refresh_token || stored?.refreshToken
+          if (!refreshToken) return json({ error: 'O Google não forneceu acesso permanente. Revogue o FlyFlow nas permissões da conta e conecte novamente.' }, 400, origin)
+          const connection = { refreshToken, email: profile.email || '', connectedAt: new Date().toISOString() }
+          await env.GOOGLE_OAUTH.put(key, JSON.stringify(connection))
+          return json({ connected: true, email: connection.email }, 200, origin)
+        }
+        if (request.method === 'POST' && url.pathname === '/google/token') {
+          if (!stored?.refreshToken) return json({ error: 'Conta Google ainda não conectada ao workspace.' }, 404, origin)
+          const refreshed = await exchangeGoogleToken(env, {
+            refresh_token: stored.refreshToken,
+            grant_type: 'refresh_token',
+          })
+          return json({ accessToken: refreshed.access_token, expiresIn: refreshed.expires_in || 3600, email: stored.email || '' }, 200, origin)
+        }
+        if (request.method === 'DELETE' && url.pathname === '/google/connection') {
+          if (stored?.refreshToken) {
+            await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(stored.refreshToken)}`, { method: 'POST' }).catch(() => undefined)
+          }
+          await env.GOOGLE_OAUTH.delete(key)
+          return json({ connected: false }, 200, origin)
+        }
+        return json({ error: 'Rota Google não encontrada.' }, 404, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Falha na integração Google.' }, 500, origin)
+      }
+    }
+
+    if (request.method !== 'POST' || url.pathname !== '/lead-enrichment') return json({ error: 'Rota não encontrada.' }, 404, origin)
 
     const body = await request.json().catch(() => null) as { leads?: InputLead[] } | null
     const leads = (Array.isArray(body?.leads) ? body.leads : []).slice(0, 3).map((lead) => ({
