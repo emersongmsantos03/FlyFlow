@@ -377,7 +377,26 @@ export const sendGoogleWorkspaceEmail = async (input: {
     },
     body: JSON.stringify({ raw: encodeBase64Url(raw) }),
   })
-  if (!response.ok) throw new Error(`Gmail recusou o envio (${response.status}).`)
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null) as {
+      error?: { message?: string; status?: string; errors?: Array<{ reason?: string }> }
+    } | null
+    const googleMessage = failure?.error?.message || ''
+    const reason = failure?.error?.errors?.[0]?.reason || failure?.error?.status || ''
+    if (response.status === 401) {
+      throw new Error('A autorização do Gmail expirou. Desconecte e conecte novamente a conta Google.')
+    }
+    if (/accessNotConfigured|SERVICE_DISABLED|has not been used|disabled/i.test(`${reason} ${googleMessage}`)) {
+      throw new Error('A Gmail API ainda não está ativada no Google Cloud. Ative a API e tente novamente após alguns minutos.')
+    }
+    if (/insufficientPermissions|PERMISSION_DENIED|insufficient authentication scopes/i.test(`${reason} ${googleMessage}`)) {
+      throw new Error('O Google não concedeu permissão para enviar e-mails. Desconecte o Google no FlyFlow e autorize novamente.')
+    }
+    if (response.status === 429) {
+      throw new Error('O limite temporário de envios do Gmail foi atingido. Aguarde alguns minutos e tente novamente.')
+    }
+    throw new Error(googleMessage ? `Gmail: ${googleMessage}` : `Gmail recusou o envio (${response.status}).`)
+  }
   return response.json() as Promise<{ id: string; threadId: string }>
 }
 
