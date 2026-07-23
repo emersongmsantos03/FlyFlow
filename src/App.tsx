@@ -5903,7 +5903,29 @@ Hero Drone`,
                       }
                       if (existing) {
                         repeatedCount += 1
-                        const repeated = { ...existing, ...evaluatedRaw, categoryId: category.id, cityId: leadCity.id, isNew: false, possibleDuplicateId: duplicate?.id, discoveryCount: existing.discoveryCount + 1, lastDiscoveredAt: now, lastSearchId: searchId, updatedAt: now }
+                        const repeated = {
+                          ...existing,
+                          ...evaluatedRaw,
+                          name: existing.name || evaluatedRaw.name || 'Empresa sem nome',
+                          contactName: existing.contactName || evaluatedRaw.contactName,
+                          phone: existing.phone || evaluatedRaw.phone || '',
+                          whatsapp: existing.whatsapp || evaluatedRaw.whatsapp || '',
+                          email: existing.email || evaluatedRaw.email || '',
+                          instagram: existing.instagram || evaluatedRaw.instagram || '',
+                          website: existing.website || evaluatedRaw.website || '',
+                          address: existing.address || evaluatedRaw.address || '',
+                          neighborhood: existing.neighborhood || evaluatedRaw.neighborhood || '',
+                          googleMapsUrl: existing.googleMapsUrl || evaluatedRaw.googleMapsUrl || '',
+                          notes: existing.notes || evaluatedRaw.notes || '',
+                          categoryId: category.id,
+                          cityId: leadCity.id,
+                          isNew: false,
+                          possibleDuplicateId: duplicate?.id,
+                          discoveryCount: existing.discoveryCount + 1,
+                          lastDiscoveredAt: now,
+                          lastSearchId: searchId,
+                          updatedAt: now,
+                        }
                         return { ...repeated, contactValidation: validateLeadContacts(repeated, now) }
                       }
                       newCount += 1
@@ -6101,6 +6123,23 @@ Hero Drone`,
                 }), 'Lead rejeitado e removido das próximas buscas.')
               }}
               onDelete={(prospect) => deleteConnectedContact({ prospect })}
+              onUpdate={(prospectId, updates) => {
+                const now = new Date().toISOString()
+                updateState((current) => ({
+                  ...current,
+                  leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => {
+                    if (prospect.id !== prospectId) return prospect
+                    const updated = {
+                      ...prospect,
+                      ...updates,
+                      normalizedName: normalizeLeadText(updates.name || prospect.name),
+                      sources: [...new Set([...prospect.sources, 'Revisão manual'])],
+                      updatedAt: now,
+                    }
+                    return { ...updated, contactValidation: validateLeadContacts(updated, now) }
+                  }),
+                }), 'Informações do lead atualizadas e sincronizadas.')
+              }}
               onCreateRoute={(input) => {
                 const now = new Date().toISOString()
                 updateState((current) => ({ ...current, leadHunterRoutes: [{ id: createId('lh-route'), ...input, visitedProspectIds: [], status: 'Planejada', notes: '', createdBy: activeUserId, createdAt: now, updatedAt: now }, ...(current.leadHunterRoutes || [])] }), 'Rota salva no Lead Hunter.')

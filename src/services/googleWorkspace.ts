@@ -1,6 +1,8 @@
 import { firebaseAuth, firebaseConfig } from './firebase'
 
 const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
+const GOOGLE_SESSION_KEY = 'flyflow.google.workspace.session'
+const GOOGLE_CONNECTED_KEY = 'flyflow.google.workspace.connected'
 const GOOGLE_CLIENT_ID_KEY = 'flyflow.google.workspace.client-id'
 const GOOGLE_WORKSPACE_API_URL =
   import.meta.env.VITE_GOOGLE_WORKSPACE_API_URL ||
@@ -18,8 +20,17 @@ interface GoogleAccessToken {
   email?: string
 }
 
-let currentToken: GoogleAccessToken | undefined
-let currentConnection = { connected: false, email: '' }
+const readLegacyToken = () => {
+  try {
+    const token = JSON.parse(localStorage.getItem(GOOGLE_SESSION_KEY) || 'null') as GoogleAccessToken | null
+    return token?.accessToken && token.expiresAt > Date.now() + 30_000 ? token : undefined
+  } catch {
+    return undefined
+  }
+}
+
+let currentToken: GoogleAccessToken | undefined = readLegacyToken()
+let currentConnection = { connected: Boolean(currentToken), email: currentToken?.email || '' }
 
 interface GoogleCodeResponse {
   code?: string
@@ -28,6 +39,10 @@ interface GoogleCodeResponse {
 
 interface GoogleCodeClient {
   requestCode: () => void
+}
+
+interface GoogleTokenClient {
+  requestAccessToken: (options?: { prompt?: string }) => void
 }
 
 interface GoogleOAuthRoot {
@@ -40,6 +55,12 @@ interface GoogleOAuthRoot {
         callback: (response: GoogleCodeResponse) => void
         error_callback?: (error: unknown) => void
       }) => GoogleCodeClient
+      initTokenClient: (config: {
+        client_id: string
+        scope: string
+        callback: (response: { access_token?: string; expires_in?: number; error?: string }) => void
+        error_callback?: (error: unknown) => void
+      }) => GoogleTokenClient
       revoke: (token: string, callback: () => void) => void
     }
   }
@@ -89,11 +110,52 @@ const backendRequest = async <T>(path: string, init?: RequestInit) => {
   return body
 }
 
+const connectLegacyGoogleWorkspace = async (clientId: string) => {
+  const oauth2 = googleOAuth()
+  if (!oauth2) throw new Error('Google Identity Services indisponível.')
+  return new Promise<{ email: string }>((resolve, reject) => {
+    const client = oauth2.initTokenClient({
+      client_id: clientId.trim(),
+      scope: SCOPES,
+      callback: async (response) => {
+        if (!response.access_token) return reject(new Error(response.error || 'A autorização do Google não foi concluída.'))
+        try {
+          const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${response.access_token}` },
+          })
+          const profile = await profileResponse.json() as { email?: string }
+          const token = {
+            accessToken: response.access_token,
+            expiresAt: Date.now() + Math.max(response.expires_in || 3600, 60) * 1000,
+            email: profile.email || '',
+          }
+          currentToken = token
+          currentConnection = { connected: true, email: token.email }
+          localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify(token))
+          localStorage.setItem(GOOGLE_CONNECTED_KEY, 'true')
+          resolve({ email: token.email })
+        } catch (error) {
+          reject(error)
+        }
+      },
+      error_callback: () => reject(new Error('A janela de autorização do Google foi fechada ou bloqueada.')),
+    })
+    client.requestAccessToken({ prompt: '' })
+  })
+}
+
 export const connectGoogleWorkspace = async (clientId: string) => {
   if (!clientId.trim()) throw new Error('Informe o OAuth Client ID do Google.')
   await loadGoogleIdentityServices()
   const oauth2 = googleOAuth()
   if (!oauth2) throw new Error('Google Identity Services indisponível.')
+  try {
+    await backendRequest('/status')
+  } catch {
+    const connection = await connectLegacyGoogleWorkspace(clientId)
+    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, clientId.trim())
+    return connection
+  }
 
   return new Promise<{ email: string }>((resolve, reject) => {
     const client = oauth2.initCodeClient({
@@ -131,20 +193,31 @@ export const restoreGoogleWorkspaceConnection = async (clientId: string) => {
     currentConnection = { connected: connection.connected, email: connection.email || '' }
     return currentConnection
   } catch {
-    currentConnection = { connected: false, email: '' }
+    currentToken = readLegacyToken()
+    currentConnection = { connected: Boolean(currentToken), email: currentToken?.email || '' }
     return currentConnection
   }
 }
 
 export const disconnectGoogleWorkspace = async () => {
+  const legacyToken = currentToken
   currentToken = undefined
-  await backendRequest('/connection', { method: 'DELETE' })
+  await backendRequest('/connection', { method: 'DELETE' }).catch(async () => {
+    localStorage.removeItem(GOOGLE_SESSION_KEY)
+    localStorage.removeItem(GOOGLE_CONNECTED_KEY)
+    if (legacyToken?.accessToken) {
+      await loadGoogleIdentityServices()
+      await new Promise<void>((resolve) => googleOAuth()?.revoke(legacyToken.accessToken, resolve) ?? resolve())
+    }
+  })
   currentConnection = { connected: false, email: '' }
 }
 
 const requireToken = async () => {
   if (currentToken?.accessToken && currentToken.expiresAt > Date.now() + 60_000) return currentToken.accessToken
-  const token = await backendRequest<{ accessToken: string; expiresIn: number; email: string }>('/token', { method: 'POST' })
+  const token = await backendRequest<{ accessToken: string; expiresIn: number; email: string }>('/token', { method: 'POST' }).catch(() => {
+    throw new Error('Conecte novamente sua conta Google nas Configurações.')
+  })
   currentToken = {
     accessToken: token.accessToken,
     expiresAt: Date.now() + Math.max(token.expiresIn || 3600, 60) * 1000,

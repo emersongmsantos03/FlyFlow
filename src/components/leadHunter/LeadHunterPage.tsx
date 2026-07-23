@@ -18,6 +18,7 @@ import {
   MessageCircle,
   Navigation,
   Plus,
+  Pencil,
   Radar,
   RotateCw,
   Search,
@@ -79,6 +80,7 @@ export function LeadHunterPage({
   onEnrich,
   onReject,
   onDelete,
+  onUpdate,
   onCreateRoute,
   onToggleVisited,
   onSync,
@@ -126,6 +128,7 @@ export function LeadHunterPage({
   onEnrich: (prospectId: string) => Promise<void> | void;
   onReject: (prospectId: string) => void;
   onDelete: (prospect: LeadHunterProspect) => void;
+  onUpdate: (prospectId: string, updates: Partial<LeadHunterProspect>) => void;
   onCreateRoute: (input: {
     name: string;
     startAddress: string;
@@ -696,10 +699,15 @@ export function LeadHunterPage({
                           <AtSign size={15} />
                         </a>
                       ) : null}
+                      {lead.website ? (
+                        <a className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-cyan-50 px-2.5 text-[11px] font-semibold text-cyan-700 hover:bg-cyan-100" href={/^https?:\/\//i.test(lead.website) ? lead.website : `https://${lead.website}`} target="_blank" rel="noreferrer" title="Abrir site oficial">
+                          <ExternalLink size={14} /> Site
+                        </a>
+                      ) : null}
                       <a className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100" href={buildGoogleBusinessUrl(lead)} target="_blank" rel="noreferrer" title="Abrir Google Business">
                         <Map size={14} /> Google Business
                       </a>
-                      {!lead.whatsapp && !lead.instagram ? <span className="text-[11px] text-gray-400">Contato nos detalhes</span> : null}
+                      {!lead.whatsapp && !lead.instagram && !lead.website ? <span className="text-[11px] text-gray-400">Contato nos detalhes</span> : null}
                       <div className="ml-auto flex items-center gap-1">
                         <button
                           className="lead-card-accept inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition"
@@ -790,6 +798,7 @@ export function LeadHunterPage({
               onClose={() => setOpenedLeadId("")}
               onImport={(id) => onImport([id])}
               onEmail={onEmail}
+              onUpdate={onUpdate}
               enriching={enrichingId === openedLeadId}
               onEnrich={async (id) => {
                 setEnrichingId(id);
@@ -1044,6 +1053,7 @@ function LeadDetail({
   onClose,
   onImport,
   onEmail,
+  onUpdate,
   onEnrich,
   enriching,
   onRequestReject,
@@ -1052,6 +1062,7 @@ function LeadDetail({
   onClose: () => void;
   onImport: (id: string) => void;
   onEmail: (prospect: LeadHunterProspect) => void;
+  onUpdate: (prospectId: string, updates: Partial<LeadHunterProspect>) => void;
   onEnrich: (id: string) => Promise<void> | void;
   enriching: boolean;
   onRequestReject: (lead: LeadHunterProspect, afterReject?: () => void) => void;
@@ -1059,6 +1070,21 @@ function LeadDetail({
   const [whatsAppDraft, setWhatsAppDraft] = useState(() =>
     lead ? buildLeadWhatsAppMessage(lead) : "",
   );
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(() => lead ? {
+    name: lead.name,
+    contactName: lead.contactName || "",
+    phone: lead.phone,
+    whatsapp: lead.whatsapp,
+    email: lead.email,
+    instagram: lead.instagram,
+    website: lead.website,
+    googleMapsUrl: lead.googleMapsUrl,
+    address: lead.address,
+    neighborhood: lead.neighborhood,
+    city: lead.city,
+    notes: lead.notes,
+  } : null);
   if (!lead) return null;
   return (
     <div
@@ -1085,15 +1111,54 @@ function LeadDetail({
               {lead.categoryName} · {lead.city}
             </p>
           </div>
-          <button
-            className="rounded-lg p-2 hover:bg-gray-100"
-            type="button"
-            aria-label="Fechar"
-            onClick={onClose}
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100" type="button" onClick={() => setEditing((current) => !current)}>
+              <Pencil size={15} /> {editing ? "Cancelar" : "Editar"}
+            </button>
+            <button className="rounded-lg p-2 hover:bg-gray-100" type="button" aria-label="Fechar" onClick={onClose}>
+              <X size={20} />
+            </button>
+          </div>
         </div>
+        {editing && editDraft ? (
+          <section className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {([
+                ["name", "Empresa", "text"],
+                ["contactName", "Responsável", "text"],
+                ["phone", "Telefone", "tel"],
+                ["whatsapp", "WhatsApp", "tel"],
+                ["email", "E-mail", "email"],
+                ["instagram", "Instagram", "text"],
+                ["website", "Site", "url"],
+                ["googleMapsUrl", "Google Business/Maps", "url"],
+                ["address", "Endereço", "text"],
+                ["neighborhood", "Bairro", "text"],
+                ["city", "Cidade", "text"],
+              ] as const).map(([field, label, type]) => (
+                <label key={field} className={field === "address" || field === "website" || field === "googleMapsUrl" ? "sm:col-span-2 text-xs font-semibold text-gray-700" : "text-xs font-semibold text-gray-700"}>
+                  {label}
+                  <input className="field-input mt-1 w-full bg-white" type={type} value={editDraft[field]} onChange={(event) => setEditDraft({ ...editDraft, [field]: event.currentTarget.value })} />
+                </label>
+              ))}
+              <label className="text-xs font-semibold text-gray-700 sm:col-span-2">
+                Observações
+                <textarea className="field-input mt-1 min-h-24 w-full bg-white" value={editDraft.notes} onChange={(event) => setEditDraft({ ...editDraft, notes: event.currentTarget.value })} />
+              </label>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button type="button" onClick={() => {
+                onUpdate(lead.id, {
+                  ...editDraft,
+                });
+                setWhatsAppDraft(buildLeadWhatsAppMessage({ ...lead, ...editDraft }));
+                setEditing(false);
+              }}>
+                <Check size={16} /> Salvar informações
+              </Button>
+            </div>
+          </section>
+        ) : null}
         <div className="mt-5 grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-gray-50 p-3">
             <p className="text-xs text-gray-500">Lead Score</p>
@@ -1331,6 +1396,17 @@ function LeadDetail({
             >
               <AtSign size={16} />
               Instagram
+            </a>
+          ) : null}
+          {lead.website ? (
+            <a
+              className="app-button app-button-secondary inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold"
+              href={/^https?:\/\//i.test(lead.website) ? lead.website : `https://${lead.website}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={16} />
+              Site
             </a>
           ) : null}
           {lead.googleMapsUrl ? (
