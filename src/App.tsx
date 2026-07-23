@@ -5748,7 +5748,7 @@ Hero Drone`,
                       .slice(0, 2)
                     const underSearched = [...activeCities]
                       .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
-                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 5)
+                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 10)
                   })()
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
@@ -5769,7 +5769,8 @@ Hero Drone`,
                 try {
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = 10
-                  const providerLimit = filters.cityIds.length ? Math.min(30, resultsPerSearch + 10) : Math.max(10, Math.ceil(resultsPerSearch / candidateCities.length) + 6)
+                  const candidateTarget = resultsPerSearch * 3
+                  const providerLimit = filters.cityIds.length ? 40 : Math.max(15, Math.ceil(candidateTarget / candidateCities.length) + 8)
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
@@ -5790,6 +5791,10 @@ Hero Drone`,
                   const combinedSources = new Set<string>()
                   const searchWarnings: string[] = []
                   const addCandidate = (lead: (typeof result.leads)[number]) => {
+                    // Uma empresa que já apareceu em qualquer rodada permanece no
+                    // histórico e nunca deve voltar a consumir uma vaga de uma
+                    // nova pesquisa.
+                    if (isAlreadyKnown(lead)) return
                     const normalizedKey = `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
                     const matchingEntry = [...combinedLeads.entries()].find(([, existing]) =>
                       `${normalizeLeadText(existing.name)}|${normalizeLeadText(existing.city)}` === normalizedKey,
@@ -5826,32 +5831,32 @@ Hero Drone`,
                       cityResult.sources.forEach((source) => combinedSources.add(source))
                       cityResult.warnings.forEach((warning) => searchWarnings.push(`${searchCity.name}: ${warning}`))
                       cityResult.leads.forEach(addCandidate)
-                      if (combinedLeads.size >= resultsPerSearch) break
+                      if (combinedLeads.size >= candidateTarget) break
                     } catch (error) {
                       searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
                     }
                   }
-                  try {
-                    const googleResult = await searchGooglePlacesLeads({
-                      city: candidateCities[0].name,
-                      categories: selectedCategories.map((item) => item.name),
-                      limit: Math.min(20, resultsPerSearch),
-                    })
-                    googleResult.sources.forEach((source) => combinedSources.add(source))
-                    googleResult.warnings.forEach((warning) => searchWarnings.push(warning))
-                    googleResult.leads.forEach(addCandidate)
-                  } catch (error) {
-                    searchWarnings.push(`Google Places: ${error instanceof Error ? error.message : 'consulta indisponível'}`)
+                  for (const searchCity of candidateCities) {
+                    if (combinedLeads.size >= candidateTarget) break
+                    try {
+                      const googleResult = await searchGooglePlacesLeads({
+                        city: searchCity.name,
+                        categories: selectedCategories.map((item) => item.name),
+                        limit: 20,
+                      })
+                      googleResult.sources.forEach((source) => combinedSources.add(source))
+                      googleResult.warnings.forEach((warning) => searchWarnings.push(`${searchCity.name}: ${warning}`))
+                      googleResult.leads.forEach(addCandidate)
+                    } catch (error) {
+                      searchWarnings.push(`Google Places (${searchCity.name}): ${error instanceof Error ? error.message : 'consulta indisponível'}`)
+                    }
                   }
                   if (!combinedLeads.size && searchWarnings.length === candidateCities.length) {
                     throw new Error('As fontes públicas não responderam nesta rodada. Tente novamente em instantes.')
                   }
                   const allRankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
-                  const newRankedLeads = allRankedLeads.filter((lead) => !isAlreadyKnown(lead))
-                  const eligibleKnownLeads = allRankedLeads.filter(isAlreadyKnown)
-                  const rankedLeads = filters.onlyNew
-                    ? newRankedLeads
-                    : [...newRankedLeads, ...(filters.includeEligibleKnown || newRankedLeads.length < 10 ? eligibleKnownLeads : [])]
+                  const newRankedLeads = allRankedLeads
+                  const rankedLeads = newRankedLeads
                   const leadBuckets = new Map<string, typeof rankedLeads>()
                   rankedLeads.forEach((lead) => {
                     const bucketKey = `${normalizeLeadText(lead.city)}|${normalizeLeadText(lead.categoryName)}`
@@ -5862,25 +5867,6 @@ Hero Drone`,
                     for (const bucket of leadBuckets.values()) {
                       const nextLead = bucket.shift()
                       if (nextLead) mixedLeads.push(nextLead)
-                      if (mixedLeads.length >= resultsPerSearch) break
-                    }
-                  }
-                  if (mixedLeads.length < resultsPerSearch) {
-                    const selectedKeys = new Set(mixedLeads.map((lead) =>
-                      `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`,
-                    ))
-                    const availableKnown = knownProspects
-                      .filter((lead) =>
-                        !lead.discardedPermanently &&
-                        lead.status !== 'Descartado' &&
-                        lead.status !== 'Importado' &&
-                        !lead.leadId &&
-                        !selectedKeys.has(`${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`),
-                      )
-                      .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
-                    for (const lead of availableKnown) {
-                      mixedLeads.push(lead)
-                      selectedKeys.add(`${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`)
                       if (mixedLeads.length >= resultsPerSearch) break
                     }
                   }
@@ -5920,7 +5906,7 @@ Hero Drone`,
                           Boolean(googlePlaceId && item.externalIds.googlePlaces === googlePlaceId) ||
                           (item.normalizedName === normalizedName && normalizeLeadText(item.city) === normalizedCity),
                         )
-                        return filters.includeEligibleKnown || !alreadyKnown || newRankedLeads.length < 10
+                        return !alreadyKnown
                       }).sort((a, b) => enrichmentPriority(b) - enrichmentPriority(a))
                         .slice(0, resultsPerSearch).map((raw) => ({
                         externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '',
@@ -6038,42 +6024,6 @@ Hero Drone`,
                       // válido da busca.
                       return hasLocation && hasPublicEvidence
                     })
-                    if (incoming.length < resultsPerSearch) {
-                      const incomingIds = new Set(incoming.map((lead) => lead.id))
-                      const eligibleKnown = existingProspects
-                        .filter((lead) =>
-                          !incomingIds.has(lead.id) &&
-                          !lead.discardedPermanently &&
-                          lead.status !== 'Descartado' &&
-                          lead.status !== 'Importado' &&
-                          !lead.leadId,
-                        )
-                        .sort((a, b) => {
-                          const quality = (lead: LeadHunterProspect) =>
-                            lead.score +
-                            (lead.whatsapp ? 30 : 0) +
-                            (lead.phone ? 18 : 0) +
-                            (lead.email ? 14 : 0) +
-                            (lead.website ? 12 : 0) +
-                            (lead.sourceUrls.some((url) => /^https?:\/\//i.test(url)) ? 10 : 0)
-                          return quality(b) - quality(a)
-                        })
-                      const needed = resultsPerSearch - incoming.length
-                      incoming = [
-                        ...incoming,
-                        ...eligibleKnown.slice(0, needed).map((lead) => ({
-                          ...lead,
-                          isNew: false as const,
-                          cityId: lead.cityId || activeCities.find((item) => normalizeLeadText(item.name) === normalizeLeadText(lead.city))?.id || city.id,
-                          categoryId: lead.categoryId || selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(lead.categoryName))?.id || selectedCategories[0].id,
-                          lastSearchId: searchId,
-                          lastDiscoveredAt: now,
-                          displayCount: lead.displayCount + 1,
-                          contactValidation: lead.contactValidation || validateLeadContacts(lead, now),
-                          updatedAt: now,
-                        })),
-                      ]
-                    }
                     incoming = incoming
                       .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
                       .slice(0, resultsPerSearch)
