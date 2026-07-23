@@ -276,8 +276,32 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   return btoa(binary)
 }
 
+const windows1252Byte = (character: string) => {
+  const special = '€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š›œ\u009džŸ'
+  const specialIndex = special.indexOf(character)
+  if (specialIndex >= 0) return 0x80 + specialIndex
+  const code = character.charCodeAt(0)
+  return code <= 0xff ? code : undefined
+}
+
+export const repairTextEncoding = (value: string) => {
+  let repaired = value
+  for (let attempt = 0; attempt < 3 && /(?:Ã.|Â.|â.|ðŸ)/.test(repaired); attempt += 1) {
+    const bytes = [...repaired].map(windows1252Byte)
+    if (bytes.some((byte) => byte === undefined)) break
+    try {
+      const decoded = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(bytes as number[]))
+      if (decoded === repaired) break
+      repaired = decoded
+    } catch {
+      break
+    }
+  }
+  return repaired
+}
+
 const encodeMimeHeader = (value: string) => {
-  const sanitized = value.replace(/[\r\n]+/g, ' ').trim()
+  const sanitized = repairTextEncoding(value).replace(/[\r\n]+/g, ' ').trim()
   if (/^[\x20-\x7E]*$/.test(sanitized)) return sanitized
   return `=?UTF-8?B?${bytesToBase64(new TextEncoder().encode(sanitized))}?=`
 }
@@ -536,9 +560,9 @@ const mapGmailMessage = (message: {
   return {
     id: message.id,
     threadId: message.threadId,
-    subject: headers.get('subject') || '(Sem assunto)',
-    from: headers.get('from') || '',
-    to: headers.get('to') || '',
+    subject: repairTextEncoding(headers.get('subject') || '(Sem assunto)'),
+    from: repairTextEncoding(headers.get('from') || ''),
+    to: repairTextEncoding(headers.get('to') || ''),
     date: headers.get('date') || (message.internalDate ? new Date(Number(message.internalDate)).toISOString() : ''),
     snippet: message.snippet || '',
     body: findMessageBody(message.payload),

@@ -232,6 +232,10 @@
   border-color: var(--border);
 }
 
+.inbox-search-input {
+  padding-left: 2.5rem !important;
+}
+
 .inbox-message-row {
   background: transparent;
   border-color: var(--border-subtle);

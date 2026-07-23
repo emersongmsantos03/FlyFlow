@@ -204,6 +204,7 @@ import {
   listGoogleWorkspaceEmails,
   restoreGoogleWorkspaceConnection,
   removeGoogleWorkspaceEmailSignature,
+  repairTextEncoding,
   sendGoogleWorkspaceEmail,
   setGoogleWorkspaceEmailSignature,
   uploadGoogleWorkspaceEmailSignature,
@@ -1985,7 +1986,7 @@ function App() {
       setToast('Este contato não possui e-mail informado.')
       return
     }
-    const subject = `Uma ideia visual para ${contactDisplayName(lead)}`
+    const subject = `Uma ideia visual para ${repairTextEncoding(contactDisplayName(lead))}`
     const opportunityHook = lead.leadHunterData?.aiContactHook?.trim()
     const body = `Olá! Tudo bem?
 
@@ -2004,7 +2005,7 @@ Hero Drone`
         ? `${whatsappLink(lead.whatsapp || lead.phone)}?text=${encodeURIComponent(buildQuickWhatsAppMessage(lead))}`
         : undefined,
       to: lead.email,
-      displayName: contactDisplayName(lead),
+      displayName: repairTextEncoding(contactDisplayName(lead)),
       subject,
       body,
     })
@@ -2012,7 +2013,7 @@ Hero Drone`
 
   const sendLeadHunterEmail = (prospect: LeadHunterProspect) => {
     importLeadHunterProspects([prospect.id])
-    const businessName = prospect.name.trim()
+    const businessName = repairTextEncoding(prospect.name.trim())
     const service = prospect.recommendedService || 'vídeo institucional com drone'
     const storedOpportunityHook = prospect.aiContactHook?.trim() || prospect.aiSummary?.trim()
     const opportunityHook = storedOpportunityHook && !/cadastrad[oa]\s+manualmente|fluxo comercial|para teste/i.test(storedOpportunityHook)
@@ -2046,7 +2047,7 @@ Hero Drone`,
       : undefined)
     const result = await sendGoogleWorkspaceEmail({
       to: [composer.to],
-      subject,
+      subject: repairTextEncoding(subject),
       body,
       htmlBody,
       signatureImageUrl: state.companySettings.emailSignatureImageUrl,
@@ -2066,7 +2067,7 @@ Hero Drone`,
         id: createId('int'),
         leadId: associatedLead.id,
         interactionType: 'E-mail · Gmail',
-        description: `Assunto: ${subject}\nMensagem: ${body}${composer.attachment ? `\nAnexo: ${composer.attachment.fileName}` : ''}\nGmail ID: ${result.id}`,
+        description: `Assunto: ${repairTextEncoding(subject)}\nMensagem: ${body}${composer.attachment ? `\nAnexo: ${composer.attachment.fileName}` : ''}\nGmail ID: ${result.id}`,
         interactionDate: now,
         userId: activeUserId,
         createdAt: now,
@@ -9849,7 +9850,7 @@ function InboxPage({
             <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'inbox' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('inbox')}>Recebidos {box === 'inbox' && unreadCount ? `· ${unreadCount}` : ''}</button>
             <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'sent' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('sent')}>Enviados</button>
           </div>
-          <label className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} /><input className="field-input min-h-9 py-1.5 pl-10 text-sm" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar remetente, assunto ou conteúdo…" /></label>
+              <label className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400" size={15} /><input className="field-input inbox-search-input min-h-9 py-1.5 text-sm" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar remetente, assunto ou conteúdo…" /></label>
           <span className="text-xs font-bold text-gray-400">{connection.email}</span>
         </div>
         {error ? <p className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
