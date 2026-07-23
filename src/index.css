@@ -217,6 +217,16 @@
   border-color: var(--border);
 }
 
+.email-signature-preview {
+  background: color-mix(in srgb, var(--surface-soft) 35%, var(--surface));
+  border-color: var(--border-subtle);
+}
+
+.email-signature-preview img {
+  display: block;
+  width: auto;
+}
+
 .inbox-list {
   background: color-mix(in srgb, var(--surface-soft) 45%, var(--surface));
   border-color: var(--border);

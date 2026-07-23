@@ -5460,6 +5460,7 @@ Hero Drone`,
         <EmailComposer
           composer={emailComposer}
           googleOAuthClientId={state.companySettings.googleOAuthClientId || getStoredGoogleOAuthClientId()}
+          signatureImageUrl={state.companySettings.emailSignatureImageUrl}
           onClose={() => setEmailComposer(null)}
           onSend={(to, subject, body, htmlBody, attachment) => submitCommercialEmail({ ...emailComposer, to, attachment }, subject, body, htmlBody)}
         />
@@ -6790,11 +6791,13 @@ function NoticeDialog({ dialog, onClose }: { dialog: NoticeDialogState; onClose:
 function EmailComposer({
   composer,
   googleOAuthClientId,
+  signatureImageUrl,
   onClose,
   onSend,
 }: {
   composer: EmailComposerState
   googleOAuthClientId: string
+  signatureImageUrl?: string
   onClose: () => void
   onSend: (to: string, subject: string, body: string, htmlBody: string, attachment?: EmailComposerState['attachment']) => Promise<void>
 }) {
@@ -6949,13 +6952,23 @@ function EmailComposer({
               </div>
               <div
                 ref={editorRef}
-                className="email-rich-editor min-h-[360px] max-h-[52vh] overflow-y-auto p-5 text-base leading-7 outline-none"
+                className="email-rich-editor min-h-[280px] max-h-[44vh] overflow-y-auto p-5 text-base leading-7 outline-none"
                 contentEditable
                 role="textbox"
                 aria-multiline="true"
                 aria-label="Mensagem personalizada"
                 onInput={syncEditor}
               />
+              {signatureImageUrl ? (
+                <div className="email-signature-preview border-t px-5 py-4">
+                  <p className="mb-3 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-gray-400">Assinatura automática</p>
+                  <img className="max-h-32 max-w-full object-contain object-left" src={signatureImageUrl} alt="Assinatura que será incluída no e-mail" />
+                </div>
+              ) : (
+                <div className="email-signature-preview border-t px-5 py-3 text-xs text-gray-400">
+                  Nenhuma assinatura configurada.
+                </div>
+              )}
             </div>
           </label>
 
