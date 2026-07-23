@@ -6004,10 +6004,15 @@ Hero Drone`,
                       return { ...created, contactValidation: validateLeadContacts(created as LeadHunterProspect, now) }
                     }).filter((lead) => {
                       const hasLocation = Boolean(lead.address.trim() || (lead.latitude != null && lead.longitude != null))
-                      const hasDirectContact = Boolean(lead.phone.trim() || lead.whatsapp.trim() || lead.email.trim())
                       const hasPublicEvidence = lead.sourceUrls.some((url) => /^https?:\/\//i.test(url))
-                      return hasLocation && hasDirectContact && hasPublicEvidence
+                      // Fontes cartográficas normalmente entregam nome, endereço
+                      // e mapa antes de telefone/WhatsApp. O contato pode ser
+                      // enriquecido ou editado depois e não deve eliminar um lead
+                      // válido da busca.
+                      return hasLocation && hasPublicEvidence
                     })
+                    newCount = incoming.filter((lead) => lead.isNew).length
+                    repeatedCount = incoming.length - newCount
                     const incomingIds = new Set(incoming.map((item) => item.id))
                     const searchedCityIds = new Set(candidateCities.map((item) => item.id))
                     return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => searchedCityIds.has(item.id) ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.filter((lead) => lead.cityId === item.id).length, newLeadCount: item.newLeadCount + incoming.filter((lead) => lead.cityId === item.id && lead.isNew).length, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: candidateCities.map((item) => item.id), categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: tokenUsage > 0 ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
