@@ -9830,6 +9830,14 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
   const [googleConnectionError, setGoogleConnectionError] = useState('')
   const [connectingGoogle, setConnectingGoogle] = useState(false)
 
+  useEffect(() => {
+    let active = true
+    void restoreGoogleWorkspaceConnection(googleClientId).then((connection) => {
+      if (active) setGoogleConnection(connection)
+    })
+    return () => { active = false }
+  }, [googleClientId])
+
   const connectGoogle = async () => {
     setConnectingGoogle(true)
     setGoogleConnectionError('')
