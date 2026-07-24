@@ -5566,7 +5566,7 @@ Hero Drone`,
               <p className="mt-1 truncate">{currentUser.email}</p>
               <p className="mt-1">{permissionSummary(currentUser)}</p>
             </div>
-            <p>{isFirebaseConfigured ? 'Firebase sincronizado' : isSupabaseConfigured ? 'Supabase configurado' : 'Banco local vazio no navegador'}</p>
+            <p className="app-sync-status"><span aria-hidden="true" />{isFirebaseConfigured ? 'Firebase sincronizado' : isSupabaseConfigured ? 'Supabase configurado' : 'Dados locais neste navegador'}</p>
             <details className="app-admin-menu">
               <summary>Administração</summary>
               <Button className="mt-2 w-full text-white/55 hover:bg-white/5 hover:text-red-300" variant="ghost" type="button" onClick={restoreDemo}>Limpar banco</Button>
@@ -9568,6 +9568,23 @@ function UsersPage({
               </p>
             </div>
           ))}
+        </div>
+      </Panel>
+
+      <Panel title="Auditoria recente" action={<span className="text-xs text-gray-500">{state.statusHistory.length} eventos preservados</span>}>
+        <div className="audit-timeline">
+          {state.statusHistory.slice(0, 12).map((entry) => {
+            const actor = state.users.find((user) => user.id === entry.userId)
+            return <article key={entry.id}>
+              <span className="audit-dot" aria-hidden="true" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2"><strong>{entry.action}</strong><time>{formatDateTime(entry.createdAt)}</time></div>
+                <p>{entry.details}</p>
+                <small>{entry.entityType} · {actor?.name || 'Sistema'}</small>
+              </div>
+            </article>
+          })}
+          {!state.statusHistory.length ? <div className="dashboard-empty-state">Nenhuma alteração registrada.</div> : null}
         </div>
       </Panel>
     </div>

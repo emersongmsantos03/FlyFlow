@@ -1,5 +1,4 @@
 import {
-  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Ban,
@@ -34,6 +33,7 @@ import { createPortal } from 'react-dom'
 import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
 import { buildGoogleBusinessUrl, buildInstagramUrl, leadOpportunitySummary } from '../../services/leadHunter/LeadOpportunityService'
 import { buildCommercialActionQueue, buildCommercialInsights } from '../../services/commercial/CommercialPriorityService'
+import { averageOpportunityAge, opportunityHealth, stageProbability, weightedPipelineValue } from '../../lib/crmIntelligence'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, StatusBadge } from '../ui'
@@ -246,6 +246,8 @@ export function CrmPage({
 
   const activeQuotes = state.quotes.filter((quote) => !quote.archivedAt && !quote.deletedAt && !['Cancelada', 'Recusada', 'Expirada'].includes(quote.status))
   const potentialValue = openLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
+  const weightedValue = weightedPipelineValue(openLeads)
+  const averageAge = averageOpportunityAge(openLeads)
   const contactsNeedingAction = openLeads.filter((lead) => !lead.nextContactAt || new Date(lead.nextContactAt) < new Date()).length
   const actionQueue = useMemo(() => buildCommercialActionQueue(openLeads, state).slice(0, 5), [openLeads, state])
   const selectedPriority = priorityLead ? actionQueue.find(({ lead }) => lead.id === priorityLead.id)?.priority : undefined
@@ -263,12 +265,14 @@ export function CrmPage({
           </div>
           <div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button><Button type="button" onClick={onCreateLead}><Plus size={16} /> Nova oportunidade</Button></div>
         </div>
-        <div className="crm-metrics mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <div className="crm-metrics mt-4 grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-6">
           {[
             ['Oportunidades ativas', openLeads.length],
             ['Valor potencial', formatCurrency(potentialValue)],
+            ['Previsão ponderada', formatCurrency(weightedValue)],
             ['Propostas abertas', activeQuotes.length],
             ['Precisam de ação', contactsNeedingAction],
+            ['Ciclo médio', `${averageAge} dias`],
           ].map(([label, value]) => (
             <div key={String(label)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
               <p className="text-[0.65rem] font-bold uppercase text-gray-500">{label}</p>
@@ -397,7 +401,7 @@ export function CrmPage({
                 >
                   <header className="crm-column-header">
                     <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-black text-gray-950">{column.title}</h2><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{columnLeads.length}</span></div>
-                    <p className="mt-1 text-xs text-gray-500">{formatCurrency(value)}</p>
+                    <div className="mt-1 flex items-center justify-between gap-3"><p className="text-xs text-gray-500">{formatCurrency(value)}</p><span className="text-[0.62rem] font-bold text-gray-400">{stageProbability(column.target)}% referência</span></div>
                   </header>
                   <div className="crm-column-body">
                     {columnLeads.map((lead) => (
@@ -538,13 +542,14 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
   const quote = newestQuote(state, lead.id)
   const overdue = Boolean(lead.nextContactAt && new Date(lead.nextContactAt) < new Date())
   const nextAction = lead.nextContactAt ? `${overdue ? 'Atrasada' : 'Próxima ação'} · ${formatDateTime(lead.nextContactAt)}` : 'Sem próxima atividade'
+  const health = opportunityHealth(lead)
 
   const stop = (event: MouseEvent) => event.stopPropagation()
   return (
     <article className="crm-opportunity-card" draggable onDragStart={(event) => event.dataTransfer.setData('lead-id', lead.id)} onClick={() => onOpen(lead)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0"><h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3><p className="truncate text-xs text-gray-500">{displayDetail(lead)}</p></div>
-        {overdue || !lead.nextContactAt ? <AlertCircle className={overdue ? 'text-red-600' : 'text-amber-600'} size={17} aria-label="Contato precisa de ação" /> : null}
+        <span className={`crm-health crm-health-${health.tone}`}>{health.label}</span>
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
         <div className="min-w-0"><p className="truncate text-sm text-gray-600">{lead.serviceInterest}</p>{quote ? <p className="mt-1 truncate text-xs text-gray-500"><FileText className="mr-1 inline" size={12} />{quote.status}</p> : null}</div>
@@ -905,7 +910,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
     <button className="fixed inset-0 z-40 cursor-default bg-black/20" aria-label="Fechar detalhes" type="button" onClick={onClose} />
     <aside className="crm-contact-drawer">
       <header className="border-b border-gray-200 bg-white p-4">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase text-gray-500">Contato e oportunidade</p><h2 className="mt-1 truncate text-xl font-black text-gray-950">{displayName(lead)}</h2><p className="text-sm text-gray-500">{lead.fullName || lead.city}</p></div><button className="focus-ring rounded-lg p-2 hover:bg-gray-100" aria-label="Fechar" type="button" onClick={onClose}><X size={20} /></button></div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-bold uppercase text-gray-500">Cliente 360° · oportunidade</p><h2 className="mt-1 truncate text-xl font-black text-gray-950">{displayName(lead)}</h2><p className="text-sm text-gray-500">{lead.fullName || lead.city}</p></div><button className="focus-ring rounded-lg p-2 hover:bg-gray-100" aria-label="Fechar" type="button" onClick={onClose}><X size={20} /></button></div>
         <div className="mt-3 flex flex-wrap gap-2"><StatusBadge>{lead.pipelineStage}</StatusBadge><StatusBadge>{lead.temperature}</StatusBadge>{currentProject(state, lead.id) ? <StatusBadge>Com projeto</StatusBadge> : null}</div>
         <div className="mt-2 grid grid-cols-3 gap-2">
           <Button className="min-h-9 py-1 text-xs" variant="secondary" type="button" onClick={() => onEdit(lead)}><SlidersHorizontal size={14} /> Editar</Button>
