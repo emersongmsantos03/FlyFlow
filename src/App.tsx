@@ -71,6 +71,7 @@ import {
 } from 'recharts'
 import { Button, InputField, MetricCard, Modal, Panel, StatusBadge, Tag, Toast } from './components/ui'
 import { CrmPage, type CrmView } from './components/crm/CrmPage'
+import { InternalProjectsPage } from './components/internalProjects/InternalProjectsPage'
 const LeadHunterPage = lazy(() => import('./components/leadHunter/LeadHunterPage').then((module) => ({ default: module.LeadHunterPage })))
 import {
   buildLeadSourceSeries,
@@ -173,11 +174,20 @@ import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapPr
 import type { LeadSearchProviderResult } from './services/leadHunter/providers'
 import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
-import { buildGoogleBusinessUrl, buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
+import { buildGoogleBusinessUrl, buildInstagramUrl, buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
 import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './services/leadHunter/LeadLearningService'
+import { qualifyLead } from './services/leadHunter/LeadQualificationService'
 import { remainingAiCalls, shouldSkipManualEnrichment } from './services/leadHunter/LeadAiUsage'
+import { isEligibleLeadSegment, leadSegmentPriorityPoints } from './services/leadHunter/LeadTargetingPolicy'
+import {
+  assessLeadEmailConfidence,
+  assessLeadPreferredChannel,
+  buildLeadOutreachEmail,
+  leadOutreachIdempotencyKey,
+} from './services/leadHunter/LeadOutreachAutomation'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
+  firebaseAuth,
   isFirebaseConfigured,
   observeFirebaseAuth,
   requestFirebasePasswordReset,
@@ -190,7 +200,9 @@ import {
   ensureFirebaseWorkspace,
   loadFirebaseAppState,
   observeFirebaseWorkspace,
+  removeFirebaseEmailSignature,
   saveFirebaseAppState,
+  saveFirebaseEmailSignature,
   setFirebaseWorkspaceUserActive,
 } from './services/firebaseData'
 import { syncGoogleCalendarEvent } from './services/googleCalendar'
@@ -203,11 +215,9 @@ import {
   getStoredGoogleOAuthClientId,
   listGoogleWorkspaceEmails,
   restoreGoogleWorkspaceConnection,
-  removeGoogleWorkspaceEmailSignature,
   repairTextEncoding,
   sendGoogleWorkspaceEmail,
   setGoogleWorkspaceEmailSignature,
-  uploadGoogleWorkspaceEmailSignature,
   type GoogleMailboxMessage,
 } from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
@@ -266,6 +276,7 @@ type Page =
   | 'leadHunter'
   | 'inbox'
   | 'projects'
+  | 'internalProjects'
   | 'agenda'
   | 'quotes'
   | 'finance'
@@ -607,6 +618,7 @@ const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboar
   { page: 'leadHunter', label: 'Lead Hunter', icon: Search, group: 'Relacionamento' },
   { page: 'inbox', label: 'Inbox', icon: Mail, group: 'Relacionamento' },
   { page: 'projects', label: 'Projetos', icon: Briefcase, group: 'Operação' },
+  { page: 'internalProjects', label: 'Projetos internos', icon: Wand2, group: 'Operação' },
   { page: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'Operação' },
   { page: 'quotes', label: 'Propostas', icon: FileText, group: 'Operação' },
   { page: 'equipment', label: 'Equipamentos', icon: PackageCheck, group: 'Operação' },
@@ -1130,7 +1142,24 @@ const readFileAsDataUrl = (file: File) =>
 
 const prepareEmailSignatureImage = async (file: File) => {
   if (file.size > 5_000_000) throw new Error('A assinatura deve ter no máximo 5 MB.')
-  return readFileAsDataUrl(file)
+  const source = await readFileAsDataUrl(file)
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image()
+    element.onload = () => resolve(element)
+    element.onerror = () => reject(new Error('Não foi possível abrir a imagem da assinatura.'))
+    element.src = source
+  })
+  const scale = Math.min(1, 800 / image.naturalWidth, 220 / image.naturalHeight)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Não foi possível preparar a assinatura.')
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+  let optimized = canvas.toDataURL('image/webp', 0.86)
+  if (optimized.length > 700_000) optimized = canvas.toDataURL('image/webp', 0.68)
+  if (optimized.length > 850_000) throw new Error('A assinatura ficou muito grande. Escolha uma imagem mais simples.')
+  return optimized
 }
 
 const hasWorkspaceData = (candidate: AppState) =>
@@ -1265,6 +1294,8 @@ function App() {
   const [emailComposer, setEmailComposer] = useState<EmailComposerState | null>(null)
   const [toast, setToast] = useState('')
   const [unreadEmailCount, setUnreadEmailCount] = useState(0)
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false)
+  const [googleConnectionRevision, setGoogleConnectionRevision] = useState(0)
   const observedInboxIds = useRef<Set<string> | null>(null)
   const googleRestoreAttempted = useRef('')
   const latestState = useRef(state)
@@ -1279,13 +1310,31 @@ function App() {
   }, [state.companySettings.emailSignatureImageUrl])
 
   useEffect(() => {
-    const clientId = state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
-    if (!clientId || googleRestoreAttempted.current === clientId || getGoogleWorkspaceConnection().connected) return
-    googleRestoreAttempted.current = clientId
-    void restoreGoogleWorkspaceConnection(clientId).catch(() => {
-      // O Google pode exigir um novo consentimento; nesse caso a tela de Configurações continua disponível.
-    })
-  }, [state.companySettings.googleOAuthClientId])
+    if (!authSession || !firebaseAuthReady || (isFirebaseConfigured && !firebaseAuth?.currentUser)) return
+    const clientId = CONFIGURED_GOOGLE_OAUTH_CLIENT_ID || state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
+    let cancelled = false
+    const restore = async () => {
+      if (googleRestoreAttempted.current === clientId && getGoogleWorkspaceConnection().connected) return
+      googleRestoreAttempted.current = clientId || 'backend'
+      try {
+        const connection = await restoreGoogleWorkspaceConnection(clientId)
+        if (cancelled) return
+        if (!connection.connected) googleRestoreAttempted.current = ''
+        setGoogleConnectionRevision((current) => current + 1)
+      } catch {
+        googleRestoreAttempted.current = ''
+      }
+    }
+    void restore()
+    const restoreOnResume = () => { if (!getGoogleWorkspaceConnection().connected) void restore() }
+    window.addEventListener('focus', restoreOnResume)
+    window.addEventListener('online', restoreOnResume)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', restoreOnResume)
+      window.removeEventListener('online', restoreOnResume)
+    }
+  }, [authSession, firebaseAuthReady, state.companySettings.googleOAuthClientId])
 
   useEffect(() => {
     if (!authSession) return
@@ -1513,6 +1562,14 @@ function App() {
     [authSession?.userId, state.users],
   )
   const activeUserId = currentUser?.id ?? PRIMARY_OWNER.id
+  const visibleSystemNotifications = useMemo(
+    () => state.notifications
+      .filter((item) => !item.userId || item.userId === activeUserId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    [activeUserId, state.notifications],
+  )
+  const unreadSystemNotificationCount = visibleSystemNotifications.filter((item) => !item.read).length
+  const totalUnreadNotificationCount = unreadSystemNotificationCount + unreadEmailCount
   const availableNavigation = useMemo(
     () => navigation.filter((item) => canOpenPage(currentUser, item.page)),
     [currentUser],
@@ -2054,6 +2111,307 @@ Abraço,
 Emerson
 Hero Drone`,
     })
+  }
+
+  const automateLeadHunterOutreach = async (prospectIds: string[]) => {
+    const summary: {
+      sent: number
+      prepared: number
+      review: number
+      skipped: number
+      failed: number
+      actions: Array<{ prospectId: string; name: string; channel: 'WhatsApp' | 'Instagram'; url: string; message: string; phone?: string }>
+    } = { sent: 0, prepared: 0, review: 0, skipped: 0, failed: 0, actions: [] }
+    for (const prospectId of [...new Set(prospectIds)]) {
+      let prospect = (latestState.current.leadHunterProspects || []).find((item) => item.id === prospectId)
+      if (!prospect) {
+        summary.skipped += 1
+        continue
+      }
+
+      // O contato pode ter sido completado posteriormente no CRM. Reúna esses
+      // dados antes de decidir o canal para não cair no Instagram quando já há
+      // um WhatsApp válido vinculado ao mesmo lead/contato.
+      const linkedLead = latestState.current.leads.find((item) =>
+        item.id === prospect?.leadId ||
+        item.leadHunterData?.id === prospectId,
+      )
+      const linkedContact = latestState.current.clients.find((item) =>
+        item.id === prospect?.contactId ||
+        item.id === linkedLead?.contactId,
+      )
+      const hasExplicitCrmLink = Boolean(linkedLead || linkedContact)
+      const trustedSources = hasExplicitCrmLink
+        ? prospect.sources
+        : prospect.sources.filter((source) => source !== 'CRM vinculado')
+      const crmMergedProspect: LeadHunterProspect = {
+        ...prospect,
+        sources: trustedSources,
+        contactName: prospect.contactName || linkedContact?.fullName || linkedLead?.fullName,
+        phone: prospect.phone || linkedContact?.phone || linkedLead?.phone || '',
+        whatsapp:
+          prospect.whatsapp ||
+          linkedContact?.whatsapp ||
+          linkedLead?.whatsapp ||
+          '',
+        email: prospect.email || linkedContact?.email || linkedLead?.email || '',
+        instagram: prospect.instagram || linkedContact?.instagram || linkedLead?.instagram || '',
+        address: prospect.address || linkedContact?.address || linkedLead?.address || '',
+        neighborhood: prospect.neighborhood || linkedContact?.neighborhood || linkedLead?.neighborhood || '',
+      }
+      const crmAddedContact = (
+        crmMergedProspect.phone !== prospect.phone ||
+        crmMergedProspect.whatsapp !== prospect.whatsapp ||
+        crmMergedProspect.email !== prospect.email ||
+        crmMergedProspect.instagram !== prospect.instagram ||
+        crmMergedProspect.sources.length !== prospect.sources.length
+      )
+      if (crmAddedContact) {
+        const mergedAt = new Date().toISOString()
+        crmMergedProspect.sources = hasExplicitCrmLink
+          ? [...new Set([...trustedSources, 'CRM vinculado'])]
+          : trustedSources
+        crmMergedProspect.contactValidation = validateLeadContacts(crmMergedProspect, mergedAt)
+        crmMergedProspect.updatedAt = mergedAt
+        prospect = crmMergedProspect
+        updateState((current) => ({
+          ...current,
+          leadHunterProspects: (current.leadHunterProspects || []).map((item) =>
+            item.id === prospectId ? crmMergedProspect : item,
+          ),
+        }), `Contatos de ${prospect.name} sincronizados com o CRM.`)
+      }
+
+      const existingKey = prospect.email ? leadOutreachIdempotencyKey(prospect) : ''
+      if (
+        prospect.lastContactAt ||
+        prospect.outreachEmail?.status === 'Enviado' ||
+        (prospect.outreachEmail?.status === 'Enviando' && prospect.outreachEmail.idempotencyKey === existingKey)
+      ) {
+        summary.skipped += 1
+        continue
+      }
+
+      if (
+        isOpenAILeadEnrichmentConfigured &&
+        (
+          !prospect.whatsapp ||
+          !prospect.email ||
+          !prospect.instagram ||
+          !prospect.contactValidation ||
+          assessLeadPreferredChannel(prospect).confidence !== 'Alta'
+        ) &&
+        remainingAiCalls(latestState.current.leadHunterSearches || [], latestState.current.leadHunterSettings || { maxDailyCalls: 50 }) > 0
+      ) {
+        try {
+          const enrichment = await enrichLeadsWithOpenAI([prospect], AbortSignal.timeout(110_000))
+          const found = enrichment.leads.find((item) => item.id === prospectId)
+          if (found) {
+            const now = new Date().toISOString()
+            const enrichedProspect: LeadHunterProspect = {
+              ...prospect,
+              contactName: found.contactName || prospect.contactName,
+              address: found.address || prospect.address,
+              phone: found.phone || prospect.phone,
+              whatsapp: found.whatsapp || prospect.whatsapp,
+              email: found.email || prospect.email,
+              website: found.website || prospect.website,
+              instagram: found.instagram || prospect.instagram,
+              aiSummary: found.aiSummary || prospect.aiSummary,
+              aiApproach: found.aiApproach || prospect.aiApproach,
+              aiOpportunityLevel: found.aiOpportunityLevel || prospect.aiOpportunityLevel,
+              aiSocialInsight: found.aiSocialInsight || prospect.aiSocialInsight,
+              aiContactHook: found.aiContactHook || prospect.aiContactHook,
+              aiFirstMessage: found.aiFirstMessage || prospect.aiFirstMessage,
+              sources: [...new Set([...prospect.sources, 'OpenAI Web Search'])],
+              sourceUrls: [...new Set([...prospect.sourceUrls, ...found.sourceUrls])],
+              status: 'Analisado',
+              lastAnalyzedAt: now,
+              updatedAt: now,
+            }
+            enrichedProspect.contactValidation = validateLeadContacts(enrichedProspect, now)
+            prospect = enrichedProspect
+            updateState((current) => ({
+              ...current,
+              leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? enrichedProspect : item),
+            }), `Dados de ${prospect.name} pesquisados e validados.`)
+          }
+        } catch {
+          // Se a pesquisa externa falhar, a cascata ainda tenta todos os
+          // canais já disponíveis antes de encaminhar o lead para revisão.
+        }
+      }
+
+      const preferred = assessLeadPreferredChannel(prospect)
+      const key = prospect.email ? leadOutreachIdempotencyKey(prospect) : `lead-hunter:first-email:v1:${prospect.id}:sem-email`
+      if (!preferred.canProceed || !preferred.channel) {
+        const now = new Date().toISOString()
+        updateState((current) => ({
+          ...current,
+          leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
+            ...item,
+            outreachEmail: {
+              status: 'Revisão', idempotencyKey: key, confidence: preferred.confidence,
+              reason: preferred.reason, attemptedAt: now,
+            },
+            updatedAt: now,
+          } : item),
+        }), `${prospect.name} ficou para revisão: ${preferred.reason}`)
+        summary.review += 1
+        continue
+      }
+
+      if (preferred.channel === 'WhatsApp') {
+        const message = buildLeadWhatsAppMessage(prospect)
+        summary.actions.push({
+          prospectId: prospect.id,
+          name: prospect.name,
+          channel: 'WhatsApp',
+          url: buildLeadWhatsAppUrl(prospect, message),
+          message,
+          phone: prospect.whatsapp || prospect.phone,
+        })
+        summary.prepared += 1
+        continue
+      }
+
+      if (preferred.channel === 'Instagram') {
+        const message = buildLeadWhatsAppMessage(prospect)
+        summary.actions.push({
+          prospectId: prospect.id,
+          name: prospect.name,
+          channel: 'Instagram',
+          url: buildInstagramUrl(prospect.instagram),
+          message,
+        })
+        summary.prepared += 1
+        continue
+      }
+
+      const assessment = assessLeadEmailConfidence(prospect)
+      const message = buildLeadOutreachEmail(prospect)
+      const reservedAt = new Date().toISOString()
+      updateState((current) => ({
+        ...current,
+        leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
+          ...item,
+          outreachEmail: {
+            status: 'Enviando', idempotencyKey: key, confidence: assessment.confidence,
+            reason: assessment.reason, subject: message.subject, attemptedAt: reservedAt,
+          },
+          updatedAt: reservedAt,
+        } : item),
+      }), `Envio para ${prospect.name} reservado com proteção contra duplicidade.`)
+
+      try {
+        const result = await sendGoogleWorkspaceEmail({
+          to: [prospect.email],
+          subject: repairTextEncoding(message.subject),
+          body: message.body,
+          signatureImageUrl: latestState.current.companySettings.emailSignatureImageUrl,
+        })
+        importLeadHunterProspects([prospect.id])
+        const sentAt = new Date().toISOString()
+        updateState((current) => {
+          const importedProspect = (current.leadHunterProspects || []).find((item) => item.id === prospectId)
+          const associatedLead = current.leads.find((item) =>
+            item.id === importedProspect?.leadId || item.leadHunterData?.id === prospectId,
+          )
+          return {
+            ...current,
+            leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
+              ...item,
+              status: 'Contatado',
+              isNew: false,
+              lastContactAt: sentAt,
+              outreachEmail: {
+                status: 'Enviado', idempotencyKey: key, confidence: 'Alta',
+                reason: assessment.reason, subject: message.subject,
+                messageId: result.id, attemptedAt: reservedAt, sentAt,
+              },
+              updatedAt: sentAt,
+            } : item),
+            leads: associatedLead ? current.leads.map((item) => item.id === associatedLead.id ? {
+              ...item,
+              lastContactAt: sentAt,
+              pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
+              tags: [...new Set([...item.tags.filter((tag) => tag !== 'A abordar'), 'Contato iniciado'])],
+              updatedAt: sentAt,
+            } : item) : current.leads,
+            leadInteractions: associatedLead ? [{
+              id: createId('int'),
+              leadId: associatedLead.id,
+              interactionType: 'E-mail · Bot Lead Hunter',
+              description: `Assunto: ${message.subject}\nMensagem: ${message.body}\nGmail ID: ${result.id}\nChave: ${key}`,
+              interactionDate: sentAt,
+              userId: activeUserId,
+              createdAt: sentAt,
+            }, ...current.leadInteractions] : current.leadInteractions,
+          }
+        }, `E-mail enviado para ${prospect.name} e registrado no histórico.`)
+        summary.sent += 1
+      } catch (error) {
+        const attemptedAt = new Date().toISOString()
+        const errorMessage = error instanceof Error ? error.message : 'Falha não identificada no envio.'
+        updateState((current) => ({
+          ...current,
+          leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
+            ...item,
+            outreachEmail: {
+              status: 'Revisão', idempotencyKey: key, confidence: assessment.confidence,
+              reason: 'WhatsApp e Instagram estavam indisponíveis, e o envio por e-mail não foi confirmado.',
+              subject: message.subject, attemptedAt, error: errorMessage,
+            },
+            updatedAt: attemptedAt,
+          } : item),
+        }), `${prospect.name}: nenhum canal concluiu o contato; enviado para revisão.`)
+        summary.failed += 1
+        summary.review += 1
+      }
+    }
+    return summary
+  }
+
+  const confirmLeadHunterExternalOutreach = (
+    prospectId: string,
+    channel: 'WhatsApp' | 'Instagram',
+    message: string,
+  ) => {
+    const prospectName = (latestState.current.leadHunterProspects || []).find((item) => item.id === prospectId)?.name || 'lead'
+    importLeadHunterProspects([prospectId])
+    const now = new Date().toISOString()
+    updateState((current) => {
+      const prospect = (current.leadHunterProspects || []).find((item) => item.id === prospectId)
+      const associatedLead = current.leads.find((item) =>
+        item.id === prospect?.leadId || item.leadHunterData?.id === prospectId,
+      )
+      return {
+        ...current,
+        leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
+          ...item,
+          status: 'Contatado',
+          isNew: false,
+          lastContactAt: now,
+          updatedAt: now,
+        } : item),
+        leads: associatedLead ? current.leads.map((item) => item.id === associatedLead.id ? {
+          ...item,
+          lastContactAt: now,
+          pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
+          tags: [...new Set([...item.tags.filter((tag) => tag !== 'A abordar'), 'Contato iniciado'])],
+          updatedAt: now,
+        } : item) : current.leads,
+        leadInteractions: associatedLead ? [{
+          id: createId('int'),
+          leadId: associatedLead.id,
+          interactionType: `${channel} · Bot Lead Hunter`,
+          description: `Mensagem confirmada pelo usuário:\n${message}`,
+          interactionDate: now,
+          userId: activeUserId,
+          createdAt: now,
+        }, ...current.leadInteractions] : current.leadInteractions,
+      }
+    }, `${channel} de ${prospectName} registrado como enviado.`)
   }
 
   const submitCommercialEmail = async (composer: EmailComposerState, subject: string, body: string, htmlBody?: string) => {
@@ -3299,6 +3657,74 @@ Hero Drone`,
     }
   }
 
+  const moveAppointment = async (appointment: Appointment, startAt: string, endAt: string) => {
+    const storedAppointment = latestState.current.appointments.find((item) => item.id === appointment.id)
+    if (!storedAppointment || new Date(endAt).getTime() <= new Date(startAt).getTime()) return
+    if (storedAppointment.startAt === startAt && storedAppointment.endAt === endAt) return
+    const now = new Date().toISOString()
+    const captureDate = dateInputFromDate(new Date(startAt))
+    const captureStartTime = dateTimeInputFromDate(new Date(startAt)).slice(11, 16)
+    const captureEndTime = dateTimeInputFromDate(new Date(endAt)).slice(11, 16)
+
+    updateState((current) => ({
+      ...current,
+      appointments: current.appointments.map((item) => item.id === storedAppointment.id
+        ? { ...item, startAt, endAt, updatedAt: now }
+        : item),
+      projects: storedAppointment.projectId && storedAppointment.appointmentType === 'Captação'
+        ? current.projects.map((project) => project.id === storedAppointment.projectId
+            ? { ...project, captureDate, captureStartTime, captureEndTime, updatedAt: now }
+            : project)
+        : current.projects,
+      tasks: current.tasks.map((task) => task.appointmentId === storedAppointment.id
+        ? { ...task, dueAt: startAt, durationMinutes: getDurationMinutes(startAt, endAt), updatedAt: now }
+        : task),
+      statusHistory: [
+        createStatusHistory(
+          'Agendamento',
+          storedAppointment.id,
+          'Agendamento movido',
+          `Alterado de ${formatDateTime(storedAppointment.startAt)} para ${formatDateTime(startAt)} pela agenda.`,
+          activeUserId,
+          storedAppointment.status,
+          storedAppointment.status,
+          now,
+        ),
+        ...current.statusHistory,
+      ],
+    }), `Agendamento movido para ${formatDateTime(startAt)}.`)
+
+    if (!storedAppointment.externalEventId) return
+    const project = storedAppointment.projectId ? latestState.current.projects.find((item) => item.id === storedAppointment.projectId) : undefined
+    try {
+      if (!getGoogleWorkspaceConnection().connected) {
+        setToast('Agendamento movido no FlyFlow. Reconecte o Google para atualizar o evento vinculado.')
+        return
+      }
+      const synced = await createGoogleWorkspaceEvent({
+        externalEventId: storedAppointment.externalEventId,
+        title: storedAppointment.title,
+        description: [
+          project ? `Cliente: ${project.contactName}` : '',
+          project ? `Projeto: ${project.projectCode}` : '',
+          storedAppointment.notes ? `Observações: ${storedAppointment.notes}` : '',
+        ].filter(Boolean).join('\n'),
+        startAt,
+        endAt,
+        location: storedAppointment.address,
+        timeZone: latestState.current.companySettings.timezone,
+      })
+      updateState((current) => ({
+        ...current,
+        appointments: current.appointments.map((item) => item.id === storedAppointment.id
+          ? { ...item, externalEventId: synced.id, calendarUrl: synced.htmlLink, updatedAt: new Date().toISOString() }
+          : item),
+      }), 'Novo horário sincronizado com o Google Calendar.')
+    } catch {
+      setToast('Agendamento movido no FlyFlow, mas o Google Calendar não pôde ser atualizado agora.')
+    }
+  }
+
   const addPayment = (values: PaymentFormValues) => {
     const project = state.projects.find((item) => item.id === values.projectId)
     const lead = state.leads.find((item) => item.id === values.leadId) ?? (project?.leadId ? state.leads.find((item) => item.id === project.leadId) : undefined)
@@ -4305,18 +4731,25 @@ Hero Drone`,
     }), 'Proposta restaurada.')
   }
 
-  const updateSettings = (values: SettingsFormValues) => {
-    updateState(
-      (current) => ({
-        ...current,
-        companySettings: {
-          ...current.companySettings,
-          ...values,
-          updatedAt: new Date().toISOString(),
-        },
-      }),
-      'Configurações salvas.',
-    )
+  const updateSettings = async (values: SettingsFormValues) => {
+    const nextState = synchronizeOperationalState({
+      ...latestState.current,
+      companySettings: {
+        ...latestState.current.companySettings,
+        ...values,
+        updatedAt: new Date().toISOString(),
+      },
+    })
+    latestState.current = nextState
+    saveAppState(nextState)
+    setState(nextState)
+    if (isFirebaseConfigured && authSession) {
+      firebaseSaveQueue.current = firebaseSaveQueue.current.catch(() => undefined).then(() => saveFirebaseAppState(nextState))
+      await firebaseSaveQueue.current
+    } else if (isSupabaseConfigured && authSession) {
+      await saveCloudAppState(nextState)
+    }
+    setToast('Configurações salvas em todos os dispositivos.')
   }
 
   const addUser = async (values: UserFormValues) => {
@@ -5516,6 +5949,27 @@ Hero Drone`,
 
   const currentNavigation = navigation.find((item) => item.page === page)
   const CurrentPageIcon = currentNavigation?.icon ?? LayoutDashboard
+  const openSystemNotification = (notification: AppState['notifications'][number]) => {
+    updateState((current) => ({
+      ...current,
+      notifications: current.notifications.map((item) => item.id === notification.id ? { ...item, read: true } : item),
+    }), '')
+    setNotificationCenterOpen(false)
+    if (notification.entityType === 'Projeto') {
+      const project = state.projects.find((item) => item.id === notification.entityId)
+      setQuery(project?.projectCode || project?.name || '')
+      setPage('projects')
+    } else if (notification.entityType === 'Proposta') {
+      setPage('quotes')
+    } else if (notification.entityType === 'Pagamento') {
+      setFinanceTab('receber')
+      setPage('finance')
+    } else if (notification.entityType === 'Agendamento') {
+      setPage('agenda')
+    } else {
+      setPage('dashboard')
+    }
+  }
 
 
   return (
@@ -5622,17 +6076,47 @@ Hero Drone`,
               >
                 {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
               </button>
-              <button
-                className="app-header-icon focus-ring relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
-                type="button"
-                onClick={() => setPage(unreadEmailCount ? 'inbox' : 'dashboard')}
-                aria-label={unreadEmailCount ? `Abrir Inbox com ${unreadEmailCount} e-mail(s) não lido(s)` : 'Notificações'}
-              >
-                <Bell size={17} />
-                {unreadEmailCount || state.notifications.some((item) => !item.read) ? (
-                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-600" />
+              <div className="relative">
+                <button
+                  className="app-header-icon focus-ring relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
+                  type="button"
+                  onClick={() => setNotificationCenterOpen((open) => !open)}
+                  aria-expanded={notificationCenterOpen}
+                  aria-label={`${totalUnreadNotificationCount} notificação(ões) não lida(s)`}
+                >
+                  <Bell size={17} />
+                  {totalUnreadNotificationCount ? (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-600 px-1 text-[0.6rem] font-black leading-none text-white">
+                      {totalUnreadNotificationCount > 9 ? '9+' : totalUnreadNotificationCount}
+                    </span>
+                  ) : null}
+                </button>
+                {notificationCenterOpen ? (
+                  <div className="notification-center absolute right-0 top-12 z-50 w-[min(23rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                      <div><h3 className="text-sm font-semibold text-gray-950">Notificações</h3><p className="mt-0.5 text-[0.68rem] text-gray-500">{totalUnreadNotificationCount ? `${totalUnreadNotificationCount} não lida(s)` : 'Tudo em dia'}</p></div>
+                      {unreadSystemNotificationCount ? <button className="text-[0.68rem] font-bold text-gray-600 hover:text-gray-950" type="button" onClick={() => updateState((current) => ({ ...current, notifications: current.notifications.map((item) => ({ ...item, read: true })) }), '')}>Marcar como lidas</button> : null}
+                    </div>
+                    <div className="max-h-[26rem] overflow-y-auto p-2">
+                      {unreadEmailCount ? (
+                        <button className="flex w-full gap-3 rounded-xl p-3 text-left hover:bg-gray-50" type="button" onClick={() => { setNotificationCenterOpen(false); setPage('inbox') }}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><Mail size={16} /></span>
+                          <span className="min-w-0"><strong className="block text-xs text-gray-950">{unreadEmailCount} e-mail(s) não lido(s)</strong><small className="mt-1 block text-[0.68rem] leading-4 text-gray-500">Abra o Inbox para visualizar as novas mensagens.</small></span>
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
+                        </button>
+                      ) : null}
+                      {visibleSystemNotifications.slice(0, 12).map((notification) => (
+                        <button key={notification.id} className="flex w-full gap-3 rounded-xl p-3 text-left hover:bg-gray-50" type="button" onClick={() => openSystemNotification(notification)}>
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${notification.notificationType === 'Financeiro' ? 'bg-emerald-50 text-emerald-700' : notification.notificationType === 'Projeto' ? 'bg-amber-50 text-amber-700' : 'bg-violet-50 text-violet-700'}`}><AlertTriangle size={16} /></span>
+                          <span className="min-w-0 flex-1"><strong className="block text-xs text-gray-950">{notification.title}</strong><small className="mt-1 block text-[0.68rem] leading-4 text-gray-500">{notification.message}</small></span>
+                          {!notification.read ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-600" /> : null}
+                        </button>
+                      ))}
+                      {!unreadEmailCount && !visibleSystemNotifications.length ? <div className="px-4 py-10 text-center"><CheckCircle2 className="mx-auto text-emerald-500" size={28} /><p className="mt-3 text-sm font-semibold text-gray-900">Nenhum alerta pendente</p><p className="mt-1 text-xs text-gray-500">Novos avisos do sistema aparecerão aqui.</p></div> : null}
+                    </div>
+                  </div>
                 ) : null}
-              </button>
+              </div>
               <button
                 className="app-header-icon focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
                 type="button"
@@ -5726,33 +6210,33 @@ Hero Drone`,
                 const activeCities = (state.leadHunterCities || []).filter((item) => item.active && (!item.blockedUntil || item.blockedUntil <= now))
                 const activeCategories = (state.leadHunterCategories || []).filter((item) => item.active)
                 const searchLearningProfile = buildLeadLearningProfile(state.leadHunterProspects || [])
-                const publicSearchCategories = activeCategories.filter((item) =>
-                  /hotel|pousada|airbnb|chal[eé]|cabana|glamping|ref[uú]gio|temporada|espa[cç]o para eventos|clube|restaurante|imobili[aá]ria|corretor|vin[ií]cola|resort|haras|pesqueiro|concession[aá]ria|shopping|energia solar|construtora|incorporadora/i.test(item.name),
-                )
+                const publicSearchCategories = activeCategories.filter((item) => isEligibleLeadSegment(item.name))
                 const categoryCoveragePriority = (name: string) => {
-                  const normalized = normalizeLeadText(name)
-                  if (/pousada|hotel fazenda|chale|cabana|glamping|refugio|casa de temporada|airbnb/.test(normalized)) return 115
-                  if (/espaco para eventos|clube|vinicola|haras|pesqueiro/.test(normalized)) return 108
-                  if (/construtora|incorporadora|energia solar/.test(normalized)) return 96
-                  if (/imobiliaria|corretor de imoveis/.test(normalized)) return 88
-                  if (/hotel|resort/.test(normalized)) return 82
-                  if (/concessionaria|shopping/.test(normalized)) return 76
-                  if (/restaurante/.test(normalized)) return 25
-                  return 50
+                  return leadSegmentPriorityPoints(name) * 4
                 }
                 const candidateCities = filters.cityIds.length
-                  ? activeCities.filter((item) => filters.cityIds.includes(item.id)).slice(0, 1)
+                  ? (() => {
+                    const selected = activeCities.find((item) => filters.cityIds.includes(item.id))
+                    if (!selected) return []
+                    const neighbors = activeCities
+                      .filter((item) => item.id !== selected.id)
+                      .sort((a, b) =>
+                        Math.abs(a.distanceFromBaseKm - selected.distanceFromBaseKm) - Math.abs(b.distanceFromBaseKm - selected.distanceFromBaseKm)
+                        || a.searchCount - b.searchCount,
+                      )
+                    return [selected, ...neighbors]
+                  })()
                   : (() => {
                     const nearby = [...activeCities]
                       .sort((a, b) => a.distanceFromBaseKm - b.distanceFromBaseKm || a.searchCount - b.searchCount)
                       .slice(0, 2)
                     const underSearched = [...activeCities]
                       .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
-                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()].slice(0, 10)
+                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()]
                   })()
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
-                  ? activeCategories.filter((item) => filters.categoryIds.includes(item.id)).slice(0, 1)
+                  ? activeCategories.filter((item) => filters.categoryIds.includes(item.id) && isEligibleLeadSegment(item.name)).slice(0, 1)
                   : (() => {
                     const ranked = [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
                       .sort((a, b) =>
@@ -5772,15 +6256,19 @@ Hero Drone`,
                   const candidateTarget = resultsPerSearch * 3
                   const providerLimit = filters.cityIds.length ? 40 : Math.max(15, Math.ceil(candidateTarget / candidateCities.length) + 8)
                   const knownProspects = state.leadHunterProspects || []
-                  const isAlreadyKnown = (raw: { id?: string; name: string; city: string; externalIds?: Record<string, string> }) => {
+                  const isAlreadyKnown = (raw: { id?: string; name: string; city: string; phone?: string; whatsapp?: string; website?: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
                     const googlePlaceId = raw.externalIds?.googlePlaces
                     const normalizedName = normalizeLeadText(raw.name)
                     const normalizedCity = normalizeLeadText(raw.city)
+                    const phone = (raw.whatsapp || raw.phone || '').replace(/\D/g, '')
+                    const website = (raw.website || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
                     return knownProspects.some((prospect) =>
                       prospect.id === raw.id ||
                       Boolean(osmId && prospect.externalIds.openstreetmap === osmId) ||
                       Boolean(googlePlaceId && prospect.externalIds.googlePlaces === googlePlaceId) ||
+                      Boolean(phone && phone === (prospect.whatsapp || prospect.phone).replace(/\D/g, '')) ||
+                      Boolean(website && website === prospect.website.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]) ||
                       (prospect.normalizedName === normalizedName && normalizeLeadText(prospect.city) === normalizedCity),
                     )
                   }
@@ -5791,6 +6279,7 @@ Hero Drone`,
                   const combinedSources = new Set<string>()
                   const searchWarnings: string[] = []
                   const addCandidate = (lead: (typeof result.leads)[number]) => {
+                    if (!isEligibleLeadSegment(lead.categoryName, lead.name)) return
                     // Uma empresa que já apareceu em qualquer rodada permanece no
                     // histórico e nunca deve voltar a consumir uma vaga de uma
                     // nova pesquisa.
@@ -5930,7 +6419,10 @@ Hero Drone`,
                   let duplicateCount = 0
                   updateState((current) => {
                     const existingProspects = [...(current.leadHunterProspects || [])]
-                    const learningProfile = buildLeadLearningProfile(existingProspects)
+                    const wonLeadIds = new Set(current.leads
+                      .filter((lead) => ['Serviço confirmado', 'Serviço agendado', 'Convertido em cliente'].includes(lead.pipelineStage))
+                      .map((lead) => lead.id))
+                    const learningProfile = buildLeadLearningProfile(existingProspects, wonLeadIds)
                     let incoming: LeadHunterProspect[] = result.leads.map((raw) => {
                       const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
                       const enrichment = enrichmentById.get(stableId)
@@ -5970,15 +6462,17 @@ Hero Drone`,
                         enrichedRaw.aiOpportunityLevel === 'Excelente' ? 8 :
                         enrichedRaw.aiOpportunityLevel === 'Boa' ? 3 :
                         enrichedRaw.aiOpportunityLevel === 'Ruim' ? -8 : 0
-                      const evaluatedRaw = {
+                      const provisionalRaw = {
                         ...enrichedRaw,
                         ...refined,
-                        score: Math.max(0, Math.min(100, refined.score + aiScoreAdjustment + learningAdjustment)),
+                        score: Math.max(0, Math.min(100, refined.score + aiScoreAdjustment + learningAdjustment + leadSegmentPriorityPoints(enrichedRaw.categoryName))),
                         scoreReasons: aiScoreAdjustment
                           ? [...refined.scoreReasons, { id: 'ai-evaluation', label: `Avaliação da IA: ${enrichedRaw.aiOpportunityLevel}`, points: aiScoreAdjustment }]
                           : refined.scoreReasons,
                         distanceKm: leadCity.distanceFromBaseKm,
                       }
+                      const qualification = qualifyLead(provisionalRaw)
+                      const evaluatedRaw = { ...provisionalRaw, qualification, score: qualification.total }
                       if (learningAdjustment) {
                         evaluatedRaw.scoreReasons = [
                           ...evaluatedRaw.scoreReasons,
@@ -6022,7 +6516,7 @@ Hero Drone`,
                       // e mapa antes de telefone/WhatsApp. O contato pode ser
                       // enriquecido ou editado depois e não deve eliminar um lead
                       // válido da busca.
-                      return hasLocation && hasPublicEvidence
+                      return hasLocation && hasPublicEvidence && isEligibleLeadSegment(lead.categoryName, lead.name)
                     })
                     incoming = incoming
                       .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
@@ -6203,6 +6697,8 @@ Hero Drone`,
               }}
               onImport={importLeadHunterProspects}
               onEmail={sendLeadHunterEmail}
+              onAutomateOutreach={automateLeadHunterOutreach}
+              onConfirmExternalOutreach={confirmLeadHunterExternalOutreach}
               onReject={(prospectId) => {
                 const now = new Date().toISOString()
                 updateState((current) => ({
@@ -6246,6 +6742,7 @@ Hero Drone`,
           {page === 'inbox' ? (
             <InboxPage
               state={state}
+              connectionRevision={googleConnectionRevision}
               onOpenLead={(lead) => {
                 setSelectedLeadId(lead.id)
                 setModal('leadDetail')
@@ -6309,6 +6806,18 @@ Hero Drone`,
               onCompleteAdjustment={completeProjectAdjustment}
             />
           ) : null}
+          {page === 'internalProjects' ? (
+            <InternalProjectsPage
+              projects={state.internalProjects || []}
+              users={state.users}
+              onChange={(internalProjects, message) =>
+                updateState(
+                  (current) => ({ ...current, internalProjects, updatedAt: new Date().toISOString() }),
+                  message,
+                )
+              }
+            />
+          ) : null}
           {page === 'agenda' ? (
             <AgendaPage
               state={state}
@@ -6317,6 +6826,7 @@ Hero Drone`,
               onCreateTask={openTaskModal}
               onOpenAppointment={openExistingAppointment}
               onResizeAppointment={resizeAppointment}
+              onMoveAppointment={moveAppointment}
             />
           ) : null}
           {page === 'quotes' ? (
@@ -6427,7 +6937,7 @@ Hero Drone`,
           <Button
             aria-expanded={quickActionsOpen}
             aria-label="Ações rápidas"
-            className="h-11 w-11 min-h-11 rounded-full bg-[#d8a500] p-0 text-black shadow-md hover:bg-[#c69700]"
+            className="h-11 w-11 min-h-11 rounded-xl border border-gray-700 bg-[#242622] p-0 text-white shadow-lg shadow-black/15 hover:-translate-y-0.5 hover:bg-black hover:shadow-xl"
             type="button"
             onClick={() => setQuickActionsOpen((open) => !open)}
           >
@@ -7949,6 +8459,7 @@ function ProjectsPage({
             <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => setOpenedProjectId(project.id)}>Abrir</Button>
             {receiptTarget ? <IconActionButton label="Comprovantes" icon={<Paperclip size={15} />} onClick={() => onOpenReceipt(receiptTarget)} /> : <IconActionButton label="Criar pagamento e anexar comprovante" icon={<Paperclip size={15} />} onClick={() => onRegisterFinalPayment(project)} />}
             <IconActionButton label="Editar projeto" icon={<Pencil size={15} />} onClick={() => onEditProject(project)} />
+            {isCompletedProject(project) ? <Button className="min-h-9 px-3 py-1 text-xs" variant="danger" type="button" onClick={() => onDeleteProject(project)}><Trash2 size={14} /> Excluir</Button> : null}
           </div>
         </div>
       </article>
@@ -8057,22 +8568,22 @@ function ProjectWorkspace({
         : undefined
 
   return (
-    <Modal title={`${projectContactLabel(state, project)} · ${project.projectCode}`} size="md" onClose={onClose}>
-      <div className="space-y-3">
-        <section className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+    <Modal title={`Projeto ${project.projectCode}`} size="lg" onClose={onClose}>
+      <div className="project-workspace space-y-4">
+        <section className="project-workspace-hero rounded-xl border border-gray-200 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0"><div className="flex flex-wrap gap-2"><StatusBadge>{project.projectStatus}</StatusBadge><StatusBadge>{project.financialStatus}</StatusBadge></div><h2 className="mt-2 truncate text-base font-black text-gray-950">{client ? contactDisplayName(client) : 'Sem cliente vinculado'}</h2><p className="mt-0.5 truncate text-xs text-gray-500">{project.serviceName} · {project.contactName || project.city || 'Sem detalhes'}</p></div>
+            <div className="flex min-w-0 items-start gap-3"><div className="project-workspace-mark"><Briefcase size={19} /></div><div className="min-w-0"><p className="project-workspace-code">{project.projectCode}</p><h2 className="mt-1 truncate text-xl font-black text-gray-950">{client ? contactDisplayName(client) : 'Sem cliente vinculado'}</h2><p className="mt-1 truncate text-sm text-gray-500">{project.serviceName} · {project.contactName || project.city || 'Sem detalhes'}</p><div className="mt-3 flex flex-wrap gap-2"><StatusBadge>{project.projectStatus}</StatusBadge><StatusBadge>{project.financialStatus}</StatusBadge></div></div></div>
             <div className="flex shrink-0 gap-2">{primaryAction ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={primaryAction.action}>{primaryAction.icon}{primaryAction.label}</Button> : null}<IconActionButton label="Editar projeto" icon={<Pencil size={15} />} onClick={onEdit} /></div>
           </div>
         </section>
 
-        <nav className="grid grid-cols-4 gap-1 rounded-lg bg-gray-100 p-1">
-          {([['summary', 'Resumo'], ['finance', `Financeiro ${payments.length}`], ['checklist', `Etapas ${completedChecklistCategories}/${checklistCategories.length}`], ['history', 'Histórico']] as const).map(([value, label]) => <button key={value} className={`min-h-9 truncate rounded-md px-2 text-xs font-black ${tab === value ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setTab(value)}>{label}</button>)}
+        <nav className="project-workspace-tabs grid grid-cols-4 gap-1 rounded-xl p-1">
+          {([['summary', 'Resumo'], ['finance', `Financeiro ${payments.length}`], ['checklist', `Etapas ${completedChecklistCategories}/${checklistCategories.length}`], ['history', 'Histórico']] as const).map(([value, label]) => <button key={value} className={`min-h-10 truncate rounded-lg px-2 text-xs font-black ${tab === value ? 'is-active' : ''}`} type="button" onClick={() => setTab(value)}>{label}</button>)}
         </nav>
 
         {tab === 'summary' ? <div className="space-y-3">
-          <div className="grid grid-cols-3 divide-x divide-gray-100 rounded-lg border border-gray-200 bg-white py-3 text-center"><div><p className="text-[0.65rem] font-bold uppercase text-gray-400">Total</p><p className="mt-1 text-sm font-black text-gray-950">{formatCurrency(project.totalValue)}</p></div><div><p className="text-[0.65rem] font-bold uppercase text-gray-400">Recebido</p><p className="mt-1 text-sm font-black text-emerald-700">{formatCurrency(profit.paid)}</p></div><div><p className="text-[0.65rem] font-bold uppercase text-gray-400">Pendente</p><p className="mt-1 text-sm font-black text-gray-950">{formatCurrency(pending)}</p></div></div>
-          <div className="grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-gray-200 p-3"><p className="text-[0.65rem] font-black uppercase text-gray-400">Captação</p><p className="mt-1 text-sm font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-2 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[#8a6a00]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`rounded-lg border p-3 ${deadline.boxClass}`}><p className="text-[0.65rem] font-black uppercase text-gray-400">Entrega</p><p className={`mt-1 text-sm font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-1 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[#8a6a00]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
+          <div className="project-workspace-stats grid grid-cols-3 rounded-xl border border-gray-200"><div><p>Total do projeto</p><strong>{formatCurrency(project.totalValue)}</strong></div><div><p>Valor recebido</p><strong className="text-emerald-700">{formatCurrency(profit.paid)}</strong></div><div><p>Saldo pendente</p><strong>{formatCurrency(pending)}</strong></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><div className="project-workspace-info-card rounded-xl border border-gray-200 p-4"><div className="flex items-center gap-2 text-gray-500"><CalendarDays size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Captação</p></div><p className="mt-3 text-base font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-3 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[#8a6a00]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`project-workspace-info-card rounded-xl border p-4 ${deadline.boxClass}`}><div className="flex items-center gap-2 text-gray-500"><Clock size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Prazo de entrega</p></div><p className={`mt-3 text-base font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[#8a6a00]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
           <div className="flex flex-wrap gap-2">{location ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={mapsLink(location)} target="_blank" rel="noreferrer"><MapPin size={15} /> Abrir mapa</a> : null}{project.links[0] ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={project.links[0]} target="_blank" rel="noreferrer"><FileText size={15} /> Arquivos</a> : null}{project.projectStatus === 'Aguardando aprovação do cliente' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onAddAdjustment}>Registrar ajuste</Button> : null}{project.projectStatus === 'Aguardando pagamento final' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onExceptionalDelivery}>Liberar entrega</Button> : null}</div>
         </div> : null}
 
@@ -8112,6 +8623,7 @@ function AgendaPage({
   onCreateTask,
   onOpenAppointment,
   onResizeAppointment,
+  onMoveAppointment,
 }: {
   state: AppState
   calendarView: 'mensal' | 'semanal' | 'diaria' | 'lista'
@@ -8119,6 +8631,7 @@ function AgendaPage({
   onCreateTask: (defaults?: TaskFormDefaults) => void
   onOpenAppointment: (appointment: Appointment) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
+  onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
 }) {
   const visibleProjects = state.projects.filter(isVisibleProject)
   const visibleProjectIds = new Set(visibleProjects.map((project) => project.id))
@@ -8238,6 +8751,7 @@ function AgendaPage({
           onCreateAt={createAtSlot}
           onOpenAppointment={onOpenAppointment}
           onResizeAppointment={onResizeAppointment}
+          onMoveAppointment={onMoveAppointment}
         />
       ) : null}
 
@@ -8595,8 +9109,18 @@ function FinancePage({
     link.click()
     URL.revokeObjectURL(link.href)
   }
-  const pendingReceipts = state.payments.filter((payment) => payment.status === 'Recebida' && !payment.receiptUrl && !payment.deletedAt).length
-  const receiptShortcut = state.payments.find((payment) => payment.status === 'Recebida' && !payment.receiptUrl && !payment.deletedAt && !payment.archivedAt)
+  const receiptIsResolved = (payment: Payment) => {
+    const receiptFiles = state.files.filter((file) => file.paymentId === payment.id && !file.deletedAt)
+    return Boolean(payment.receiptUrl || receiptFiles.length)
+  }
+  const pendingReceiptPayments = state.payments.filter((payment) =>
+    payment.status === 'Recebida'
+    && !payment.deletedAt
+    && !payment.archivedAt
+    && !receiptIsResolved(payment),
+  )
+  const pendingReceipts = pendingReceiptPayments.length
+  const receiptShortcut = pendingReceiptPayments[0]
     ?? state.payments.find((payment) => !payment.deletedAt && !payment.archivedAt)
   return (
     <div className="space-y-4">
@@ -8636,7 +9160,7 @@ function FinancePage({
         </div>
         <details className="progressive-section mt-3"><summary>Ver projeções e compromissos</summary><div className="mt-3 grid gap-3 text-sm sm:grid-cols-3"><SmallStat label="Depois de receber" value={formatCurrency(projectedBalance)} /><SmallStat label="Contas a pagar" value={formatCurrency(pendingExpenseTotal)} /><SmallStat label="Projeção líquida" value={formatCurrency(projectedNetBalance)} /></div></details>
       </section>
-      {pendingReceipts ? <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-bold text-amber-800" type="button" onClick={() => receiptShortcut && onOpenReceipt(receiptShortcut)}><span>{pendingReceipts} comprovante(s) pendente(s) de anexação ou conferência.</span><span className="whitespace-nowrap underline">Anexar agora</span></button> : null}
+      {pendingReceipts ? <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-bold text-amber-800" type="button" onClick={() => receiptShortcut && onOpenReceipt(receiptShortcut)}><span>{pendingReceipts} pagamento(s) recebido(s) sem comprovante anexado.</span><span className="whitespace-nowrap underline">Anexar agora</span></button> : null}
       <div className="finance-tabs flex flex-wrap items-center gap-1">
         {(['dashboard', 'receber', 'receitas', 'despesas'] as const).map((tab) => (
           <Button key={tab} variant={financeTab === tab ? 'primary' : 'secondary'} type="button" onClick={() => onFinanceTabChange(tab)}>
@@ -9863,11 +10387,13 @@ function ReportsPage({
 
 function InboxPage({
   state,
+  connectionRevision,
   onOpenLead,
   onComposeLead,
   onComposeNew,
 }: {
   state: AppState
+  connectionRevision: number
   onOpenLead: (lead: Lead) => void
   onComposeLead: (lead: Lead) => void
   onComposeNew: () => void
@@ -9899,7 +10425,7 @@ function InboxPage({
     if (connection.connected) void loadMessages(box)
     // A troca de caixa é a ação que dispara a sincronização.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [box])
+  }, [box, connection.connected, connectionRevision])
 
   const extractEmail = (value: string) => (value.match(/<([^>]+)>/)?.[1] || value.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0] || '').toLowerCase()
   const findLead = (message: GoogleMailboxMessage) => {
@@ -9961,7 +10487,7 @@ function InboxPage({
   )
 }
 
-function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values: SettingsFormValues) => void }) {
+function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values: SettingsFormValues) => Promise<void> | void }) {
   const {
     register,
     handleSubmit,
@@ -9989,6 +10515,8 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
   const [googleConnection, setGoogleConnection] = useState(() => getGoogleWorkspaceConnection())
   const [googleConnectionError, setGoogleConnectionError] = useState('')
   const [connectingGoogle, setConnectingGoogle] = useState(false)
+  const [settingsSaveMessage, setSettingsSaveMessage] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
 
   useEffect(() => {
     if (CONFIGURED_GOOGLE_OAUTH_CLIENT_ID) {
@@ -10027,6 +10555,24 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
     await handleSubmit(onSubmit)()
   }
 
+  const saveSettings = async (values: SettingsFormValues) => {
+    setSavingSettings(true)
+    setSettingsSaveMessage('')
+    try {
+      await onSubmit(values)
+      setSettingsSaveMessage('Configurações salvas no workspace.')
+    } catch (error) {
+      setSettingsSaveMessage(error instanceof Error ? error.message : 'Não foi possível salvar as configurações.')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  const reportInvalidSettings = () => {
+    setSettingsSaveMessage('Revise os campos destacados antes de salvar.')
+    window.setTimeout(() => document.querySelector<HTMLElement>('.field-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+  }
+
   return (
     <div className="space-y-4">
       <PageToolbar title="Configurações da empresa" description="Dados da proposta, padrão de entrada, entrega, PIX e deslocamento." />
@@ -10037,7 +10583,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         <a href="#settings-billing">Cobrança</a>
         <a href="#settings-travel">Deslocamento</a>
       </nav>
-      <form className="grid gap-4 xl:grid-cols-[1fr_0.72fr]" onSubmit={handleSubmit(onSubmit)}>
+      <form className="grid gap-4 xl:grid-cols-[1fr_0.72fr]" onSubmit={handleSubmit(saveSettings, reportInvalidSettings)}>
         <div className="space-y-4">
           <Panel id="settings-company" title="Dados da empresa">
             <div className="grid gap-4 md:grid-cols-2">
@@ -10113,25 +10659,46 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     onChange={async (event) => {
-                      const file = event.currentTarget.files?.[0]
+                      const input = event.currentTarget
+                      const file = input.files?.[0]
                       if (!file) return
                       if (file.size > 5_000_000) {
                         setGoogleConnectionError('A imagem original deve ter no máximo 5 MB.')
                         return
                       }
-                      const originalSignature = await prepareEmailSignatureImage(file)
-                      const uploadedSignature = await uploadGoogleWorkspaceEmailSignature(originalSignature)
-                      setValue('emailSignatureImageUrl', uploadedSignature.url, { shouldDirty: true })
-                      setGoogleWorkspaceEmailSignature(uploadedSignature.url)
-                      await handleSubmit(onSubmit)()
+                      try {
+                        setSettingsSaveMessage('Salvando assinatura...')
+                        const originalSignature = await prepareEmailSignatureImage(file)
+                        setValue('emailSignatureImageUrl', originalSignature, { shouldDirty: true })
+                        setGoogleWorkspaceEmailSignature(originalSignature)
+                        await handleSubmit(onSubmit)()
+                        if (isFirebaseConfigured) {
+                          try {
+                            await saveFirebaseEmailSignature(originalSignature)
+                            setSettingsSaveMessage('Assinatura salva e sincronizada no workspace.')
+                          } catch (error) {
+                            setSettingsSaveMessage(error instanceof Error ? error.message : 'Assinatura salva localmente; a sincronização será tentada novamente.')
+                          }
+                        } else {
+                          setSettingsSaveMessage('Assinatura salva no workspace.')
+                        }
+                      } catch (error) {
+                        setSettingsSaveMessage(error instanceof Error ? error.message : 'Não foi possível salvar a assinatura.')
+                      } finally {
+                        input.value = ''
+                      }
                     }}
                   />
                 </label>
-                {emailSignatureImageUrl ? <Button variant="secondary" type="button" onClick={() => {
-                  setValue('emailSignatureImageUrl', '', { shouldDirty: true })
-                  setGoogleWorkspaceEmailSignature('')
-                  void removeGoogleWorkspaceEmailSignature()
-                  void handleSubmit(onSubmit)()
+                {emailSignatureImageUrl ? <Button variant="secondary" type="button" onClick={async () => {
+                  try {
+                    if (isFirebaseConfigured) await removeFirebaseEmailSignature()
+                    setValue('emailSignatureImageUrl', '', { shouldDirty: true })
+                    setGoogleWorkspaceEmailSignature('')
+                    setSettingsSaveMessage('Assinatura removida do workspace.')
+                  } catch (error) {
+                    setSettingsSaveMessage(error instanceof Error ? error.message : 'Não foi possível remover a assinatura.')
+                  }
                 }}>Remover</Button> : null}
               </div>
               <p className="text-xs text-gray-400">Recomendação: PNG ou JPG, até 800 × 220 px.</p>
@@ -10176,7 +10743,8 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
               </div>
             </div>
           </Panel>
-          <Button className="w-full" type="submit">Salvar configurações</Button>
+          {settingsSaveMessage ? <p className={`rounded-lg border p-3 text-sm font-bold ${/salv[ao]|workspace/i.test(settingsSaveMessage) && !/não|revise/i.test(settingsSaveMessage) ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{settingsSaveMessage}</p> : null}
+          <Button className="w-full" disabled={savingSettings} type="submit">{savingSettings ? 'Salvando...' : 'Salvar configurações'}</Button>
         </div>
       </form>
     </div>
@@ -10542,6 +11110,7 @@ function TimeGridCalendar({
   onCreateAt,
   onOpenAppointment,
   onResizeAppointment,
+  onMoveAppointment,
 }: {
   anchorDate: Date
   appointments: Appointment[]
@@ -10550,6 +11119,7 @@ function TimeGridCalendar({
   onCreateAt: (startAt: string, endAt: string) => void
   onOpenAppointment: (appointment: Appointment) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
+  onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
 }) {
   const start = view === 'semanal' ? getWeekStart(anchorDate) : new Date(anchorDate)
   const days = Array.from({ length: view === 'semanal' ? 7 : 1 }, (_, index) => {
@@ -10568,6 +11138,8 @@ function TimeGridCalendar({
   const rangeStartMinutes = rangeStartHour * 60
   const rangeEndMinutes = rangeEndHour * 60
   const [resizePreview, setResizePreview] = useState<{ appointmentId: string; endAt: string } | null>(null)
+  const [movePreview, setMovePreview] = useState<{ appointmentId: string; startAt: string; endAt: string } | null>(null)
+  const suppressOpenId = useRef('')
 
   const appointmentClient = (appointment: Appointment) => {
     const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
@@ -10634,6 +11206,59 @@ function TimeGridCalendar({
     window.addEventListener('pointercancel', finishResize)
   }
 
+  const startAppointmentMove = (event: ReactPointerEvent<HTMLDivElement>, appointment: Appointment) => {
+    if ((event.target as HTMLElement).closest('[data-resize-handle]')) return
+    if (!state.appointments.some((item) => item.id === appointment.id)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const initialX = event.clientX
+    const initialY = event.clientY
+    const durationMs = Math.max(new Date(appointment.endAt).getTime() - new Date(appointment.startAt).getTime(), 15 * 60_000)
+    let moved = false
+    let nextStartAt = appointment.startAt
+    let nextEndAt = appointment.endAt
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'grabbing'
+    document.body.style.userSelect = 'none'
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault()
+      if (!moved && Math.hypot(moveEvent.clientX - initialX, moveEvent.clientY - initialY) < 5) return
+      moved = true
+      const target = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest<HTMLElement>('[data-calendar-day]')
+      if (!target?.dataset.calendarDay) return
+      const rect = target.getBoundingClientRect()
+      const rawMinutes = rangeStartMinutes + ((moveEvent.clientY - rect.top) / hourHeight) * 60
+      const snappedMinutes = Math.round(rawMinutes / 15) * 15
+      const durationMinutes = durationMs / 60_000
+      const boundedMinutes = Math.max(rangeStartMinutes, Math.min(snappedMinutes, rangeEndMinutes - durationMinutes))
+      const nextStart = new Date(`${target.dataset.calendarDay}T00:00:00`)
+      nextStart.setMinutes(boundedMinutes)
+      nextStartAt = nextStart.toISOString()
+      nextEndAt = new Date(nextStart.getTime() + durationMs).toISOString()
+      setMovePreview({ appointmentId: appointment.id, startAt: nextStartAt, endAt: nextEndAt })
+    }
+
+    const finishMove = () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', finishMove)
+      window.removeEventListener('pointercancel', finishMove)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      setMovePreview(null)
+      if (moved) {
+        suppressOpenId.current = appointment.id
+        window.setTimeout(() => { if (suppressOpenId.current === appointment.id) suppressOpenId.current = '' }, 250)
+        onMoveAppointment(appointment, nextStartAt, nextEndAt)
+      }
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false })
+    window.addEventListener('pointerup', finishMove)
+    window.addEventListener('pointercancel', finishMove)
+  }
+
   return (
     <Panel className="time-grid-panel" title={view === 'semanal' ? 'Calendário semanal' : 'Planejamento do dia'}>
       <div className="overflow-x-auto">
@@ -10674,7 +11299,7 @@ function TimeGridCalendar({
               })
 
               return (
-                <div key={dayKey} className="relative border-l border-gray-200 bg-white" style={{ height: totalHeight }}>
+                <div key={dayKey} data-calendar-day={dayKey} className="relative border-l border-gray-200 bg-white" style={{ height: totalHeight }}>
                   {hours.map((hour, index) => {
                 const startAt = new Date(day)
                 startAt.setHours(hour, 0, 0, 0)
@@ -10696,22 +11321,26 @@ function TimeGridCalendar({
               })}
 
                   {dayAppointments.map((appointment) => {
-                    const effectiveAppointment = resizePreview?.appointmentId === appointment.id
-                      ? { ...appointment, endAt: resizePreview.endAt }
-                      : appointment
+                    const effectiveAppointment = movePreview?.appointmentId === appointment.id
+                      ? { ...appointment, startAt: movePreview.startAt, endAt: movePreview.endAt }
+                      : resizePreview?.appointmentId === appointment.id
+                        ? { ...appointment, endAt: resizePreview.endAt }
+                        : appointment
                     const block = appointmentBlockStyle(effectiveAppointment)
                     const canResize = state.appointments.some((item) => item.id === appointment.id)
                     return (
                       <div
                         key={appointment.id}
-                        className="group absolute left-2 right-2 z-10 overflow-hidden rounded-lg border-l-4 bg-gray-50 px-2 py-1.5 pb-3 text-left shadow-sm transition hover:bg-white hover:shadow-md"
+                        className={`group absolute left-2 right-2 z-10 touch-none overflow-hidden rounded-lg border-l-4 bg-gray-50 px-2 py-1.5 pb-3 text-left shadow-sm transition hover:bg-white hover:shadow-md ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
                         style={{ borderLeftColor: appointment.color || '#d8a500', ...block }}
                         role="button"
                         tabIndex={0}
                         onClick={(event) => {
                           event.stopPropagation()
+                          if (suppressOpenId.current === appointment.id) return
                           onOpenAppointment(appointment)
                         }}
+                        onPointerDown={(event) => startAppointmentMove(event, appointment)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault()
@@ -10723,6 +11352,7 @@ function TimeGridCalendar({
                         <p className="truncate text-[0.68rem] font-bold text-gray-500">{appointmentTime(effectiveAppointment)}</p>
                         <p className="truncate text-[0.68rem] text-gray-500">{appointmentClient(appointment)}</p>
                         {canResize ? <div
+                          data-resize-handle
                           className="absolute inset-x-0 bottom-0 flex h-3 touch-none cursor-ns-resize items-center justify-center border-t border-transparent transition group-hover:border-gray-300 group-hover:bg-gray-100"
                           role="separator"
                           aria-label={`Ajustar duração de ${appointment.title}`}

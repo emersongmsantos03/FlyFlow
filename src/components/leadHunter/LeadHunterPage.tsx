@@ -35,7 +35,7 @@ import type {
   LeadHunterRoute,
   LeadHunterSettings,
 } from "../../types";
-import { Button, Panel, StatusBadge } from "../ui";
+import { Button, Modal, Panel, StatusBadge } from "../ui";
 import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
 import {
   buildInstagramUrl,
@@ -53,6 +53,13 @@ import {
   recommendDailyMission,
 } from "../../services/leadHunter/LeadRouteService";
 import { aiUsageToday } from "../../services/leadHunter/LeadAiUsage";
+import { isEligibleLeadSegment } from "../../services/leadHunter/LeadTargetingPolicy";
+import { qualificationPriority, qualifyLead } from "../../services/leadHunter/LeadQualificationService";
+import {
+  getLeadBrowserAutomationVersion,
+  sendInstagramWithBrowserAutomation,
+  sendWhatsAppWithBrowserAutomation,
+} from "../../services/leadHunter/LeadBrowserAutomation";
 
 type View = "results" | "routes" | "mission" | "history" | "settings";
 
@@ -76,6 +83,8 @@ export function LeadHunterPage({
   onSaveCategories,
   onImport,
   onEmail,
+  onAutomateOutreach,
+  onConfirmExternalOutreach,
   onCreateManual,
   onEnrich,
   onReject,
@@ -115,6 +124,15 @@ export function LeadHunterPage({
   onSaveCategories: (categories: LeadHunterCategory[]) => void;
   onImport: (prospectIds: string[]) => void;
   onEmail: (prospect: LeadHunterProspect) => void;
+  onAutomateOutreach: (prospectIds: string[]) => Promise<{
+    sent: number;
+    prepared: number;
+    review: number;
+    skipped: number;
+    failed: number;
+    actions: Array<{ prospectId: string; name: string; channel: "WhatsApp" | "Instagram"; url: string; message: string; phone?: string; error?: string }>;
+  }>;
+  onConfirmExternalOutreach: (prospectId: string, channel: "WhatsApp" | "Instagram", message: string) => void;
   onCreateManual: (input: {
     name: string;
     categoryId: string;
@@ -157,10 +175,23 @@ export function LeadHunterPage({
   const [searching, setSearching] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [resultQuery, setResultQuery] = useState("");
-  const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "contactable" | "ai">("all");
+  const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "instagram" | "website" | "email" | "contactable" | "never-contacted" | "contacted" | "ai">("all");
   const [sortMode, setSortMode] = useState<"priority" | "score" | "newest">("priority");
   const [searchBatchId, setSearchBatchId] = useState("");
   const [showMetrics, setShowMetrics] = useState(false);
+  const [contactPrompt, setContactPrompt] = useState<{ lead: LeadHunterProspect; channel: "WhatsApp" | "Email" } | null>(null);
+  const [automationIds, setAutomationIds] = useState<string[]>([]);
+  const [automationRunning, setAutomationRunning] = useState(false);
+  const [automationResult, setAutomationResult] = useState<{
+    sent: number;
+    prepared: number;
+    review: number;
+    skipped: number;
+    failed: number;
+    actions: Array<{ prospectId: string; name: string; channel: "WhatsApp" | "Instagram"; url: string; message: string; phone?: string; error?: string }>;
+  } | null>(null);
+  const [openedAutomationActions, setOpenedAutomationActions] = useState<string[]>([]);
+  const [automationExtensionMissing, setAutomationExtensionMissing] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
   const usageToday = aiUsageToday(searches);
   const aiCallsToday = usageToday.calls;
@@ -194,7 +225,12 @@ export function LeadHunterPage({
             const matchesContact =
               contactFilter === "all" ||
               (contactFilter === "whatsapp" && Boolean(lead.whatsapp)) ||
+              (contactFilter === "instagram" && Boolean(lead.instagram)) ||
+              (contactFilter === "website" && Boolean(lead.website)) ||
+              (contactFilter === "email" && Boolean(lead.email)) ||
               (contactFilter === "contactable" && Boolean(lead.whatsapp || lead.phone || lead.email)) ||
+              (contactFilter === "never-contacted" && !lead.lastContactAt) ||
+              (contactFilter === "contacted" && Boolean(lead.lastContactAt)) ||
               (contactFilter === "ai" && lead.sources.some((source) => /openai/i.test(source)));
             return (
             !lead.discardedPermanently &&
@@ -218,7 +254,7 @@ export function LeadHunterPage({
           if (batchDifference) return batchDifference;
           return sortMode === "score" ? b.score - a.score :
             sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
-            leadContactPriority(b) - leadContactPriority(a);
+            qualificationPriority(b) - qualificationPriority(a) || leadContactPriority(b) - leadContactPriority(a);
         }),
     [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, searchBatchId, searchRank, sortMode],
   );
@@ -251,10 +287,10 @@ export function LeadHunterPage({
   };
 
   return (
-    <div className="lead-hunter-page space-y-4">
+    <div className="lead-hunter-page min-w-0 max-w-full space-y-4 overflow-hidden">
       <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
-          <div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">
               Prospecção inteligente
             </p>
@@ -266,7 +302,7 @@ export function LeadHunterPage({
               cooldown e integração ao Comercial.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="lead-hunter-navigation flex min-w-0 max-w-full flex-wrap gap-2">
             <Button
               variant="secondary"
               type="button"
@@ -379,7 +415,7 @@ export function LeadHunterPage({
                 >
                   <option value="">Distribuição automática</option>
                   {categories
-                    .filter((category) => category.active)
+                    .filter((category) => category.active && isEligibleLeadSegment(category.name))
                     .map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name} · {category.priority}
@@ -388,16 +424,10 @@ export function LeadHunterPage({
                 </select>
               </label>
               <label className="text-xs font-medium text-gray-600">
-                Raio: {radiusKm} km
-                <input
-                  className="mt-3 w-full accent-blue-600"
-                  type="range"
-                  min="20"
-                  max="100"
-                  step="5"
-                  value={radiusKm}
-                  onChange={(event) => setRadiusKm(Number(event.target.value))}
-                />
+                Raio da busca
+                <select className="field-input mt-1" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))}>
+                  {[10, 25, 50, 100].map((distance) => <option key={distance} value={distance}>{distance} km</option>)}
+                </select>
               </label>
               <label className="text-xs font-medium text-gray-600">
                 Score mínimo
@@ -541,7 +571,12 @@ export function LeadHunterPage({
               <select aria-label="Canal disponível" className="field-input min-w-0" value={contactFilter} onChange={(event) => setContactFilter(event.target.value as typeof contactFilter)}>
                 <option value="all">Todos os contatos</option>
                 <option value="whatsapp">Com WhatsApp</option>
+                <option value="instagram">Com Instagram</option>
+                <option value="website">Com website</option>
+                <option value="email">Com e-mail</option>
                 <option value="contactable">Com algum contato</option>
+                <option value="never-contacted">Nunca contatados</option>
+                <option value="contacted">Já contatados</option>
                 <option value="ai">Enriquecidos por IA</option>
               </select>
               <select aria-label="Rodada da busca" className="field-input min-w-0" value={searchBatchId} onChange={(event) => setSearchBatchId(event.target.value)}>
@@ -586,6 +621,17 @@ export function LeadHunterPage({
                   <span className="mr-1 text-xs text-gray-500">
                     {selectedIds.length ? `${selectedIds.length} selecionado(s)` : `${filtered.length} oportunidades`}
                   </span>
+                  <button
+                    className="lead-batch-control inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    type="button"
+                    disabled={!selectedIds.length || automationRunning}
+                    onClick={() => {
+                      setAutomationResult(null);
+                      setAutomationIds([...selectedIds]);
+                    }}
+                  >
+                    <Bot size={15} /> Iniciar bot
+                  </button>
                   <button
                     className="lead-batch-control lead-batch-accept inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
                     type="button"
@@ -637,7 +683,9 @@ export function LeadHunterPage({
             ) : null}
             {filtered.length ? (
               <div className="grid gap-2 xl:grid-cols-2">
-                {filtered.map((lead) => (
+                {filtered.map((lead) => {
+                  const qualification = lead.qualification || qualifyLead(lead);
+                  return (
                   <article
                     key={lead.id}
                     className={`lead-result-card group rounded-xl border p-3 transition ${selectedIds.includes(lead.id) ? "is-selected" : ""}`}
@@ -671,6 +719,9 @@ export function LeadHunterPage({
                               <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${opportunityTone(lead.score)}`}>
                                 {opportunityLevel(lead.score)}
                               </span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${qualification.tier === "Pronto para abordar" ? "bg-emerald-100 text-emerald-800" : qualification.tier === "Precisa de pesquisa" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-600"}`}>
+                                {qualification.tier}
+                              </span>
                               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{lead.categoryName}</span>
                             </div>
                             <h2 className="mt-1.5 font-semibold text-gray-950">
@@ -697,15 +748,16 @@ export function LeadHunterPage({
                         <p className="mt-1.5 text-[11px] text-[#8a6d08]">
                           {lead.recommendedService || "Vídeo institucional"}
                         </p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-600">{qualification.bestArgument}</p>
                       </button>
                     </div>
                     <div className="mt-2.5 flex items-center gap-1.5 pl-7">
                       {lead.whatsapp ? (
-                        <a className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" href={buildLeadWhatsAppUrl(lead, buildLeadWhatsAppMessage(lead))} target="_blank" rel="noreferrer" title="Abrir WhatsApp com a mensagem personalizada" onClick={() => { if (!lead.leadId) onImport([lead.id]); }}>
+                        <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" type="button" title="Abrir WhatsApp com a mensagem personalizada" onClick={() => setContactPrompt({ lead, channel: "WhatsApp" })}>
                           <MessageCircle size={15} />
-                        </a>
+                        </button>
                       ) : null}
-                      <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200" type="button" title={lead.email ? "Preparar e-mail personalizado" : "Preparar e-mail e informar destinatário"} aria-label={`Preparar e-mail para ${lead.name}`} onClick={() => onEmail(lead)}>
+                      <button className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200" type="button" title={lead.email ? "Preparar e-mail personalizado" : "Preparar e-mail e informar destinatário"} aria-label={`Preparar e-mail para ${lead.name}`} onClick={() => setContactPrompt({ lead, channel: "Email" })}>
                         <Mail size={14} />
                       </button>
                       {lead.instagram ? (
@@ -723,6 +775,17 @@ export function LeadHunterPage({
                       </a>
                       {!lead.whatsapp && !lead.instagram && !lead.website ? <span className="text-[11px] text-gray-400">Contato nos detalhes</span> : null}
                       <div className="ml-auto flex items-center gap-1">
+                        <button
+                          className="inline-flex h-8 items-center gap-1 rounded-lg bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                          type="button"
+                          title="Pesquisar, validar e enviar e-mail se houver alta confiança"
+                          onClick={() => {
+                            setAutomationResult(null);
+                            setAutomationIds([lead.id]);
+                          }}
+                        >
+                          <Bot size={14} /> Bot
+                        </button>
                         <button
                           className="lead-card-accept inline-flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition"
                           type="button"
@@ -762,7 +825,8 @@ export function LeadHunterPage({
                       </div>
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 px-4 text-center">
@@ -846,6 +910,189 @@ export function LeadHunterPage({
                 setManualLeadOpen(false);
               }}
             />
+          ) : null}
+          {contactPrompt ? (
+            <Modal title={`Contato por ${contactPrompt.channel}`} size="sm" onClose={() => setContactPrompt(null)}>
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-sm font-semibold text-gray-950">{contactPrompt.lead.name}</p>
+                  <p className="mt-1 text-sm text-gray-500">Deseja enviar este lead para o Comercial antes de abrir o {contactPrompt.channel}?</p>
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button variant="secondary" type="button" onClick={() => {
+                    const { lead, channel } = contactPrompt;
+                    setContactPrompt(null);
+                    if (channel === "WhatsApp") window.open(buildLeadWhatsAppUrl(lead, buildLeadWhatsAppMessage(lead)), "_blank", "noopener,noreferrer");
+                    else onEmail(lead);
+                  }}>Somente abrir {contactPrompt.channel}</Button>
+                  <Button type="button" onClick={() => {
+                    const { lead, channel } = contactPrompt;
+                    onImport([lead.id]);
+                    setContactPrompt(null);
+                    if (channel === "WhatsApp") window.open(buildLeadWhatsAppUrl(lead, buildLeadWhatsAppMessage(lead)), "_blank", "noopener,noreferrer");
+                    else onEmail(lead);
+                  }}>Sim, enviar ao Comercial</Button>
+                </div>
+              </div>
+            </Modal>
+          ) : null}
+          {automationIds.length ? (
+            <Modal title="Bot de prospecção" size="sm" onClose={() => {
+              if (!automationRunning) {
+                setAutomationIds([]);
+                setAutomationResult(null);
+              }
+            }}>
+              <div className="space-y-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+                  <p className="font-semibold">{automationIds.length} lead(s) selecionado(s)</p>
+                  <p className="mt-1 text-blue-800">
+                    O bot pesquisa Google Business, site e fontes públicas, atualiza os contatos e prioriza WhatsApp.
+                    Se não conseguir usar o WhatsApp, tenta Instagram e depois e-mail. Só fica para revisão quando nenhum canal funcionar.
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-blue-700">
+                    Proteção ativa: sem reenvio por 30 dias, limite diário e intervalos aleatórios entre mensagens.
+                    Em massa, o processamento será propositalmente lento.
+                  </p>
+                </div>
+                {automationResult ? (
+                  <div className="grid grid-cols-2 gap-2 text-center text-sm">
+                    <div className="rounded-xl border border-emerald-200 p-3"><strong className="block text-lg text-emerald-700">{automationResult.sent}</strong> enviados</div>
+                    <div className="rounded-xl border border-blue-200 p-3"><strong className="block text-lg text-blue-700">{automationResult.prepared}</strong> preparados</div>
+                    <div className="rounded-xl border border-amber-200 p-3"><strong className="block text-lg text-amber-700">{automationResult.review}</strong> para revisão</div>
+                    <div className="rounded-xl border border-gray-200 p-3"><strong className="block text-lg text-gray-700">{automationResult.skipped}</strong> ignorados</div>
+                    <div className="rounded-xl border border-red-200 p-3"><strong className="block text-lg text-red-700">{automationResult.failed}</strong> falharam</div>
+                  </div>
+                ) : null}
+                {automationExtensionMissing ? (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    <strong className="block">Extensão FlyFlow Bot não detectada</strong>
+                    <span className="mt-1 block">
+                      Para enviar sem clique no WhatsApp Web, instale e ative a extensão local do FlyFlow.
+                      A ação abaixo permanece disponível para envio manual.
+                    </span>
+                  </div>
+                ) : null}
+                {automationResult?.actions.length ? (
+                  <div className="max-h-72 space-y-2 overflow-y-auto">
+                    {automationResult.actions.map((action) => {
+                      const opened = openedAutomationActions.includes(action.prospectId);
+                      return (
+                        <div key={action.prospectId} className="rounded-xl border border-gray-200 p-3">
+                          <p className="text-sm font-semibold text-gray-950">{action.name}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {action.channel}
+                            {action.channel === "WhatsApp" && action.phone ? ` · ${action.phone}` : ""}
+                            {" · mensagem personalizada pronta"}
+                          </p>
+                          {action.error ? (
+                            <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+                              <strong>Falha da automação:</strong> {action.error}
+                            </p>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button variant="secondary" type="button" onClick={() => {
+                              void navigator.clipboard?.writeText(action.message).catch(() => undefined);
+                              window.open(action.url, "_blank", "noopener,noreferrer");
+                              setOpenedAutomationActions((current) => [...new Set([...current, action.prospectId])]);
+                            }}>
+                              {action.channel === "WhatsApp" ? <MessageCircle size={15} /> : <AtSign size={15} />}
+                              Abrir {action.channel}
+                            </Button>
+                            {opened ? (
+                              <Button type="button" onClick={() => {
+                                onConfirmExternalOutreach(action.prospectId, action.channel, action.message);
+                                setAutomationResult((current) => current ? {
+                                  ...current,
+                                  actions: current.actions.filter((item) => item.prospectId !== action.prospectId),
+                                } : current);
+                              }}>
+                                <Check size={15} /> Confirmar que enviei
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button variant="secondary" type="button" disabled={automationRunning} onClick={() => {
+                    setAutomationIds([]);
+                    setAutomationResult(null);
+                  }}>{automationResult ? "Fechar" : "Cancelar"}</Button>
+                  {!automationResult ? <Button type="button" disabled={automationRunning} onClick={async () => {
+                    setAutomationRunning(true);
+                    setAutomationExtensionMissing(false);
+                    try {
+                      const result = await onAutomateOutreach(automationIds);
+                      setSelectedIds((current) => current.filter((id) => !automationIds.includes(id)));
+                      const browserActions = result.actions.filter((action) =>
+                        action.channel === "Instagram" || (action.channel === "WhatsApp" && action.phone),
+                      );
+                      let resolvedResult = result;
+                      if (browserActions.length) {
+                        const extensionVersion = await getLeadBrowserAutomationVersion();
+                        const extensionAvailable = Boolean(extensionVersion);
+                        setAutomationExtensionMissing(!extensionAvailable);
+                        if (extensionAvailable) {
+                          const sentIds: string[] = [];
+                          const actionErrors = new globalThis.Map<string, string>();
+                          let automationFailures = 0;
+                          for (const action of browserActions) {
+                            try {
+                              if (extensionVersion !== "1.3.0") {
+                                throw new Error(
+                                  `A extensão instalada é ${extensionVersion}. Instale a versão 1.3.0 antes de enviar; versões anteriores foram bloqueadas por segurança.`,
+                                );
+                              }
+                              const response = action.channel === "WhatsApp"
+                                ? await sendWhatsAppWithBrowserAutomation({
+                                    prospectId: action.prospectId,
+                                    phone: action.phone || "",
+                                    message: action.message,
+                                  })
+                                : await sendInstagramWithBrowserAutomation({
+                                    prospectId: action.prospectId,
+                                    profileUrl: action.url,
+                                    message: action.message,
+                                  });
+                              if (!response.ok) throw new Error(response.error || "Envio não confirmado.");
+                              onConfirmExternalOutreach(action.prospectId, action.channel, action.message);
+                              sentIds.push(action.prospectId);
+                            } catch (error) {
+                              automationFailures += 1;
+                              actionErrors.set(
+                                action.prospectId,
+                                error instanceof Error ? error.message : "Falha não identificada na automação.",
+                              );
+                            }
+                          }
+                          resolvedResult = {
+                            ...result,
+                            sent: result.sent + sentIds.length,
+                            prepared: Math.max(0, result.prepared - sentIds.length),
+                            failed: result.failed + automationFailures,
+                            actions: result.actions
+                              .filter((action) => !sentIds.includes(action.prospectId))
+                              .map((action) => ({
+                                ...action,
+                                error: actionErrors.get(action.prospectId),
+                              })),
+                          };
+                        }
+                      }
+                      setAutomationResult(resolvedResult);
+                    } finally {
+                      setAutomationRunning(false);
+                    }
+                  }}>
+                    {automationRunning ? <RotateCw className="animate-spin" size={16} /> : <Bot size={16} />}
+                    {automationRunning ? "Processando..." : "Confirmar e iniciar"}
+                  </Button> : null}
+                </div>
+              </div>
+            </Modal>
           ) : null}
           {rejectDialog ? <RejectLeadDialog dialog={rejectDialog} onClose={() => setRejectDialog(null)} /> : null}
         </>
@@ -1100,6 +1347,7 @@ function LeadDetail({
     notes: lead.notes,
   } : null);
   if (!lead) return null;
+  const qualification = lead.qualification || qualifyLead(lead);
   return (
     <div
       className="fixed inset-0 z-50 flex justify-end bg-black/35"
@@ -1202,6 +1450,24 @@ function LeadDetail({
             </p>
           </div>
         </div>
+        <section className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Qualificação comercial</p><h3 className="mt-1 font-semibold text-blue-950">{qualification.tier}</h3><p className="mt-1 text-xs text-blue-800">{qualification.idealCustomerProfile}</p></div>
+            <strong className="text-2xl text-blue-950">{qualification.total}</strong>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {[
+              ["Adequação", qualification.fit],
+              ["Oportunidade visual", qualification.visualOpportunity],
+              ["Capacidade", qualification.buyingCapacity],
+              ["Momento", qualification.timing],
+              ["Contato", qualification.contactability],
+            ].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-white/75 p-2"><p className="text-[10px] text-blue-700">{label}</p><strong className="text-sm text-blue-950">{value}</strong></div>)}
+          </div>
+          <div className="mt-3 rounded-lg bg-white/75 p-3"><p className="text-[10px] font-semibold uppercase text-blue-700">Melhor argumento</p><p className="mt-1 text-sm text-blue-950">{qualification.bestArgument}</p></div>
+          {qualification.evidence.length ? <div className="mt-3 flex flex-wrap gap-1.5">{qualification.evidence.map((item) => <span key={item} className="rounded-full border border-blue-200 bg-white px-2 py-1 text-[10px] font-medium text-blue-800">{item}</span>)}</div> : null}
+          {qualification.missing.length ? <details className="mt-3 text-xs text-blue-900"><summary className="cursor-pointer font-semibold">O que pesquisar antes de abordar</summary><ul className="mt-2 list-disc space-y-1 pl-4">{qualification.missing.map((item) => <li key={item}>{item}</li>)}</ul></details> : null}
+        </section>
         <section className="mt-5">
           <h3 className="font-semibold">Contato e localização</h3>
           <dl className="mt-2 space-y-2 rounded-xl border border-gray-200 p-3 text-sm">

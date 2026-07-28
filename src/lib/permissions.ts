@@ -50,6 +50,7 @@ export const canOpenPage = (user: User | undefined, page: string) => {
     leadHunter: 'manageLeads',
     inbox: 'manageLeads',
     projects: 'manageProjects',
+    internalProjects: 'manageProjects',
     agenda: 'manageAgenda',
     quotes: 'manageQuotes',
     finance: 'manageFinance',

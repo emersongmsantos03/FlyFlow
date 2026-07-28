@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -163,16 +164,16 @@ export const Modal = ({
   children: ReactNode
   onClose: () => void
   size?: 'sm' | 'md' | 'lg' | 'xl'
-}) => (
-  <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-3">
+}) => createPortal(
+  <div className="modal-backdrop fixed inset-0 z-[80] flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-3" role="dialog" aria-modal="true">
     <div className={clsx(
-      'modal-surface max-h-[calc(100vh-1.5rem)] w-full overflow-y-auto overflow-x-hidden rounded-t-2xl bg-white shadow-2xl sm:w-[calc(100vw-1.5rem)] sm:rounded-2xl',
+      'modal-surface flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:w-[calc(100vw-1.5rem)] sm:rounded-2xl',
       size === 'sm' && 'max-w-lg',
       size === 'md' && 'max-w-3xl',
       size === 'lg' && 'max-w-5xl',
       size === 'xl' && 'max-w-6xl',
     )}>
-      <div className="modal-header sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+      <div className="modal-header z-10 flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
         <h2 className="text-base font-semibold tracking-tight text-gray-950 sm:text-lg">{title}</h2>
         <button
           aria-label="Fechar"
@@ -183,9 +184,10 @@ export const Modal = ({
           <X size={20} />
         </button>
       </div>
-      <div className="p-3 sm:p-4">{children}</div>
+      <div className="min-h-0 overflow-y-auto p-3 sm:p-4">{children}</div>
     </div>
-  </div>
+  </div>,
+  document.body,
 )
 
 export const EmptyState = ({

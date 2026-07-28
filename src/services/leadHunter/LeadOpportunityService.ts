@@ -64,8 +64,17 @@ export const buildInstagramUrl = (instagram: string) => {
   return `https://www.instagram.com/${handle}/`
 }
 
-export const buildGoogleBusinessUrl = (lead: Pick<LeadHunterProspect, 'name' | 'address' | 'city'>) =>
-  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([lead.name, lead.address, lead.city].filter(Boolean).join(', '))}`
+export const buildGoogleBusinessUrl = (
+  lead: Pick<LeadHunterProspect, 'name' | 'address' | 'city'>
+    & Partial<Pick<LeadHunterProspect, 'googleMapsUrl' | 'externalIds'>>,
+) => {
+  if (lead.googleMapsUrl && /^https?:\/\/(www\.)?(google\.[^/]+\/maps|maps\.google\.)/i.test(lead.googleMapsUrl)) return lead.googleMapsUrl
+  const placeId = lead.externalIds?.googlePlaces || lead.externalIds?.googleBusiness
+  if (placeId) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.name)}&query_place_id=${encodeURIComponent(placeId)}`
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([lead.name, lead.address, lead.city].filter(Boolean).join(', '))}`
+}
 
 export const leadOpportunitySummary = (lead: LeadHunterProspect) => {
   if (lead.whatsapp && lead.score >= 75) return 'Alta chance de contato: oportunidade qualificada com WhatsApp direto.'
@@ -74,21 +83,39 @@ export const leadOpportunitySummary = (lead: LeadHunterProspect) => {
   return lead.scoreReasons[0]?.label || 'Empresa real localizada em fonte pública.'
 }
 
+const leadWhatsAppIntroduction = [
+  'Olá! Tudo bem? Aqui é o Emerson, da Hero Drone.',
+  'Trabalho com fotos e vídeos aéreos profissionais para valorizar espaços, negócios e empreendimentos.',
+].join(' ')
+
+const ensureLeadWhatsAppIntroduction = (message: string) => {
+  const trimmedMessage = message.trim()
+  const introducesEmersonAndHeroDrone = /\bEmerson\b/i.test(trimmedMessage) && /\bHero\s*Drone\b/i.test(trimmedMessage)
+  const explainsAerialWork = /\b(foto|fotos|vídeo|vídeos|filmagem|filmagens|imagem|imagens)\b[^.!?\n]{0,80}\b(aérea|aéreas|aéreo|aéreos|drone)\b/i.test(trimmedMessage)
+
+  if (introducesEmersonAndHeroDrone && explainsAerialWork) return trimmedMessage
+
+  return [leadWhatsAppIntroduction, trimmedMessage].filter(Boolean).join(' ')
+}
+
 export const buildLeadWhatsAppMessage = (lead: LeadHunterProspect) => {
   const service = lead.recommendedService || recommendLeadService(lead.categoryName)
   const generatedMessage = lead.aiFirstMessage?.trim()
-  if (generatedMessage && !/\bconheci\b/i.test(generatedMessage)) return generatedMessage
-  return [
-    `Olá! Tudo bem? Aqui é o Emerson, da Hero Drone.`,
+  if (generatedMessage && !/\bconheci\b/i.test(generatedMessage)) return ensureLeadWhatsAppIntroduction(generatedMessage)
+  return ensureLeadWhatsAppIntroduction([
     `Estava pesquisando negócios da região e o trabalho da ${lead.name} me chamou a atenção.`,
     `Preparei uma ideia rápida de ${service.toLocaleLowerCase('pt-BR')} para valorizar ainda mais a apresentação de vocês.`,
     `Posso te mostrar por aqui, sem compromisso?`,
-  ].join(' ')
+  ].join(' '))
 }
 
 export const buildLeadWhatsAppUrl = (lead: LeadHunterProspect, customMessage?: string) => {
   const digits = lead.whatsapp.replace(/\D/g, '')
   const number = digits.startsWith('55') ? digits : `55${digits}`
-  const message = customMessage?.trim() || buildLeadWhatsAppMessage(lead)
-  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`
+  const message = customMessage?.trim()
+    ? ensureLeadWhatsAppIntroduction(customMessage)
+    : buildLeadWhatsAppMessage(lead)
+  // O Lead Hunter deve permanecer no navegador mesmo quando o aplicativo
+  // nativo do WhatsApp estiver instalado no computador.
+  return `https://web.whatsapp.com/send?phone=${number}&text=${encodeURIComponent(message)}`
 }

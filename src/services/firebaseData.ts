@@ -39,6 +39,7 @@ const ARRAY_SECTION_KEYS = [
   'equipment',
   'notifications',
   'tasks',
+  'internalProjects',
   'statusHistory',
   'projectAdjustments',
 ] as const satisfies readonly (keyof AppState)[]
@@ -182,6 +183,15 @@ const loadGranularAppState = async (fallback: AppState, workspaceUpdatedAt?: unk
     }
   }
 
+  const signatureSnapshot = await getDoc(recordReference('workspaceAssets', 'emailSignature'))
+  if (signatureSnapshot.exists()) {
+    const data = signatureSnapshot.data() as Partial<StoredRecord>
+    const value = data.value as { dataUrl?: string } | undefined
+    if (value?.dataUrl) {
+      next.companySettings = { ...next.companySettings, emailSignatureImageUrl: value.dataUrl }
+    }
+  }
+
   const hunterSettingsSnapshot = await getDoc(recordReference('leadHunterSettings', 'current'))
   if (hunterSettingsSnapshot.exists()) {
     const data = hunterSettingsSnapshot.data() as Partial<StoredRecord>
@@ -214,6 +224,30 @@ const loadLegacyAppState = async (fallback: AppState): Promise<AppState | null> 
 }
 
 export const getActiveFirebaseWorkspaceId = () => activeWorkspaceId
+
+export const saveFirebaseEmailSignature = async (dataUrl: string) => {
+  if (!activeWorkspaceId) throw new Error('Entre novamente antes de salvar a assinatura.')
+  const serializedBytes = textEncoder.encode(dataUrl).byteLength
+  if (!dataUrl.startsWith('data:image/') || serializedBytes > 850_000) {
+    throw new Error('A assinatura não pôde ser otimizada para armazenamento.')
+  }
+  const save = setDoc(recordReference('workspaceAssets', 'emailSignature'), {
+      value: { dataUrl },
+      position: 0,
+      updatedAt: serverTimestamp(),
+    })
+  const timeout = new Promise<never>((_, reject) => {
+    window.setTimeout(() => reject(new Error('A assinatura demorou para sincronizar. Ela foi mantida neste dispositivo e tentaremos novamente ao salvar as configurações.')), 12_000)
+  })
+  await Promise.race([save, timeout])
+}
+
+export const removeFirebaseEmailSignature = async () => {
+  if (!activeWorkspaceId) throw new Error('Entre novamente antes de remover a assinatura.')
+  const batch = writeBatch(ensureServices().db)
+  batch.delete(recordReference('workspaceAssets', 'emailSignature'))
+  await batch.commit()
+}
 
 export const clearActiveFirebaseWorkspace = () => {
   activeWorkspaceId = ''

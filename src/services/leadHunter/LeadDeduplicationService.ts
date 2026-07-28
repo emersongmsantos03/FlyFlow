@@ -54,8 +54,21 @@ export const findLeadDuplicates = (candidate: Partial<LeadHunterProspect>, prosp
     if (candidate.city && candidate.city.toLowerCase() === city.toLowerCase()) confidence += 10
     return confidence >= 50 ? { type, id, confidence: Math.min(confidence, 100), reasons } : null
   }
+  const candidateBusinessId = candidate.externalIds?.googlePlaces || candidate.externalIds?.googleBusiness || candidate.externalIds?.openstreetmap
   return [
-    ...prospects.map((item) => evaluate('prospect', item.id, item.name, item.whatsapp || item.phone, item.website, item.city)),
+    ...prospects.map((item) => {
+      const match = evaluate('prospect', item.id, item.name, item.whatsapp || item.phone, item.website, item.city)
+      const itemBusinessId = item.externalIds.googlePlaces || item.externalIds.googleBusiness || item.externalIds.openstreetmap
+      if (candidateBusinessId && itemBusinessId === candidateBusinessId) {
+        return {
+          type: 'prospect' as const,
+          id: item.id,
+          confidence: 100,
+          reasons: ['Mesmo identificador público da empresa'],
+        }
+      }
+      return match
+    }),
     ...contacts.map((item) => evaluate('contact', item.id, item.companyName || item.fullName, item.whatsapp || item.phone, '', item.city)),
     ...leads.map((item) => evaluate('opportunity', item.id, item.companyName || item.fullName, item.whatsapp || item.phone, '', item.city)),
   ].filter((item): item is DuplicateMatch => Boolean(item)).sort((a, b) => b.confidence - a.confidence)

@@ -9,7 +9,7 @@ export interface LeadLearningProfile {
   cityAdjustments: Record<string, number>
 }
 
-export const buildLeadLearningProfile = (prospects: LeadHunterProspect[]): LeadLearningProfile => {
+export const buildLeadLearningProfile = (prospects: LeadHunterProspect[], wonLeadIds: Set<string> = new Set()): LeadLearningProfile => {
   const decisions = prospects.filter((lead) => lead.decision)
   const accepted = decisions.filter((lead) => lead.decision === 'Aceito').length
   const rejected = decisions.length - accepted
@@ -18,7 +18,8 @@ export const buildLeadLearningProfile = (prospects: LeadHunterProspect[]): LeadL
   for (const lead of decisions) {
     const update = (map: typeof categoryStats, key: string) => {
       const current = map.get(key) || { accepted: 0, rejected: 0 }
-      current[lead.decision === 'Aceito' ? 'accepted' : 'rejected'] += 1
+      const wonWeight = lead.leadId && wonLeadIds.has(lead.leadId) ? 3 : 1
+      current[lead.decision === 'Aceito' ? 'accepted' : 'rejected'] += wonWeight
       map.set(key, current)
     }
     update(categoryStats, normalize(lead.categoryName))
@@ -42,7 +43,14 @@ const hasPublicEvidence = (lead: LeadHunterProspect, field: string) =>
   lead.sourceUrls.some((url) => new RegExp(`google|instagram|${field}`, 'i').test(url))
 
 export const validateLeadContacts = (lead: LeadHunterProspect, checkedAt = new Date().toISOString()): NonNullable<LeadHunterProspect['contactValidation']> => ({
-  whatsapp: !lead.whatsapp ? 'Não informado' : hasPublicEvidence(lead, 'whatsapp') ? 'Confirmado' : 'Provável',
+  whatsapp: !lead.whatsapp
+    ? 'Não informado'
+    : (
+      lead.sources.some((source) => /crm vinculado|whatsapp (confirmado|informado)/i.test(source)) ||
+      lead.sourceUrls.some((url) => /(?:wa\.me|api\.whatsapp\.com|whatsapp\.com\/send)/i.test(url))
+    )
+      ? 'Confirmado'
+      : 'Provável',
   instagram: !lead.instagram ? 'Não informado' : /instagram\.com/i.test(lead.instagram) || hasPublicEvidence(lead, 'instagram') ? 'Confirmado' : 'Provável',
   email: !lead.email ? 'Não informado' : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email) ? 'Confirmado' : 'Provável',
   website: !lead.website ? 'Não informado' : /^https?:\/\/|^[\w.-]+\.[a-z]{2,}/i.test(lead.website) ? 'Confirmado' : 'Provável',

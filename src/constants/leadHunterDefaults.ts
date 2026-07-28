@@ -17,19 +17,19 @@ export const createDefaultLeadHunterCities = (): LeadHunterCity[] => cityDistanc
 }))
 
 const categoryDefinitions: Array<[string, string, LeadHunterCategory['priority'], number]> = [
-  ['Airbnb', 'Hospedagens', 'Máxima', 10], ['Chalé', 'Hospedagens', 'Máxima', 10], ['Cabana', 'Hospedagens', 'Máxima', 10],
-  ['Pousada', 'Hospedagens', 'Máxima', 10], ['Hotel', 'Hospedagens', 'Máxima', 9], ['Hotel fazenda', 'Hospedagens', 'Máxima', 10],
-  ['Glamping', 'Hospedagens', 'Máxima', 10], ['Casa de temporada', 'Hospedagens', 'Máxima', 10],
-  ['Chácara para hospedagem', 'Hospedagens', 'Máxima', 10], ['Refúgio', 'Hospedagens', 'Máxima', 10], ['Resort', 'Hospedagens', 'Máxima', 9],
-  ['Espaço para eventos', 'Eventos', 'Alta', 8], ['Vinícola', 'Experiências', 'Alta', 8], ['Restaurante com área externa', 'Experiências', 'Alta', 7],
-  ['Pesqueiro', 'Rural', 'Alta', 7], ['Haras', 'Rural', 'Alta', 7], ['Clube', 'Eventos', 'Alta', 7], ['Condomínio', 'Imobiliário', 'Alta', 7],
-  ['Loteamento', 'Imobiliário', 'Alta', 8], ['Construtora', 'Imobiliário', 'Alta', 8], ['Incorporadora', 'Imobiliário', 'Alta', 8],
-  ['Imobiliária', 'Imobiliário', 'Alta', 8], ['Corretor de imóveis', 'Imobiliário', 'Alta', 7],
-  ['Concessionária de veículos', 'Comércio', 'Alta', 8], ['Shopping center', 'Comércio', 'Alta', 8],
-  ['Academia', 'Comércio', 'Média', 6], ['Clínica', 'Comércio', 'Média', 6], ['Escola particular', 'Comércio', 'Média', 6],
-  ['Indústria', 'Empresarial', 'Alta', 8], ['Centro logístico', 'Empresarial', 'Alta', 8], ['Galpão', 'Empresarial', 'Alta', 8],
-  ['Empresa de energia solar', 'Técnico', 'Máxima', 10], ['Condomínio residencial', 'Imobiliário', 'Alta', 8],
-  ['Fazenda', 'Rural', 'Máxima', 10], ['Sítio', 'Rural', 'Alta', 8], ['Cooperativa agrícola', 'Rural', 'Alta', 8],
+  ['Chalé', 'Hospedagens', 'Máxima', 10], ['Cabana', 'Hospedagens', 'Máxima', 10], ['Casa de temporada', 'Hospedagens', 'Máxima', 10],
+  ['Airbnb', 'Hospedagens', 'Máxima', 10], ['Booking', 'Hospedagens', 'Máxima', 10], ['Chácara para locação', 'Hospedagens', 'Máxima', 10],
+  ['Sítio para locação', 'Hospedagens', 'Máxima', 10], ['Resort independente', 'Hospedagens', 'Alta', 7], ['Hotel fazenda', 'Hospedagens', 'Máxima', 10],
+  ['Pousada', 'Hospedagens', 'Máxima', 10], ['Glamping', 'Hospedagens', 'Máxima', 10], ['Refúgio', 'Hospedagens', 'Máxima', 10],
+  ['Eco Resort independente', 'Hospedagens', 'Alta', 7],
+  ['Clube', 'Eventos', 'Alta', 8], ['Clube de campo', 'Eventos', 'Alta', 8], ['Campo de golfe', 'Eventos', 'Alta', 8],
+  ['Parque aquático', 'Eventos', 'Alta', 8], ['Parque', 'Eventos', 'Alta', 8], ['Condomínio', 'Imobiliário', 'Alta', 8],
+  ['Haras', 'Rural', 'Alta', 8], ['Pesqueiro', 'Rural', 'Alta', 8], ['Vinícola', 'Experiências', 'Alta', 8],
+  ['Buffet com área externa', 'Eventos', 'Alta', 8], ['Espaço para eventos', 'Eventos', 'Alta', 8], ['Casa de eventos', 'Eventos', 'Alta', 8],
+  ['Concessionária', 'Comércio', 'Média', 6], ['Loteamento', 'Imobiliário', 'Média', 6], ['Incorporadora', 'Imobiliário', 'Média', 6],
+  ['Imobiliária', 'Imobiliário', 'Média', 6], ['Construtora', 'Imobiliário', 'Média', 6], ['Empresa de engenharia', 'Técnico', 'Média', 6],
+  ['Escritório de engenharia', 'Técnico', 'Média', 6], ['Empresa de inspeção', 'Técnico', 'Média', 6],
+  ['Administradora de condomínio', 'Imobiliário', 'Média', 6],
 ]
 
 export const createDefaultLeadHunterCategories = (): LeadHunterCategory[] => categoryDefinitions.map(([name, group, priority, weight]) => ({
@@ -38,10 +38,10 @@ export const createDefaultLeadHunterCategories = (): LeadHunterCategory[] => cat
 }))
 
 export const createDefaultLeadHunterSettings = (): LeadHunterSettings => ({
-  radiusKm: 50, maxResultsPerSearch: 20, maxAnalysesPerBatch: 20, maxDailyCalls: 50,
+  radiusKm: 50, maxResultsPerSearch: 10, maxAnalysesPerBatch: 10, maxDailyCalls: 50,
   minimumNewLeadPercentage: 70, maximumReappearances: 5,
   cooldownDays: { discovered: 30, analyzed: 21, contactedNoReply: 30, refused: 90, strongRefusal: 180, visited: 30 },
   scoringWeights: { noDroneContent: 20, outdatedInstagram: 12, largeOutdoorArea: 10, visuallyAttractive: 10, goodGoogleRating: 8, relevantReviews: 6, incompleteData: -10, outsideServiceArea: -20, recentContact: -20, duplicate: -35, professionalDroneContent: -15 },
-  categoryDistribution: { Hospedagens: 40, Eventos: 20, Imobiliário: 15, Experiências: 10, Rural: 10, Outras: 5 },
+  categoryDistribution: { Hospedagens: 70, Rural: 15, Eventos: 8, Experiências: 4, Imobiliário: 2, Outras: 1 },
   updatedAt: now(),
 })

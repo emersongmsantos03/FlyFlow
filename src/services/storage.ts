@@ -223,6 +223,7 @@ export const normalizeAppState = (state: AppState): AppState => {
     bankAccounts,
     bankTransfers: state.bankTransfers || [],
     tasks: state.tasks || [],
+    internalProjects: state.internalProjects || [],
     statusHistory: state.statusHistory || [],
     projectAdjustments: state.projectAdjustments || [],
   })

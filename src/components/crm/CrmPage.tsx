@@ -14,6 +14,7 @@ import {
   Eye,
   FileText,
   Globe2,
+  GripVertical,
   LayoutGrid,
   Mail,
   MapPin,
@@ -215,6 +216,8 @@ export function CrmPage({
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
   const [mobileColumn, setMobileColumn] = useState(columns[0].id)
   const [priorityLead, setPriorityLead] = useState<Lead>()
+  const [draggedLeadId, setDraggedLeadId] = useState<string>()
+  const [dropColumnId, setDropColumnId] = useState<string>()
   const [whatsAppContext, setWhatsAppContext] = useState<WhatsAppContext>('Primeiro contato')
   const [whatsAppMessage, setWhatsAppMessage] = useState('')
 
@@ -256,89 +259,66 @@ export function CrmPage({
 
   return (
     <div className="crm-page space-y-4">
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
-          <div>
+      <section className="crm-commercial-header rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">CRM e vendas</p>
-            <h1 className="mt-1 text-2xl font-black text-gray-950">Comercial</h1>
-            <p className="mt-1 text-sm text-gray-500">Gerencie oportunidades, negociações e próximas ações.</p>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h1 className="text-2xl font-black text-gray-950">Comercial</h1>
+              <p className="text-sm text-gray-500">{openLeads.length} oportunidades · {formatCurrency(potentialValue)} em potencial</p>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button><Button type="button" onClick={onCreateLead}><Plus size={16} /> Nova oportunidade</Button></div>
         </div>
-        <div className="crm-metrics mt-4 grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-6">
-          {[
-            ['Oportunidades ativas', openLeads.length],
-            ['Valor potencial', formatCurrency(potentialValue)],
-            ['Previsão ponderada', formatCurrency(weightedValue)],
-            ['Propostas abertas', activeQuotes.length],
-            ['Precisam de ação', contactsNeedingAction],
-            ['Ciclo médio', `${averageAge} dias`],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-              <p className="text-[0.65rem] font-bold uppercase text-gray-500">{label}</p>
-              <p className="mt-1 truncate text-base font-black text-gray-950">{value}</p>
-            </div>
-          ))}
-        </div>
       </section>
 
-      {actionQueue.length ? (
-        <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-          <div className="flex items-center justify-between gap-3 px-1">
-            <div>
-              <h2 className="text-sm font-black text-gray-950">Prioridades de hoje</h2>
-              <p className="mt-0.5 text-xs text-gray-500">Ordem sugerida por urgência, potencial e facilidade de contato.</p>
-            </div>
-            <button className="text-xs font-bold text-blue-600" type="button" onClick={() => { setQuickFilter('action'); onViewChange('table') }}>Ver todas</button>
+      <details className="crm-intelligence rounded-xl border border-gray-200 bg-white shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="rounded-lg bg-blue-50 p-2 text-blue-600"><Sparkles size={17} /></span>
+            <div className="min-w-0"><h2 className="text-sm font-black text-gray-950">Inteligência comercial</h2><p className="truncate text-xs text-gray-500">{contactsNeedingAction} precisam de ação · {commercialInsights.hygieneIssueCount} alertas no CRM</p></div>
           </div>
-          <div className="mt-3 grid gap-2 lg:grid-cols-5">
-            {actionQueue.map(({ lead, priority }, index) => (
-              <article key={lead.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[0.65rem] font-black uppercase tracking-wide text-gray-400">#{index + 1}</span>
-                  <strong className="text-xs text-blue-600">{priority.score} pts</strong>
-                </div>
+          <ChevronDown className="crm-intelligence-chevron shrink-0 text-gray-400" size={18} />
+        </summary>
+        <div className="space-y-4 border-t border-gray-100 p-4">
+          <div className="crm-metrics grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {[
+              ['Oportunidades', openLeads.length],
+              ['Valor potencial', formatCurrency(potentialValue)],
+              ['Previsão ponderada', formatCurrency(weightedValue)],
+              ['Propostas abertas', activeQuotes.length],
+              ['Precisam de ação', contactsNeedingAction],
+              ['Ciclo médio', `${averageAge} dias`],
+            ].map(([label, value]) => <div key={String(label)}><p>{label}</p><p>{value}</p></div>)}
+          </div>
+          {actionQueue.length ? <div>
+            <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-black text-gray-950">Prioridades de hoje</h3><p className="text-xs text-gray-500">Ordem sugerida por urgência e potencial.</p></div><button className="text-xs font-bold text-blue-600" type="button" onClick={() => { setQuickFilter('action'); onViewChange('table') }}>Ver todas</button></div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+              {actionQueue.map(({ lead, priority }, index) => <article key={lead.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2"><span className="text-[0.65rem] font-black text-gray-400">#{index + 1}</span><strong className="text-xs text-blue-600">{priority.score} pts</strong></div>
                 <button className="mt-1 block w-full truncate text-left text-sm font-black text-gray-950 hover:underline" type="button" onClick={() => onOpenLead(lead)}>{displayName(lead)}</button>
                 <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-gray-500">{priority.reason}</p>
-                <div className="mt-2 flex gap-2">
-                  {lead.whatsapp ? <button className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" type="button" title="Revisar mensagem personalizada" onClick={() => { setPriorityLead(lead); setWhatsAppContext('Primeiro contato'); setWhatsAppMessage(buildContextualWhatsAppMessage(lead, 'Primeiro contato')) }}><MessageCircle size={13} /> Mensagem</button> : null}
-                  <button className="inline-flex min-h-8 flex-1 items-center justify-center rounded-md border border-gray-200 bg-white px-2 text-xs font-bold text-gray-700 hover:bg-gray-100" type="button" onClick={() => onOpenLead(lead)}>Abrir</button>
-                </div>
-              </article>
-            ))}
+                {lead.whatsapp ? <button className="mt-2 inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" type="button" onClick={() => { setPriorityLead(lead); setWhatsAppContext('Primeiro contato'); setWhatsAppMessage(buildContextualWhatsAppMessage(lead, 'Primeiro contato')) }}><MessageCircle size={13} /> Preparar mensagem</button> : null}
+              </article>)}
+            </div>
+          </div> : null}
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Taxa de contato</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.contactRate}%</strong></div>
+            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Conversão geral</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.conversionRate}%</strong></div>
+            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Abordagens WhatsApp</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.outreach.attempts}</strong></div>
+            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Saúde do CRM</p><strong className={`mt-1 block text-xl ${commercialInsights.hygieneIssueCount ? 'text-amber-700' : 'text-emerald-700'}`}>{commercialInsights.hygieneIssueCount}</strong></div>
           </div>
-        </section>
-      ) : null}
-
-      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Taxa de contato</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.contactRate}%</strong><p className="text-xs text-gray-500">Oportunidades com atividade registrada</p></div>
-        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Conversão geral</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.conversionRate}%</strong><p className="text-xs text-gray-500">{commercialInsights.sourceConversion[0] ? `Melhor origem: ${commercialInsights.sourceConversion[0].source} (${commercialInsights.sourceConversion[0].rate}%)` : 'Ainda sem conversões registradas'}</p></div>
-        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Abordagens no WhatsApp</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.outreach.attempts}</strong><p className="text-xs text-gray-500">{commercialInsights.outreach.responseRate}% avançaram após a abordagem</p></div>
-        <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Saúde do CRM</p><strong className={`mt-1 block text-xl ${commercialInsights.hygieneIssueCount ? 'text-amber-700' : 'text-emerald-700'}`}>{commercialInsights.hygieneIssueCount}</strong><p className="text-xs text-gray-500">{commercialInsights.hygieneIssueCount ? commercialInsights.hygieneIssues[0]?.label : 'Nenhuma inconsistência detectada'}</p></div>
-      </section>
-
-      {commercialInsights.hygieneIssues.length ? (
-        <details className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-          <summary className="cursor-pointer list-none text-sm font-black text-gray-900">Diagnóstico automático <span className="ml-2 text-xs font-medium text-gray-500">Veja o que precisa de correção</span></summary>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            {commercialInsights.hygieneIssues.map((issue) => <div key={issue.id} className="rounded-lg bg-gray-50 px-3 py-2"><strong className="text-base text-gray-950">{issue.count}</strong><p className="text-xs text-gray-500">{issue.label}</p></div>)}
-          </div>
-        </details>
-      ) : null}
-
-      {commercialInsights.outreach.attempts ? (
-        <details className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-          <summary className="cursor-pointer list-none text-sm font-black text-gray-900">Desempenho das abordagens <span className="ml-2 text-xs font-medium text-gray-500">WhatsApp por contexto, categoria, cidade e serviço</span></summary>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {commercialInsights.hygieneIssues.length ? <div><h3 className="text-sm font-black text-gray-950">Diagnóstico automático</h3><div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{commercialInsights.hygieneIssues.map((issue) => <div key={issue.id} className="rounded-lg bg-gray-50 px-3 py-2"><strong className="text-base text-gray-950">{issue.count}</strong><p className="text-xs text-gray-500">{issue.label}</p></div>)}</div></div> : null}
+          {commercialInsights.outreach.attempts ? <div><h3 className="text-sm font-black text-gray-950">Desempenho das abordagens</h3><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {[
               ['Contexto mais usado', commercialInsights.outreach.bestContexts[0]?.context, commercialInsights.outreach.bestContexts[0]?.count ? `${commercialInsights.outreach.bestContexts[0].count} envio(s)` : 'Sem dados'],
               ['Melhor categoria', commercialInsights.outreach.categoryPerformance[0]?.label, commercialInsights.outreach.categoryPerformance[0] ? `${commercialInsights.outreach.categoryPerformance[0].rate}% avançaram` : 'Sem dados'],
               ['Melhor cidade', commercialInsights.outreach.cityPerformance[0]?.label, commercialInsights.outreach.cityPerformance[0] ? `${commercialInsights.outreach.cityPerformance[0].rate}% avançaram` : 'Sem dados'],
               ['Melhor serviço', commercialInsights.outreach.servicePerformance[0]?.label, commercialInsights.outreach.servicePerformance[0] ? `${commercialInsights.outreach.servicePerformance[0].rate}% avançaram` : 'Sem dados'],
             ].map(([label, value, detail]) => <div key={label} className="rounded-lg bg-gray-50 px-3 py-2"><p className="text-[0.65rem] font-bold uppercase text-gray-400">{label}</p><strong className="mt-1 block truncate text-sm text-gray-950">{value || 'Ainda sem dados'}</strong><p className="text-xs text-gray-500">{detail}</p></div>)}
-          </div>
-        </details>
-      ) : null}
+          </div></div> : null}
+        </div>
+      </details>
 
       <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -392,15 +372,25 @@ export function CrmPage({
               return (
                 <section
                   key={column.id}
-                  className={`crm-pipeline-column ${mobileColumn === column.id ? 'is-mobile-active' : ''}`}
-                  onDragOver={(event) => event.preventDefault()}
+                  className={`crm-pipeline-column ${mobileColumn === column.id ? 'is-mobile-active' : ''} ${dropColumnId === column.id ? 'is-drop-target' : ''}`}
+                  data-stage={column.id}
+                  onDragEnter={() => draggedLeadId && setDropColumnId(column.id)}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropColumnId(undefined)
+                  }}
                   onDrop={(event) => {
                     const leadId = event.dataTransfer.getData('lead-id')
                     if (leadId) onMoveLead(leadId, column.target)
+                    setDraggedLeadId(undefined)
+                    setDropColumnId(undefined)
                   }}
                 >
                   <header className="crm-column-header">
-                    <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-black text-gray-950">{column.title}</h2><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{columnLeads.length}</span></div>
+                    <div className="crm-column-title-row"><span className="crm-column-accent" aria-hidden="true" /><h2 className="text-sm font-black text-gray-950">{column.title}</h2><span className="crm-column-count">{columnLeads.length}</span></div>
                     <div className="mt-1 flex items-center justify-between gap-3"><p className="text-xs text-gray-500">{formatCurrency(value)}</p><span className="text-[0.62rem] font-bold text-gray-400">{stageProbability(column.target)}% referência</span></div>
                   </header>
                   <div className="crm-column-body">
@@ -419,9 +409,15 @@ export function CrmPage({
                         onScheduleReturn={onScheduleReturn}
                         onRegisterDeposit={onRegisterDeposit}
                         onCreateProject={onCreateProject}
+                        isDragging={draggedLeadId === lead.id}
+                        onDragStateChange={(dragging) => {
+                          setDraggedLeadId(dragging ? lead.id : undefined)
+                          if (!dragging) setDropColumnId(undefined)
+                        }}
                       />
                     ))}
                     {!columnLeads.length ? <div className="rounded-lg border border-dashed border-gray-300 p-4 text-center text-xs text-gray-500">Nenhum contato.</div> : null}
+                    <button className="crm-add-card" type="button" onClick={onCreateLead}><Plus size={15} /> Adicionar oportunidade</button>
                   </div>
                 </section>
               )
@@ -525,7 +521,7 @@ export function CrmPage({
   )
 }
 
-function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject }: {
+function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject, isDragging, onDragStateChange }: {
   lead: Lead
   state: AppState
   onOpen: (lead: Lead) => void
@@ -538,6 +534,8 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
   onScheduleReturn: (lead: Lead) => void
   onRegisterDeposit: (quote: Quote) => void
   onCreateProject: (lead: Lead) => void
+  isDragging: boolean
+  onDragStateChange: (dragging: boolean) => void
 }) {
   const quote = newestQuote(state, lead.id)
   const overdue = Boolean(lead.nextContactAt && new Date(lead.nextContactAt) < new Date())
@@ -546,9 +544,20 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
 
   const stop = (event: MouseEvent) => event.stopPropagation()
   return (
-    <article className="crm-opportunity-card" draggable onDragStart={(event) => event.dataTransfer.setData('lead-id', lead.id)} onClick={() => onOpen(lead)}>
+    <article
+      className={`crm-opportunity-card ${isDragging ? 'is-dragging' : ''}`}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('lead-id', lead.id)
+        onDragStateChange(true)
+      }}
+      onDragEnd={() => onDragStateChange(false)}
+      onClick={() => onOpen(lead)}
+    >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0"><h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3><p className="truncate text-xs text-gray-500">{displayDetail(lead)}</p></div>
+        <GripVertical className="crm-card-grip" size={16} aria-hidden="true" />
+        <div className="min-w-0 flex-1"><h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3><p className="truncate text-xs text-gray-500">{displayDetail(lead)}</p></div>
         <span className={`crm-health crm-health-${health.tone}`}>{health.label}</span>
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
@@ -558,7 +567,7 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
       <div className={`mt-3 flex items-center gap-2 rounded-md px-2.5 py-2 text-xs ${overdue ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}>
         <Clock3 className="shrink-0" size={13} /><span className="truncate">{nextAction}</span>
       </div>
-      <footer className="mt-2 flex items-start justify-end gap-1 border-t border-gray-100 pt-2">
+      <footer className="mt-2 flex items-center justify-between gap-1 border-t border-gray-100 pt-2">
         <ContactShortcuts
           lead={lead}
           state={state}
@@ -571,8 +580,7 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
           onRegisterDeposit={onRegisterDeposit}
           onCreateProject={onCreateProject}
         />
-        {lead.pipelineStage !== 'Perdido' ? <button className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-50" type="button" onClick={(event) => { stop(event); onLose(lead) }} title="Marcar oportunidade como perdida"><Ban size={13} /> Perder</button> : null}
-        <button className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50" type="button" onClick={(event) => { stop(event); onDelete(lead) }}><Trash2 size={13} /> Excluir</button>
+        {lead.pipelineStage !== 'Perdido' ? <button className="rounded-md p-1.5 text-gray-400 hover:bg-amber-50 hover:text-amber-700" type="button" onClick={(event) => { stop(event); onLose(lead) }} title="Marcar oportunidade como perdida" aria-label={`Marcar ${displayName(lead)} como oportunidade perdida`}><Ban size={14} /></button> : null}
       </footer>
     </article>
   )
@@ -937,7 +945,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
                 <h3 className="text-sm font-black text-gray-950">Tarefas</h3>
                 <p className="text-xs text-gray-500">{tasks.length ? `${tasks.length} vinculada${tasks.length === 1 ? '' : 's'} a este contato` : 'Acompanhe os próximos passos deste contato.'}</p>
               </div>
-              <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onCreateTask(lead)}><Plus size={14} /> Nova tarefa</Button>
+              <Button className="min-h-9 px-3 py-1 text-xs" type="button" aria-label={`Criar nova tarefa para ${displayName(lead)}`} onClick={() => onCreateTask(lead)}><Plus size={14} /> Nova tarefa</Button>
             </div>
             <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
               {tasks.map((task, index) => {
@@ -949,11 +957,15 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
                       type="button"
                       title={completed ? 'Voltar para pendente' : 'Marcar como concluída'}
                       aria-label={completed ? 'Voltar tarefa para pendente' : 'Concluir tarefa'}
-                      onClick={() => completed ? onReopenTask(task) : onCompleteTask(task)}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (completed) onReopenTask(task)
+                        else onCompleteTask(task)
+                      }}
                     >
                       {completed ? <Check size={15} /> : <Check size={14} />}
                     </button>
-                    <button className="min-w-0 flex-1 text-left" type="button" onClick={() => onEditTask(task)}>
+                    <button className="min-w-0 flex-1 text-left" type="button" aria-label={`Editar tarefa ${task.title}`} onClick={() => onEditTask(task)}>
                       <div className="flex flex-wrap items-center gap-2">
                         <strong className={`text-sm ${completed ? 'text-gray-500 line-through' : 'text-gray-950'}`}>{task.title}</strong>
                         <StatusBadge>{task.status}</StatusBadge>
@@ -962,8 +974,8 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
                       {task.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-600">{task.description}</p> : null}
                     </button>
                     <div className="flex shrink-0 items-center gap-1">
-                      <button className="rounded-lg p-2 text-gray-500 hover:bg-white hover:text-gray-950 hover:shadow-sm" title="Editar tarefa" type="button" onClick={() => onEditTask(task)}><SlidersHorizontal size={15} /></button>
-                      <button className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir tarefa" type="button" onClick={() => onDeleteTask(task)}><Trash2 size={15} /></button>
+                      <button className="rounded-lg p-2 text-gray-500 hover:bg-white hover:text-gray-950 hover:shadow-sm" title="Editar tarefa" aria-label={`Editar tarefa ${task.title}`} type="button" onClick={(event) => { event.stopPropagation(); onEditTask(task) }}><SlidersHorizontal size={15} /></button>
+                      <button className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600" title="Excluir tarefa" aria-label={`Excluir tarefa ${task.title}`} type="button" onClick={(event) => { event.stopPropagation(); onDeleteTask(task) }}><Trash2 size={15} /></button>
                     </div>
                   </article>
                 )

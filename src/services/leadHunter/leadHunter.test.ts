@@ -3,10 +3,13 @@ import { createDefaultLeadHunterCities, createDefaultLeadHunterSettings } from '
 import type { LeadHunterProspect } from '../../types'
 import { normalizeLeadText } from './LeadDeduplicationService'
 import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './LeadLearningService'
-import { buildLeadWhatsAppMessage, opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
+import { buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
 import { shouldDisplayLead } from './LeadRotationService'
 import { buildGoogleMapsRouteUrl, recommendDailyMission } from './LeadRouteService'
 import { calculateLeadScore } from './LeadScoringService'
+import { isEligibleLeadSegment, isForbiddenLeadSegment, leadSegmentPriority } from './LeadTargetingPolicy'
+import { assessLeadEmailConfidence, assessLeadPreferredChannel, leadOutreachIdempotencyKey } from './LeadOutreachAutomation'
+import { qualifyLead } from './LeadQualificationService'
 
 const prospect = (overrides: Partial<LeadHunterProspect> = {}): LeadHunterProspect => ({
   id: 'prospect-1', externalIds: {}, name: 'Refúgio Marmeleiros', normalizedName: 'refugiomarmeleiros',
@@ -71,6 +74,31 @@ describe('Lead Hunter services', () => {
     expect(message).not.toMatch(/\bconheci\b/i)
   })
 
+  it('sempre apresenta Emerson, Hero Drone e o trabalho com imagens aéreas', () => {
+    const generatedMessage = buildLeadWhatsAppMessage(prospect({
+      aiFirstMessage: 'Tenho uma ideia especial para destacar o espaço de vocês. Posso mostrar?',
+    }))
+    expect(generatedMessage).toContain('Aqui é o Emerson, da Hero Drone')
+    expect(generatedMessage).toContain('fotos e vídeos aéreos profissionais')
+    expect(generatedMessage).toContain('Tenho uma ideia especial')
+
+    const customUrl = buildLeadWhatsAppUrl(
+      prospect({ whatsapp: '(41) 99999-9999' }),
+      'Preparei uma sugestão personalizada para vocês.',
+    )
+    const sentMessage = new URL(customUrl).searchParams.get('text')
+    expect(sentMessage).toContain('Aqui é o Emerson, da Hero Drone')
+    expect(sentMessage).toContain('fotos e vídeos aéreos profissionais')
+    expect(sentMessage).toContain('Preparei uma sugestão personalizada')
+  })
+
+  it('abre contatos do Lead Hunter exclusivamente no WhatsApp Web', () => {
+    const url = buildLeadWhatsAppUrl(prospect({ whatsapp: '(41) 99999-9999' }), 'Mensagem de teste')
+    expect(url).toContain('https://web.whatsapp.com/send?')
+    expect(url).toContain('phone=5541999999999')
+    expect(url).not.toContain('wa.me')
+  })
+
   it('aprende gradualmente com aceites e rejeições', () => {
     const history = [
       prospect({ id: 'accepted-1', categoryName: 'Pousada', city: 'Curitiba', decision: 'Aceito' }),
@@ -86,8 +114,102 @@ describe('Lead Hunter services', () => {
     const validation = validateLeadContacts(prospect({
       whatsapp: '41999999999', email: 'contato@empresa.com.br', sources: ['OpenAI Web Search'],
     }), '2026-07-17T00:00:00.000Z')
-    expect(validation.whatsapp).toBe('Confirmado')
+    expect(validation.whatsapp).toBe('Provável')
     expect(validation.email).toBe('Confirmado')
     expect(validation.instagram).toBe('Não informado')
+  })
+
+  it('prioriza hospedagem e exclui segmentos de baixo potencial', () => {
+    expect(leadSegmentPriority('Chalé ou cabana')).toBe(3)
+    expect(leadSegmentPriority('Clube e campo de golfe')).toBe(2)
+    expect(leadSegmentPriority('Construtora ou incorporadora')).toBe(1)
+    expect(isEligibleLeadSegment('Hotel ou hospedagem')).toBe(true)
+    expect(isForbiddenLeadSegment('Restaurante')).toBe(true)
+    expect(isEligibleLeadSegment('Clínica odontológica')).toBe(false)
+  })
+
+  it('coloca hospedagem independente do Booking e Airbnb no topo', () => {
+    const focused = qualifyLead(prospect({
+      name: 'Cabana Vista da Serra',
+      categoryName: 'Casa de temporada',
+      whatsapp: '41999999999',
+      instagram: '@cabanavista',
+      googleMapsUrl: 'https://google.com/maps/place/cabana',
+      googleRating: 4.8,
+      googleReviewCount: 84,
+      website: 'https://airbnb.com/rooms/123',
+      sourceUrls: ['https://booking.com/hotel/br/cabana-vista'],
+      aiSocialInsight: 'Área externa, vista para a serra e ainda sem conteúdo aéreo profissional.',
+    }))
+    const chain = qualifyLead(prospect({
+      name: 'Hotel Ibis Centro',
+      categoryName: 'Hotel',
+      googleReviewCount: 2400,
+      whatsapp: '41999999999',
+    }))
+    expect(focused.tier).toBe('Pronto para abordar')
+    expect(focused.total).toBeGreaterThan(chain.total)
+    expect(focused.evidence).toContain('Presença identificada no Booking.com')
+    expect(focused.evidence).toContain('Presença identificada no Airbnb')
+  })
+
+  it('manda hospedagem promissora sem contato para pesquisa', () => {
+    const result = qualifyLead(prospect({
+      name: 'Chácara Recanto Verde',
+      categoryName: 'Chácara para locação',
+      googleRating: 4.7,
+      googleReviewCount: 32,
+    }))
+    expect(result.tier).toBe('Precisa de pesquisa')
+    expect(result.missing).toContain('Encontrar um canal direto de contato')
+  })
+
+  it('só libera envio automático com e-mail confirmado e evidência forte', () => {
+    const lead = prospect({
+      email: 'contato@refugio.com.br',
+      website: 'https://refugio.com.br',
+      sourceUrls: ['https://refugio.com.br/contato'],
+      contactValidation: {
+        whatsapp: 'Não informado', instagram: 'Não informado',
+        email: 'Confirmado', website: 'Confirmado', checkedAt: '2026-07-17T00:00:00.000Z',
+      },
+    })
+    expect(assessLeadEmailConfidence(lead)).toMatchObject({ confidence: 'Alta', canSend: true })
+    expect(leadOutreachIdempotencyKey(lead)).toContain('contato@refugio.com.br')
+    expect(assessLeadEmailConfidence({ ...lead, lastContactAt: '2026-07-18T00:00:00.000Z' }).canSend).toBe(false)
+  })
+
+  it('usa um WhatsApp válido sem interromper o bot para revisão', () => {
+    const decision = assessLeadPreferredChannel(prospect({
+      whatsapp: '(41) 99999-9999',
+      instagram: '@refugio',
+      contactValidation: {
+        whatsapp: 'Provável', instagram: 'Confirmado',
+        email: 'Não informado', website: 'Não informado', checkedAt: '2026-07-17T00:00:00.000Z',
+      },
+    }))
+    expect(decision).toMatchObject({ channel: 'WhatsApp', confidence: 'Média', canProceed: true })
+  })
+
+  it('segue sempre WhatsApp, Instagram e e-mail nesta ordem', () => {
+    expect(assessLeadPreferredChannel(prospect({
+      whatsapp: '41999999999', email: 'contato@empresa.com.br', instagram: '@empresa',
+      contactValidation: {
+        whatsapp: 'Confirmado', instagram: 'Confirmado',
+        email: 'Confirmado', website: 'Não informado', checkedAt: '2026-07-17T00:00:00.000Z',
+      },
+    })).channel).toBe('WhatsApp')
+    expect(assessLeadPreferredChannel(prospect({
+      email: 'contato@empresa.com.br', instagram: '@empresa',
+    })).channel).toBe('Instagram')
+    expect(assessLeadPreferredChannel(prospect({
+      instagram: '@empresa',
+    })).channel).toBe('Instagram')
+    expect(assessLeadPreferredChannel(prospect({
+      email: 'contato@empresa.com.br',
+    }))).toMatchObject({ channel: 'Email', canProceed: true })
+    const noChannel = assessLeadPreferredChannel(prospect())
+    expect(noChannel.canProceed).toBe(false)
+    expect(noChannel.channel).toBeUndefined()
   })
 })

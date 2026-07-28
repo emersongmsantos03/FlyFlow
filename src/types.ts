@@ -445,6 +445,22 @@ export interface LeadScoreReason {
   evidence?: string
 }
 
+export type LeadQualificationTier = 'Pronto para abordar' | 'Precisa de pesquisa' | 'Baixa prioridade'
+
+export interface LeadQualification {
+  fit: number
+  visualOpportunity: number
+  buyingCapacity: number
+  timing: number
+  contactability: number
+  total: number
+  tier: LeadQualificationTier
+  idealCustomerProfile: string
+  bestArgument: string
+  evidence: string[]
+  missing: string[]
+}
+
 export interface LeadHunterProspect {
   id: string
   externalIds: Record<string, string>
@@ -474,6 +490,7 @@ export interface LeadHunterProspect {
   sourceUrls: string[]
   score: number
   scoreReasons: LeadScoreReason[]
+  qualification?: LeadQualification
   status: LeadHunterStatus
   isNew: boolean
   possibleDuplicateId?: string
@@ -505,6 +522,17 @@ export interface LeadHunterProspect {
     email: 'Confirmado' | 'Provável' | 'Não informado'
     website: 'Confirmado' | 'Provável' | 'Não informado'
     checkedAt: string
+  }
+  outreachEmail?: {
+    status: 'Pendente' | 'Enviando' | 'Enviado' | 'Revisão' | 'Falhou'
+    idempotencyKey: string
+    confidence: 'Alta' | 'Média' | 'Baixa'
+    reason: string
+    subject?: string
+    messageId?: string
+    attemptedAt?: string
+    sentAt?: string
+    error?: string
   }
   notes: string
   createdAt: string
@@ -925,6 +953,27 @@ export interface TaskItem {
   updatedAt: string
 }
 
+export const internalProjectStatuses = ['Ideias', 'Planejado', 'Em andamento', 'Em revisão', 'Concluído', 'Pausado'] as const
+export type InternalProjectStatus = (typeof internalProjectStatuses)[number]
+
+export interface InternalProject {
+  id: string
+  name: string
+  description: string
+  status: InternalProjectStatus
+  priority: 'Baixa' | 'Média' | 'Alta' | 'Urgente'
+  category: string
+  responsibleUserId?: string
+  startDate?: string
+  dueDate?: string
+  progress: number
+  tags: string[]
+  notes: string
+  archivedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface StatusHistoryItem {
   id: string
   entityType: 'Contato' | 'Proposta' | 'Projeto' | 'Pagamento' | 'Agendamento' | 'Conta bancária' | 'Transferência'
@@ -1007,6 +1056,7 @@ export interface AppState {
   equipment: Equipment[]
   notifications: NotificationItem[]
   tasks: TaskItem[]
+  internalProjects?: InternalProject[]
   statusHistory: StatusHistoryItem[]
   projectAdjustments: ProjectAdjustment[]
   companySettings: CompanySettings

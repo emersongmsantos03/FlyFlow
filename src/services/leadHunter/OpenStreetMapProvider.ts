@@ -310,7 +310,7 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
     }
     const filters = filtersFor(categories)
     const [latitude, longitude] = await locateCity(city, signal)
-    const radiusMeters = Math.round(Math.min(Math.max(request.radiusKm, 2), 20) * 1000)
+    const radiusMeters = Math.round(Math.min(Math.max(request.radiusKm, 2), 100) * 1000)
     const query = `[out:json][timeout:18];(${filters.map((filter) => `nwr${filter}(around:${radiusMeters},${latitude},${longitude});`).join('')});out center ${Math.min(Math.max(request.limit * 3, 30), 80)};`
     let lastError: unknown
     for (const endpoint of ENDPOINTS) {
