@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Button, InputField, Modal } from '../ui'
-import { internalProjectStatuses, type InternalProject, type InternalProjectStatus, type User } from '../../types'
+import { internalProjectCategories, internalProjectStatuses, type InternalProject, type InternalProjectStatus, type User } from '../../types'
 
 type ViewMode = 'board' | 'list'
 type Scope = 'active' | 'archived'
@@ -302,6 +302,9 @@ export function InternalProjectsPage({
 
 function ProjectEditor({ project, users, onClose, onSave }: { project: InternalProject; users: User[]; onClose: () => void; onSave: (project: InternalProject) => void }) {
   const [draft, setDraft] = useState(project)
+  const categoryOptions = internalProjectCategories.includes(project.category as (typeof internalProjectCategories)[number])
+    ? internalProjectCategories
+    : [...internalProjectCategories, project.category]
   const set = <K extends keyof InternalProject>(key: K, value: InternalProject[K]) => setDraft((current) => ({ ...current, [key]: value }))
   const submit = (event: FormEvent) => { event.preventDefault(); onSave(draft) }
   return (
@@ -313,7 +316,11 @@ function ProjectEditor({ project, users, onClose, onSave }: { project: InternalP
         <div className="grid gap-4 sm:grid-cols-2">
           <InputField label="Status"><select className="field-input" value={draft.status} onChange={(event) => set('status', event.target.value as InternalProjectStatus)}>{internalProjectStatuses.map((status) => <option key={status}>{status}</option>)}</select></InputField>
           <InputField label="Prioridade"><select className="field-input" value={draft.priority} onChange={(event) => set('priority', event.target.value as InternalProject['priority'])}><option>Baixa</option><option>Média</option><option>Alta</option><option>Urgente</option></select></InputField>
-          <InputField label="Categoria"><input className="field-input" value={draft.category} onChange={(event) => set('category', event.target.value)} placeholder="Marketing, Produto, Operação..." /></InputField>
+          <InputField label="Categoria">
+            <select className="field-input" value={draft.category} onChange={(event) => set('category', event.target.value)}>
+              {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select>
+          </InputField>
           <InputField label="Responsável"><select className="field-input" value={draft.responsibleUserId || ''} onChange={(event) => set('responsibleUserId', event.target.value || undefined)}><option value="">Não atribuído</option>{users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
           <InputField label="Data de início"><input className="field-input" type="date" value={draft.startDate || ''} onChange={(event) => set('startDate', event.target.value || undefined)} /></InputField>
           <InputField label="Prazo"><input className="field-input" type="date" value={draft.dueDate || ''} onChange={(event) => set('dueDate', event.target.value || undefined)} /></InputField>

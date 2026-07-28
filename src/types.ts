@@ -956,6 +956,23 @@ export interface TaskItem {
 export const internalProjectStatuses = ['Ideias', 'Planejado', 'Em andamento', 'Em revisão', 'Concluído', 'Pausado'] as const
 export type InternalProjectStatus = (typeof internalProjectStatuses)[number]
 
+export const internalProjectCategories = [
+  'Geral',
+  'Pré-planejamento',
+  'Marketing e conteúdo',
+  'Comercial e vendas',
+  'Operação',
+  'Tecnologia e automação',
+  'Produto e inovação',
+  'Processos internos',
+  'Financeiro',
+  'Administrativo',
+  'Pessoas e cultura',
+  'Parcerias',
+  'Infraestrutura e equipamentos',
+  'Planejamento estratégico',
+] as const
+
 export interface InternalProject {
   id: string
   name: string
