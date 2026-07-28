@@ -73,7 +73,7 @@ export function InternalProjectsPage({
   users: User[]
   onChange: (projects: InternalProject[], message: string) => void
 }) {
-  const [view, setView] = useState<ViewMode>('board')
+  const [view, setView] = useState<ViewMode>('list')
   const [scope, setScope] = useState<Scope>('active')
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<InternalProject | null>(null)
@@ -94,6 +94,14 @@ export function InternalProjectsPage({
   }, [projects, scope, search, sortBy])
 
   const active = projects.filter((project) => !project.archivedAt)
+  const groupedProjects = useMemo(() => {
+    const groups = new Map<string, InternalProject[]>()
+    visible.forEach((project) => {
+      const category = project.category.trim() || 'Geral'
+      groups.set(category, [...(groups.get(category) || []), project])
+    })
+    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, 'pt-BR'))
+  }, [visible])
   const inProgress = active.filter((project) => project.status === 'Em andamento').length
   const overdue = active.filter((project) => {
     const days = daysTo(project.dueDate)
@@ -166,19 +174,19 @@ export function InternalProjectsPage({
 
   return (
     <div className="internal-projects-page space-y-4">
-      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-[#242622] text-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-col gap-5 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#e2c45f]"><Sparkles size={15} /> Espaço de inovação</div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Projetos internos</h1>
-            <p className="mt-1 max-w-2xl text-sm text-white/60">Transforme ideias em iniciativas acompanháveis, da primeira anotação até a entrega.</p>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#ad8715]"><Sparkles size={15} /> Quadro de trabalho</div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-950">Projetos internos</h1>
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">Organize as iniciativas da empresa por área, responsável, status e cronograma.</p>
           </div>
-          <Button className="shrink-0 bg-[#c9a227] text-[#242622] hover:bg-[#d8b63e]" type="button" onClick={() => setEditing(newProject())}><Plus size={16} /> Novo projeto</Button>
+          <Button className="shrink-0" type="button" onClick={() => setEditing(newProject())}><Plus size={16} /> Novo projeto</Button>
         </div>
-        <div className="grid border-t border-white/10 sm:grid-cols-3">
-          <div className="px-5 py-3"><p className="text-[0.66rem] font-bold uppercase text-white/45">Em andamento</p><p className="mt-1 text-xl font-semibold">{inProgress}</p></div>
-          <div className="border-white/10 px-5 py-3 sm:border-l"><p className="text-[0.66rem] font-bold uppercase text-white/45">Progresso médio</p><p className="mt-1 text-xl font-semibold">{averageProgress}%</p></div>
-          <div className="border-white/10 px-5 py-3 sm:border-l"><p className="text-[0.66rem] font-bold uppercase text-white/45">Atenção necessária</p><p className={`mt-1 text-xl font-semibold ${overdue ? 'text-red-300' : ''}`}>{overdue}</p></div>
+        <div className="grid border-t border-gray-100 bg-gray-50/60 sm:grid-cols-3">
+          <div className="px-5 py-3"><p className="text-[0.66rem] font-bold uppercase text-gray-400">Em andamento</p><p className="mt-1 text-xl font-semibold text-gray-950">{inProgress}</p></div>
+          <div className="border-gray-200 px-5 py-3 sm:border-l"><p className="text-[0.66rem] font-bold uppercase text-gray-400">Progresso médio</p><p className="mt-1 text-xl font-semibold text-gray-950">{averageProgress}%</p></div>
+          <div className="border-gray-200 px-5 py-3 sm:border-l"><p className="text-[0.66rem] font-bold uppercase text-gray-400">Atenção necessária</p><p className={`mt-1 text-xl font-semibold ${overdue ? 'text-red-600' : 'text-gray-950'}`}>{overdue}</p></div>
         </div>
       </section>
 
@@ -190,8 +198,8 @@ export function InternalProjectsPage({
               <button className={`rounded-md px-3 py-1.5 text-xs font-semibold ${scope === 'archived' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setScope('archived')}>Arquivados</button>
             </div>
             <div className="flex rounded-lg border border-gray-200 p-1">
-              <button className={`rounded-md p-1.5 ${view === 'board' ? 'bg-gray-900 text-white' : 'text-gray-500'}`} type="button" onClick={() => setView('board')} aria-label="Quadro"><Columns3 size={15} /></button>
-              <button className={`rounded-md p-1.5 ${view === 'list' ? 'bg-gray-900 text-white' : 'text-gray-500'}`} type="button" onClick={() => setView('list')} aria-label="Lista"><LayoutList size={15} /></button>
+              <button className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${view === 'list' ? 'bg-gray-900 text-white' : 'text-gray-500'}`} type="button" onClick={() => setView('list')}><LayoutList size={14} /> Quadro principal</button>
+              <button className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${view === 'board' ? 'bg-gray-900 text-white' : 'text-gray-500'}`} type="button" onClick={() => setView('board')}><Columns3 size={14} /> Kanban</button>
             </div>
           </div>
           <div className="flex flex-1 gap-2 lg:max-w-xl">
@@ -222,11 +230,67 @@ export function InternalProjectsPage({
           })}
         </div>
       ) : (
-        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="hidden grid-cols-[minmax(15rem,1.6fr)_0.8fr_0.8fr_0.8fr_1fr_5rem] gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2.5 text-[0.65rem] font-bold uppercase text-gray-500 md:grid"><span>Projeto</span><span>Status</span><span>Responsável</span><span>Prazo</span><span>Progresso</span><span /></div>
-          {visible.map((project) => {
-            const owner = users.find((user) => user.id === project.responsibleUserId)
-            return <button key={project.id} className="grid w-full gap-2 border-b border-gray-100 px-4 py-3 text-left last:border-0 hover:bg-gray-50 md:grid-cols-[minmax(15rem,1.6fr)_0.8fr_0.8fr_0.8fr_1fr_5rem] md:items-center md:gap-3" type="button" onClick={() => setEditing({ ...project })}><span className="min-w-0"><strong className="block truncate text-sm text-gray-950">{project.name}</strong><small className="text-xs text-gray-500">{project.category} · {project.priority}</small></span><span><span className={`inline-flex rounded-md px-2 py-1 text-[0.68rem] font-bold ${statusStyle[project.status].soft}`}>{project.status}</span></span><span className="truncate text-xs font-semibold text-gray-600">{owner?.name || 'Não atribuído'}</span><span className="text-xs font-semibold text-gray-600">{formatDate(project.dueDate)}</span><span className="flex items-center gap-2"><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><span className="block h-full rounded-full bg-[#c9a227]" style={{ width: `${project.progress}%` }} /></span><small className="w-8 text-right font-semibold text-gray-500">{project.progress}%</small></span><span className="flex justify-end"><Pencil size={15} className="text-gray-400" /></span></button>
+        <section className="space-y-4">
+          {groupedProjects.map(([category, categoryProjects], groupIndex) => {
+            const groupColors = ['#579bfc', '#a25ddc', '#00c875', '#fdab3d', '#e2445c', '#66ccff']
+            const color = groupColors[groupIndex % groupColors.length]
+            return (
+              <div key={category} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3">
+                  <span className="h-5 w-1 rounded-full" style={{ backgroundColor: color }} />
+                  <h2 className="text-base font-semibold" style={{ color }}>{category}</h2>
+                  <span className="text-xs font-semibold text-gray-400">{categoryProjects.length} item(ns)</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[1050px]">
+                    <div className="grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-200 bg-gray-50 text-[0.68rem] font-bold text-gray-500">
+                      <span className="border-r border-gray-200 px-4 py-2.5">Projeto</span>
+                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Responsável</span>
+                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Status</span>
+                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Prioridade</span>
+                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Cronograma</span>
+                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Progresso</span>
+                      <span />
+                    </div>
+                    {categoryProjects.map((project) => {
+                      const late = (daysTo(project.dueDate) ?? 0) < 0 && project.status !== 'Concluído'
+                      return (
+                        <div key={project.id} className="group grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-100 last:border-b-0 hover:bg-gray-50/70">
+                          <button className="flex min-w-0 items-center gap-3 border-r border-gray-200 px-4 py-2.5 text-left" type="button" onClick={() => setEditing({ ...project })}>
+                            <span className="h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                            <span className="min-w-0"><strong className="block truncate text-sm font-semibold text-gray-950">{project.name}</strong><small className="mt-0.5 block truncate text-[0.68rem] text-gray-500">{project.description || 'Sem descrição'}</small></span>
+                          </button>
+                          <label className="flex items-center justify-center border-r border-gray-200 px-2">
+                            <select aria-label={`Responsável por ${project.name}`} className="w-full cursor-pointer bg-transparent py-2 text-center text-xs font-semibold text-gray-700 outline-none" value={project.responsibleUserId || ''} onChange={(event) => patch(project.id, { responsibleUserId: event.target.value || undefined })}>
+                              <option value="">Não atribuído</option>{users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                            </select>
+                          </label>
+                          <label className="flex items-stretch border-r border-gray-200 p-1.5">
+                            <select aria-label={`Status de ${project.name}`} className={`w-full cursor-pointer rounded-md border-0 px-2 text-center text-xs font-bold outline-none ${statusStyle[project.status].soft}`} value={project.status} onChange={(event) => patch(project.id, { status: event.target.value as InternalProjectStatus, progress: event.target.value === 'Concluído' ? 100 : project.progress })}>
+                              {internalProjectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                            </select>
+                          </label>
+                          <label className="flex items-stretch border-r border-gray-200 p-1.5">
+                            <select aria-label={`Prioridade de ${project.name}`} className={`w-full cursor-pointer rounded-md border-0 px-2 text-center text-xs font-bold outline-none ${priorityStyle[project.priority]}`} value={project.priority} onChange={(event) => patch(project.id, { priority: event.target.value as InternalProject['priority'] })}>
+                              <option>Baixa</option><option>Média</option><option>Alta</option><option>Urgente</option>
+                            </select>
+                          </label>
+                          <button className={`flex items-center justify-center gap-2 border-r border-gray-200 px-3 text-xs font-semibold ${late ? 'text-red-600' : 'text-gray-600'}`} type="button" onClick={() => setEditing({ ...project })}>
+                            <CalendarDays size={14} /><span>{project.startDate ? formatDate(project.startDate) : 'Início'} — {formatDate(project.dueDate)}</span>
+                          </button>
+                          <div className="flex items-center gap-2 border-r border-gray-200 px-3">
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full" style={{ width: `${project.progress}%`, backgroundColor: color }} /></div>
+                            <span className="w-8 text-right text-[0.68rem] font-bold text-gray-600">{project.progress}%</span>
+                          </div>
+                          <button className="flex items-center justify-center text-gray-400 hover:text-gray-800" type="button" onClick={() => setEditing({ ...project })} aria-label={`Editar ${project.name}`}><Pencil size={15} /></button>
+                        </div>
+                      )
+                    })}
+                    <button className="flex w-full items-center gap-2 px-5 py-3 text-left text-xs font-semibold text-gray-500 hover:bg-gray-50 hover:text-gray-900" type="button" onClick={() => setEditing({ ...newProject(), category })}><Plus size={14} /> Adicionar projeto</button>
+                  </div>
+                </div>
+              </div>
+            )
           })}
         </section>
       )}
