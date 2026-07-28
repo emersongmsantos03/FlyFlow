@@ -243,7 +243,7 @@ const searchNominatimCategory = async (city: string, category: string, limit: nu
 }
 
 const searchNominatim = async (city: string, categories: string[], limit: number, signal?: AbortSignal): Promise<LeadSearchProviderResult['leads']> => {
-  const searchCategories = [...new Set(categories.map((category) => clean(category, 80)).filter(Boolean))].slice(0, 2)
+  const searchCategories = [...new Set(categories.map((category) => clean(category, 80)).filter(Boolean))].slice(0, 4)
   const collected: Array<{ result: NominatimResult; category: string }> = []
   const perCategoryLimit = Math.max(4, Math.ceil(limit / Math.max(searchCategories.length, 1)) + 2)
   for (const category of searchCategories.length ? searchCategories : ['hotel']) {

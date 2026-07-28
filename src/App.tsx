@@ -6248,7 +6248,18 @@ Hero Drone`,
                   })()
                 let city = candidateCities[0]
                 const selectedCategories = filters.categoryIds.length
-                  ? activeCategories.filter((item) => filters.categoryIds.includes(item.id) && isEligibleLeadSegment(item.name)).slice(0, 1)
+                  ? (() => {
+                    const explicitlySelected = activeCategories.filter((item) => filters.categoryIds.includes(item.id) && isEligibleLeadSegment(item.name))
+                    const selectedGroups = new Set(explicitlySelected.map((item) => item.group))
+                    const related = activeCategories
+                      .filter((item) =>
+                        !explicitlySelected.some((selected) => selected.id === item.id) &&
+                        selectedGroups.has(item.group) &&
+                        isEligibleLeadSegment(item.name),
+                      )
+                      .sort((a, b) => b.weight - a.weight || a.searchCount - b.searchCount)
+                    return [...explicitlySelected, ...related].slice(0, 4)
+                  })()
                   : (() => {
                     const ranked = [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
                       .sort((a, b) =>
@@ -6257,16 +6268,17 @@ Hero Drone`,
                       )
                     const mixed = ranked.filter((category, index, list) =>
                       list.findIndex((candidate) => candidate.group === category.group) === index,
-                    ).slice(0, 2)
-                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 2)
+                    ).slice(0, 4)
+                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 4)
                   })()
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
                 try {
                   const provider = new OpenStreetMapLeadProvider()
-                  const resultsPerSearch = 10
+                  const resultsPerSearch = Math.max(5, Math.min(state.leadHunterSettings?.maxResultsPerSearch || 10, 25))
                   const candidateTarget = resultsPerSearch * 3
-                  const providerLimit = filters.cityIds.length ? 40 : Math.max(15, Math.ceil(candidateTarget / candidateCities.length) + 8)
+                  const searchCities = candidateCities.slice(0, filters.cityIds.length ? 6 : 5)
+                  const providerLimit = Math.max(20, Math.min(50, Math.ceil(candidateTarget / Math.max(searchCities.length, 1)) + 12))
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; phone?: string; whatsapp?: string; website?: string; externalIds?: Record<string, string> }) => {
                     const osmId = raw.externalIds?.openstreetmap
@@ -6323,7 +6335,7 @@ Hero Drone`,
                       sourceUrls: [...new Set([...(existing.sourceUrls || []), ...(lead.sourceUrls || [])])],
                     })
                   }
-                  for (const searchCity of candidateCities) {
+                  for (const searchCity of searchCities) {
                     try {
                       const cityResult = await provider.search(
                         { cityNames: [searchCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
@@ -6337,7 +6349,7 @@ Hero Drone`,
                       searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
                     }
                   }
-                  for (const searchCity of candidateCities) {
+                  for (const searchCity of searchCities) {
                     if (combinedLeads.size >= candidateTarget) break
                     try {
                       const googleResult = await searchGooglePlacesLeads({
@@ -6352,7 +6364,7 @@ Hero Drone`,
                       searchWarnings.push(`Google Places (${searchCity.name}): ${error instanceof Error ? error.message : 'consulta indisponível'}`)
                     }
                   }
-                  if (!combinedLeads.size && searchWarnings.length === candidateCities.length) {
+                  if (!combinedLeads.size && searchWarnings.length >= searchCities.length) {
                     throw new Error('As fontes públicas não responderam nesta rodada. Tente novamente em instantes.')
                   }
                   const allRankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
@@ -6536,8 +6548,8 @@ Hero Drone`,
                     newCount = incoming.filter((lead) => lead.isNew).length
                     repeatedCount = incoming.length - newCount
                     const incomingIds = new Set(incoming.map((item) => item.id))
-                    const searchedCityIds = new Set(candidateCities.map((item) => item.id))
-                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => searchedCityIds.has(item.id) ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.filter((lead) => lead.cityId === item.id).length, newLeadCount: item.newLeadCount + incoming.filter((lead) => lead.cityId === item.id && lead.isNew).length, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: candidateCities.map((item) => item.id), categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: tokenUsage > 0 ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
+                    const searchedCityIds = new Set(searchCities.map((item) => item.id))
+                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => searchedCityIds.has(item.id) ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.filter((lead) => lead.cityId === item.id).length, newLeadCount: item.newLeadCount + incoming.filter((lead) => lead.cityId === item.id && lead.isNew).length, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: searchCities.map((item) => item.id), categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: tokenUsage > 0 ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
                   }, newCount
                     ? `${newCount} novo(s) adicionado(s) no topo. Os anteriores foram mantidos abaixo.`
                     : 'Nenhuma empresa inédita foi encontrada nesta rodada. A próxima busca alternará cidades e categorias.')
