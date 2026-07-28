@@ -4731,7 +4731,7 @@ Hero Drone`,
     }), 'Proposta restaurada.')
   }
 
-  const updateSettings = async (values: SettingsFormValues) => {
+  const updateSettings = (values: SettingsFormValues) => {
     const nextState = synchronizeOperationalState({
       ...latestState.current,
       companySettings: {
@@ -4743,13 +4743,25 @@ Hero Drone`,
     latestState.current = nextState
     saveAppState(nextState)
     setState(nextState)
+    setToast('Configurações salvas.')
+
     if (isFirebaseConfigured && authSession) {
-      firebaseSaveQueue.current = firebaseSaveQueue.current.catch(() => undefined).then(() => saveFirebaseAppState(nextState))
-      await firebaseSaveQueue.current
+      const cloudSave = saveFirebaseAppState(nextState)
+      const timeout = new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error('Tempo limite ao sincronizar configurações.')), 12_000)
+      })
+      firebaseSaveQueue.current = Promise.race([cloudSave, timeout])
+        .then(() => {
+          setToast('Configurações sincronizadas em todos os dispositivos.')
+        })
+        .catch(() => {
+          setToast('Configurações salvas neste dispositivo. A sincronização com a nuvem será tentada novamente.')
+        })
     } else if (isSupabaseConfigured && authSession) {
-      await saveCloudAppState(nextState)
+      void saveCloudAppState(nextState)
+        .then(() => setToast('Configurações sincronizadas em todos os dispositivos.'))
+        .catch(() => setToast('Configurações salvas neste dispositivo. A sincronização com a nuvem será tentada novamente.'))
     }
-    setToast('Configurações salvas em todos os dispositivos.')
   }
 
   const addUser = async (values: UserFormValues) => {
