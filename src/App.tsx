@@ -6523,7 +6523,7 @@ Hero Drone`,
                         contactName: enrichment.contactName || undefined,
                         address: enrichment.address || raw.address,
                         phone: enrichment.phone || raw.phone,
-                        whatsapp: enrichment.whatsapp || raw.whatsapp,
+                        whatsapp: enrichment.whatsapp || raw.whatsapp || enrichment.phone || raw.phone,
                         email: enrichment.email || raw.email,
                         website: enrichment.website || raw.website,
                         instagram: enrichment.instagram || raw.instagram,
@@ -6589,7 +6589,7 @@ Hero Drone`,
                           name: existing.name || evaluatedRaw.name || 'Empresa sem nome',
                           contactName: existing.contactName || evaluatedRaw.contactName,
                           phone: existing.phone || evaluatedRaw.phone || '',
-                          whatsapp: existing.whatsapp || evaluatedRaw.whatsapp || '',
+                          whatsapp: existing.whatsapp || evaluatedRaw.whatsapp || existing.phone || evaluatedRaw.phone || '',
                           email: existing.email || evaluatedRaw.email || '',
                           instagram: existing.instagram || evaluatedRaw.instagram || '',
                           website: existing.website || evaluatedRaw.website || '',
@@ -6609,7 +6609,7 @@ Hero Drone`,
                         return { ...repeated, contactValidation: validateLeadContacts(repeated, now) }
                       }
                       newCount += 1
-                      const created = { externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], ...evaluatedRaw, id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
+                      const created = { externalIds: {}, neighborhood: '', address: '', phone: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], ...evaluatedRaw, whatsapp: evaluatedRaw.whatsapp || evaluatedRaw.phone || '', id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
                       return { ...created, contactValidation: validateLeadContacts(created as LeadHunterProspect, now) }
                     }).filter((lead) => {
                       const hasLocation = Boolean(lead.address.trim() || (lead.latitude != null && lead.longitude != null))
@@ -6673,7 +6673,7 @@ Hero Drone`,
                       contactName: enriched.contactName || item.contactName,
                       address: enriched.address || item.address,
                       phone: enriched.phone || item.phone,
-                      whatsapp: enriched.whatsapp || item.whatsapp,
+                      whatsapp: enriched.whatsapp || item.whatsapp || enriched.phone || item.phone,
                       email: enriched.email || item.email,
                       website: enriched.website || item.website,
                       instagram: enriched.instagram || item.instagram,
@@ -6691,7 +6691,7 @@ Hero Drone`,
                       contactValidation: validateLeadContacts({
                         ...item,
                         phone: enriched.phone || item.phone,
-                        whatsapp: enriched.whatsapp || item.whatsapp,
+                        whatsapp: enriched.whatsapp || item.whatsapp || enriched.phone || item.phone,
                         email: enriched.email || item.email,
                         website: enriched.website || item.website,
                         instagram: enriched.instagram || item.instagram,

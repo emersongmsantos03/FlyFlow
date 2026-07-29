@@ -461,7 +461,7 @@ export default {
                   latitude: place.location?.latitude,
                   longitude: place.location?.longitude,
                   phone: clean(place.nationalPhoneNumber, 60),
-                  whatsapp: '',
+                  whatsapp: clean(place.nationalPhoneNumber, 60),
                   email: '',
                   instagram: '',
                   website: clean(place.websiteUri, 300),
@@ -493,6 +493,7 @@ export default {
             const contacts = await contactsFromOfficialWebsite(website)
             if (contacts.phone && !lead.phone) lead.phone = contacts.phone
             if (contacts.whatsapp) lead.whatsapp = contacts.whatsapp
+            if (!lead.whatsapp && lead.phone) lead.whatsapp = String(lead.phone)
             if (contacts.email) lead.email = contacts.email
             if (contacts.phone || contacts.whatsapp || contacts.email) {
               lead.scoreReasons = [
@@ -781,7 +782,7 @@ export default {
       contactName: clean(lead.contactName, 160),
       address: clean(lead.address, 300),
       phone: clean(lead.phone || verified?.phone, 60),
-      whatsapp: clean(lead.whatsapp || verified?.whatsapp, 60),
+      whatsapp: clean(lead.whatsapp || verified?.whatsapp || lead.phone || verified?.phone, 60),
       email: clean(lead.email || verified?.email, 160),
       website: clean(lead.website || verified?.website, 240),
       instagram: clean(lead.instagram, 160),
