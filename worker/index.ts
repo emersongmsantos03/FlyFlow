@@ -2,6 +2,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose'
 
 interface Env {
   OPENAI_API_KEY: string
+  GOOGLE_PLACES_API_KEY: string
   FIREBASE_PROJECT_ID: string
   GOOGLE_OAUTH_CLIENT_ID: string
   GOOGLE_OAUTH_CLIENT_SECRET: string
@@ -39,7 +40,7 @@ const clean = (value: unknown, max = 300) => [...String(value || '')]
 
 const discoveryQueryTerm = (category: string) => {
   const normalized = category.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  if (/airbnb|booking|hospedagem/.test(normalized)) return 'pousada'
+  if (/airbnb|booking|hospedagem|casa de temporada/.test(normalized)) return 'pousada'
   if (/resort/.test(normalized)) return 'hotel'
   if (/chacara|sitio/.test(normalized)) return 'chácara'
   if (/vinicola/.test(normalized)) return 'vinícola'
@@ -216,6 +217,23 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) })
     const url = new URL(request.url)
     if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'flyflow-lead-api' }, 200, origin)
+    if (request.method === 'GET' && url.pathname === '/health/places') {
+      const queries = ['cabana Curitiba PR', 'chácara hospedagem São José dos Pinhais PR', 'pousada Campo Largo PR', 'casa de temporada Curitiba PR']
+      const checks = await Promise.all(queries.map(async (textQuery) => {
+        const check = await fetch('https://places.googleapis.com/v1/places:searchText', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY,
+            'X-Goog-FieldMask': 'places.id,places.displayName,places.googleMapsUri,places.formattedAddress',
+          },
+          body: JSON.stringify({ textQuery, languageCode: 'pt-BR', regionCode: 'BR', pageSize: 5 }),
+        })
+        const body = await check.json() as { places?: unknown[]; error?: { message?: string } }
+        return { query: textQuery, ok: check.ok, status: check.status, results: body.places?.length || 0, error: clean(body.error?.message) }
+      }))
+      return json({ ok: checks.every((check) => check.ok), checks }, checks.every((check) => check.ok) ? 200 : 502, origin)
+    }
     if (request.method === 'GET' && url.pathname === '/health/discovery') {
       try {
         const checkUrl = new URL('https://nominatim.openstreetmap.org/search')
@@ -329,7 +347,101 @@ export default {
       if (!cities.length || !categories.length) return json({ error: 'Informe cidade e categoria.' }, 400, origin)
       const leads: Array<Record<string, unknown>> = []
       const discoveredKeys = new Set<string>()
+      const categoryCounts = new Map<string, number>()
       const warnings: string[] = []
+      if (userId && env.GOOGLE_PLACES_API_KEY) {
+        for (const category of categories) {
+          for (const city of cities) {
+            if (leads.length >= Math.min(limit, 10)) break
+            if ((categoryCounts.get(category) || 0) >= 4) break
+            try {
+              const placesResponse = await fetch('https://places.googleapis.com/v1/places:searchText', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY,
+                  'X-Goog-FieldMask': [
+                    'places.id', 'places.displayName', 'places.formattedAddress', 'places.addressComponents',
+                    'places.location', 'places.googleMapsUri', 'places.websiteUri', 'places.nationalPhoneNumber',
+                    'places.rating', 'places.userRatingCount', 'places.primaryType', 'places.businessStatus',
+                  ].join(','),
+                },
+                body: JSON.stringify({
+                  textQuery: `${discoveryQueryTerm(category)} ${city} PR`,
+                  languageCode: 'pt-BR',
+                  regionCode: 'BR',
+                  pageSize: Math.min(10, limit),
+                }),
+              })
+              const placesBody = await placesResponse.json() as {
+                error?: { message?: string }
+                places?: Array<{
+                  id?: string
+                  displayName?: { text?: string }
+                  formattedAddress?: string
+                  addressComponents?: Array<{ longText?: string; shortText?: string; types?: string[] }>
+                  location?: { latitude?: number; longitude?: number }
+                  googleMapsUri?: string
+                  websiteUri?: string
+                  nationalPhoneNumber?: string
+                  rating?: number
+                  userRatingCount?: number
+                  primaryType?: string
+                  businessStatus?: string
+                }>
+              }
+              if (!placesResponse.ok) throw new Error(clean(placesBody.error?.message || `Google Places respondeu ${placesResponse.status}`))
+              for (const place of placesBody.places || []) {
+                const name = clean(place.displayName?.text, 160)
+                const normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+                const locality = place.addressComponents?.find((component) => component.types?.includes('locality'))?.longText ||
+                  place.addressComponents?.find((component) => component.types?.includes('administrative_area_level_2'))?.longText || ''
+                const stateCode = place.addressComponents?.find((component) => component.types?.includes('administrative_area_level_1'))?.shortText || ''
+                const sameCity = locality.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() ===
+                  city.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+                if (!place.id || !name || !place.googleMapsUri || stateCode !== 'PR' || !sameCity) continue
+                if (place.businessStatus && place.businessStatus !== 'OPERATIONAL') continue
+                if (excludedNames.has(normalizedName) || discoveredKeys.has(place.id)) continue
+                if (/condominio|residencial|bar\b|restaurante|loja|floricultura|igreja|escola|hospital|clinica/.test(normalizedName)) continue
+                discoveredKeys.add(place.id)
+                leads.push({
+                  id: `google-${place.id}`,
+                  externalIds: { googlePlaces: place.id, googleBusiness: place.id },
+                  name,
+                  normalizedName,
+                  categoryName: category,
+                  city: locality || city,
+                  neighborhood: '',
+                  address: clean(place.formattedAddress, 300),
+                  latitude: place.location?.latitude,
+                  longitude: place.location?.longitude,
+                  phone: clean(place.nationalPhoneNumber, 60),
+                  whatsapp: '',
+                  email: '',
+                  instagram: '',
+                  website: clean(place.websiteUri, 300),
+                  googleMapsUrl: place.googleMapsUri,
+                  googleRating: Math.max(0, Math.min(5, Number(place.rating) || 0)),
+                  googleReviewCount: Math.max(0, Number(place.userRatingCount) || 0),
+                  sources: ['Google Places API (perfil oficial)'],
+                  sourceUrls: [place.googleMapsUri, place.websiteUri || ''].filter(Boolean),
+                  score: 75,
+                  scoreReasons: [{ id: 'google-place-id-confirmed', label: 'Perfil oficial do Google Business confirmado', points: 75, evidence: place.id }],
+                })
+                categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1)
+                if (leads.length >= Math.min(limit, 10)) break
+                if ((categoryCounts.get(category) || 0) >= 4) break
+              }
+            } catch (error) {
+              warnings.push(`Google Places (${category}, ${city}): ${error instanceof Error ? error.message : 'indisponível'}`)
+            }
+          }
+          if (leads.length >= Math.min(limit, 10)) break
+        }
+        if (leads.length) {
+          return json({ leads, sources: ['Google Places API (perfil oficial)'], warnings }, 200, origin)
+        }
+      }
       if (userId && env.OPENAI_API_KEY) {
         try {
           const aiResponse = await fetch('https://api.openai.com/v1/responses', {
