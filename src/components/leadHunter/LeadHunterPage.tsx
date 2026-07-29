@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   AtSign,
@@ -1079,7 +1080,10 @@ export function LeadHunterPage({
               </div>
             </Modal>
           ) : null}
-          {rejectDialog ? <RejectLeadDialog dialog={rejectDialog} onClose={() => setRejectDialog(null)} /> : null}
+          {rejectDialog ? createPortal(
+            <RejectLeadDialog dialog={rejectDialog} onClose={() => setRejectDialog(null)} />,
+            document.body,
+          ) : null}
         </>
       ) : null}
 
