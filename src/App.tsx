@@ -5607,7 +5607,7 @@ Hero Drone`,
     setToast('Texto da proposta copiado.')
   }
 
-  const downloadQuotePdf = async (quote: Quote, shouldDownload = true) => {
+  const generateStyledQuotePdf = async (quote: Quote, shouldDownload = true) => {
     const { jsPDF } = await import('jspdf')
     let logoDataUrl = ''
     try {
@@ -5875,6 +5875,73 @@ Hero Drone`,
     }
     if (shouldDownload) setToast('PDF da proposta baixado.')
     return { blob, fileName }
+  }
+
+  const generateBasicQuotePdf = async (quote: Quote, shouldDownload = true) => {
+    const { jsPDF } = await import('jspdf')
+    const recipient = getQuoteRecipient(state, quote)
+    const items = state.quoteItems.filter((item) => item.quoteId === quote.id)
+    const remaining = Math.max(Number(quote.totalValue) - Number(quote.depositValue), 0)
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const margin = 16
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const usableWidth = pageWidth - margin * 2
+    let y = 18
+
+    const write = (value: unknown, options: { bold?: boolean; size?: number; gap?: number } = {}) => {
+      const text = String(value ?? '').trim()
+      if (!text) return
+      doc.setFont('helvetica', options.bold ? 'bold' : 'normal')
+      doc.setFontSize(options.size || 9)
+      const lines = doc.splitTextToSize(text, usableWidth) as string[]
+      for (const line of lines) {
+        if (y > pageHeight - 18) {
+          doc.addPage()
+          y = 18
+        }
+        doc.text(line, margin, y)
+        y += (options.size || 9) * 0.42
+      }
+      y += options.gap ?? 2
+    }
+
+    write(state.companySettings.companyName || 'Hero Drone', { bold: true, size: 16, gap: 1 })
+    write(`PROPOSTA COMERCIAL ${quote.quoteNumber}`, { bold: true, size: 12, gap: 5 })
+    write(`Cliente: ${recipient.company || recipient.name || 'Cliente não informado'}`, { bold: true })
+    write(recipient.whatsapp || recipient.phone ? `Contato: ${recipient.whatsapp || recipient.phone}` : '')
+    write(recipient.email ? `E-mail: ${recipient.email}` : '', { gap: 4 })
+    write(getQuoteDisplayTitle(quote, recipient.company), { bold: true, size: 11 })
+    write(quote.notes, { gap: 4 })
+    write('ITENS INCLUSOS', { bold: true, size: 10 })
+    items.forEach((item, index) => {
+      write(`${index + 1}. ${item.quantity}x ${item.description} — ${item.pricingLabel || formatCurrency(item.totalPrice)}`)
+    })
+    write(`Total: ${formatCurrency(quote.totalValue)}`, { bold: true, size: 11 })
+    write(`Sinal: ${formatCurrency(quote.depositValue)}`)
+    write(`Restante: ${formatCurrency(remaining)}`, { gap: 4 })
+    write(`Validade: ${formatDate(quote.expirationDate)}`)
+    write(`Condições: ${quote.paymentTerms || 'A combinar'}`)
+    write(`PIX: ${state.companySettings.pixKey || state.companySettings.document || '52.075.318/0001-35'}`)
+    write('Prazo de entrega: até 7 dias corridos após a captação.')
+
+    const blob = doc.output('blob')
+    const fileName = getQuotePdfFilename(quote, recipient.company)
+    if (shouldDownload) {
+      const pdfUrl = URL.createObjectURL(blob)
+      downloadUrl(pdfUrl, fileName)
+      window.setTimeout(() => URL.revokeObjectURL(pdfUrl), 60_000)
+    }
+    return { blob, fileName }
+  }
+
+  const downloadQuotePdf = async (quote: Quote, shouldDownload = true) => {
+    try {
+      return await generateStyledQuotePdf(quote, shouldDownload)
+    } catch (error) {
+      console.warn('O layout visual do PDF falhou; usando o gerador seguro.', error)
+      return generateBasicQuotePdf(quote, shouldDownload)
+    }
   }
 
   const handleDownloadQuotePdf = async (quote: Quote) => {
