@@ -6263,11 +6263,27 @@ Hero Drone`,
                     return [selected, ...neighbors]
                   })()
                   : (() => {
+                    const greenBeltPriority = (item: (typeof activeCities)[number]) => {
+                      const name = normalizeLeadText(item.name)
+                      if (/campo magro|quatro barras|campina grande do sul|balsa nova|bocaiuva do sul|tijucas do sul|mandirituba|lapa/.test(name)) return 3
+                      if (/sao jose dos pinhais|campo largo|almirante tamandare|rio branco do sul|itaperucu|contenda/.test(name)) return 2
+                      if (/araucaria|fazenda rio grande|colombo/.test(name)) return 1
+                      return 0
+                    }
                     const nearby = [...activeCities]
-                      .sort((a, b) => a.distanceFromBaseKm - b.distanceFromBaseKm || a.searchCount - b.searchCount)
-                      .slice(0, 2)
+                      .filter((item) => item.distanceFromBaseKm <= 70)
+                      .sort((a, b) =>
+                        greenBeltPriority(b) - greenBeltPriority(a)
+                        || a.searchCount - b.searchCount
+                        || a.distanceFromBaseKm - b.distanceFromBaseKm,
+                      )
+                      .slice(0, 6)
                     const underSearched = [...activeCities]
-                      .sort((a, b) => a.searchCount - b.searchCount || a.distanceFromBaseKm - b.distanceFromBaseKm)
+                      .sort((a, b) =>
+                        greenBeltPriority(b) - greenBeltPriority(a)
+                        || a.searchCount - b.searchCount
+                        || a.distanceFromBaseKm - b.distanceFromBaseKm,
+                      )
                     return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()]
                   })()
                 let city = candidateCities[0]

@@ -40,13 +40,45 @@ const clean = (value: unknown, max = 300) => [...String(value || '')]
 
 const discoveryQueryTerm = (category: string) => {
   const normalized = category.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  if (/airbnb|booking|hospedagem|casa de temporada/.test(normalized)) return 'pousada'
-  if (/resort/.test(normalized)) return 'hotel'
-  if (/chacara|sitio/.test(normalized)) return 'chácara'
+  if (/airbnb|casa de temporada/.test(normalized)) return 'cabana hospedagem natureza'
+  if (/booking|hospedagem|pousada/.test(normalized)) return 'pousada rural natureza'
+  if (/chale/.test(normalized)) return 'chalé natureza'
+  if (/cabana/.test(normalized)) return 'cabana natureza'
+  if (/glamping/.test(normalized)) return 'glamping natureza'
+  if (/refugio/.test(normalized)) return 'refúgio natureza'
+  if (/hotel fazenda/.test(normalized)) return 'hotel fazenda'
+  if (/resort/.test(normalized)) return 'eco resort natureza'
+  if (/chacara|sitio/.test(normalized)) return 'chácara para locação hospedagem'
   if (/vinicola/.test(normalized)) return 'vinícola'
   if (/campo de golfe/.test(normalized)) return 'clube de golfe'
   if (/restaurante rural/.test(normalized)) return 'restaurante rural'
   return category
+}
+
+const contactsFromOfficialWebsite = async (website: string) => {
+  if (!/^https?:\/\//i.test(website)) return {}
+  try {
+    const response = await fetch(website, {
+      headers: { 'User-Agent': 'FlyFlow Lead Hunter/2.0 (+https://flyflow-a97ab.web.app)' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(2_500),
+    })
+    if (!response.ok || !/text\/html/i.test(response.headers.get('content-type') || '')) return {}
+    const html = (await response.text()).slice(0, 750_000)
+    const whatsappMatch = html.match(/(?:wa\.me\/|api\.whatsapp\.com\/send\?(?:[^"'<> ]*&amp;|[^"'<> ]*&)*phone=|whatsapp:\/\/send\?(?:[^"'<> ]*&amp;|[^"'<> ]*&)*phone=)(\+?\d[\d ().-]{8,18}\d)/i)
+    const emailMatch = html.match(/mailto:([^"'?<> ]+)|\b([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/i)
+    const phoneMatch = html.match(/tel:(\+?\d[\d ().-]{8,18}\d)/i)
+    const whatsapp = (whatsappMatch?.[1] || '').replace(/\D/g, '').replace(/^0+/, '')
+    const email = clean(emailMatch?.[1] || emailMatch?.[2] || '', 160).toLowerCase()
+    const phone = clean(phoneMatch?.[1] || '', 60)
+    return {
+      whatsapp: whatsapp.length >= 10 && whatsapp.length <= 13 ? whatsapp : '',
+      email: /\.(png|jpg|jpeg|webp|svg)$/i.test(email) ? '' : email,
+      phone,
+    }
+  } catch {
+    return {}
+  }
 }
 
 const corsHeaders = (origin: string | null) => ({
@@ -394,6 +426,8 @@ export default {
               for (const place of placesBody.places || []) {
                 const name = clean(place.displayName?.text, 160)
                 const normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+                const normalizedAddress = clean(place.formattedAddress, 300).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+                const normalizedCategory = category.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
                 const locality = place.addressComponents?.find((component) => component.types?.includes('locality'))?.longText ||
                   place.addressComponents?.find((component) => component.types?.includes('administrative_area_level_2'))?.longText || ''
                 const stateCode = place.addressComponents?.find((component) => component.types?.includes('administrative_area_level_1'))?.shortText || ''
@@ -403,7 +437,17 @@ export default {
                 if (place.businessStatus && place.businessStatus !== 'OPERATIONAL') continue
                 if (excludedNames.has(normalizedName) || discoveredKeys.has(place.id)) continue
                 if (/condominio|residencial|bar\b|restaurante|loja|floricultura|igreja|escola|hospital|clinica/.test(normalizedName)) continue
+                const outdoorSignal = /chale|cabana|chacara|sitio|fazenda|glamping|refugio|recanto|bosque|mata|serra|campo|lago|vale|natureza|rural|eco\b/.test(`${normalizedName} ${normalizedAddress}`)
+                const genericUrbanLodging = /hotel|pousada|hostel|flat|apart hotel/.test(normalizedName) && !outdoorSignal
+                const centralAddress = /\bcentro\b|centro civico|batel|agua verde|reboucas/.test(normalizedAddress)
+                const outdoorCategory = /chale|cabana|chacara|sitio|glamping|refugio|hotel fazenda|airbnb|casa de temporada/.test(normalizedCategory)
+                if (centralAddress || genericUrbanLodging || (outdoorCategory && !outdoorSignal)) continue
                 discoveredKeys.add(place.id)
+                const potentialScore = Math.min(100,
+                  55 +
+                  (outdoorSignal ? 25 : 0) +
+                  (/chale|cabana|chacara|sitio|glamping|refugio|fazenda/.test(normalizedName) ? 15 : 0) +
+                  (Number(place.rating) >= 4.5 ? 5 : 0))
                 leads.push({
                   id: `google-${place.id}`,
                   externalIds: { googlePlaces: place.id, googleBusiness: place.id },
@@ -425,8 +469,11 @@ export default {
                   googleReviewCount: Math.max(0, Number(place.userRatingCount) || 0),
                   sources: ['Google Places API (perfil oficial)'],
                   sourceUrls: [place.googleMapsUri, place.websiteUri || ''].filter(Boolean),
-                  score: 75,
-                  scoreReasons: [{ id: 'google-place-id-confirmed', label: 'Perfil oficial do Google Business confirmado', points: 75, evidence: place.id }],
+                  score: potentialScore,
+                  scoreReasons: [
+                    { id: 'google-place-id-confirmed', label: 'Perfil oficial do Google Business confirmado', points: 45, evidence: place.id },
+                    ...(outdoorSignal ? [{ id: 'outdoor-potential', label: 'Nome ou endereço indica natureza e área externa', points: 25 }] : []),
+                  ],
                 })
                 categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1)
                 if (leads.length >= Math.min(limit, 10)) break
@@ -439,6 +486,22 @@ export default {
           if (leads.length >= Math.min(limit, 10)) break
         }
         if (leads.length) {
+          await Promise.all(leads.map(async (lead) => {
+            const website = String(lead.website || '')
+            if (!website) return
+            const contacts = await contactsFromOfficialWebsite(website)
+            if (contacts.phone && !lead.phone) lead.phone = contacts.phone
+            if (contacts.whatsapp) lead.whatsapp = contacts.whatsapp
+            if (contacts.email) lead.email = contacts.email
+            if (contacts.phone || contacts.whatsapp || contacts.email) {
+              lead.scoreReasons = [
+                ...((lead.scoreReasons as Array<Record<string, unknown>>) || []),
+                { id: 'official-contact', label: 'Contato localizado no site oficial', points: 10, evidence: website },
+              ]
+              lead.score = Math.min(100, Number(lead.score || 0) + 10)
+            }
+          }))
+          leads.sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
           return json({ leads, sources: ['Google Places API (perfil oficial)'], warnings }, 200, origin)
         }
       }
