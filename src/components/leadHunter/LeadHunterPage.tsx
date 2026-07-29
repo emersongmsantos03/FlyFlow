@@ -413,7 +413,7 @@ export function LeadHunterPage({
               <label className="text-xs font-medium text-gray-600">
                 Raio da busca
                 <select className="field-input mt-1" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))}>
-                  {[10, 25, 50, 100].map((distance) => <option key={distance} value={distance}>{distance} km</option>)}
+                  {[10, 25, 30, 40, 50, 100].map((distance) => <option key={distance} value={distance}>{distance} km</option>)}
                 </select>
               </label>
               <label className="text-xs font-medium text-gray-600">

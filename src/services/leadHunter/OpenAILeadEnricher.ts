@@ -36,8 +36,8 @@ export async function enrichLeadsWithOpenAI(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
-      leads: leads.slice(0, 3).map(({ id, name, city, categoryName, recommendedService, address, phone, whatsapp, email, website, instagram, googleMapsUrl, airbnbUrl, bookingUrl, sourceUrls }) => ({
-        id, name, city, categoryName, recommendedService, address, phone, whatsapp, email, website, instagram, googleMapsUrl, airbnbUrl, bookingUrl, sourceUrls,
+      leads: leads.slice(0, 3).map(({ id, externalIds, name, city, categoryName, recommendedService, address, phone, whatsapp, email, website, instagram, googleMapsUrl, airbnbUrl, bookingUrl, sourceUrls }) => ({
+        id, googlePlaceId: externalIds.googlePlaces || externalIds.googleBusiness || '', name, city, categoryName, recommendedService, address, phone, whatsapp, email, website, instagram, googleMapsUrl, airbnbUrl, bookingUrl, sourceUrls,
       })),
     }),
     signal,

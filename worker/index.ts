@@ -11,6 +11,7 @@ interface Env {
 
 type InputLead = {
   id: string
+  googlePlaceId?: string
   name: string
   city: string
   categoryName: string
@@ -665,6 +666,7 @@ export default {
     const body = await request.json().catch(() => null) as { leads?: InputLead[] } | null
     const leads = (Array.isArray(body?.leads) ? body.leads : []).slice(0, 3).map((lead) => ({
       id: clean(lead.id, 100),
+      googlePlaceId: clean(lead.googlePlaceId, 200),
       name: clean(lead.name, 160),
       city: clean(lead.city, 100),
       categoryName: clean(lead.categoryName, 100),
@@ -682,6 +684,39 @@ export default {
     })).filter((lead) => lead.id && lead.name)
     if (!leads.length) return json({ error: 'Envie ao menos um lead.' }, 400, origin)
     if (!env.OPENAI_API_KEY) return json({ error: 'OPENAI_API_KEY ainda não configurada no Worker.' }, 503, origin)
+
+    const verifiedContacts = new Map<string, { phone?: string; whatsapp?: string; email?: string; website?: string; googleMapsUrl?: string; sourceUrls: string[] }>()
+    await Promise.all(leads.map(async (lead) => {
+      if (!lead.googlePlaceId || !env.GOOGLE_PLACES_API_KEY) return
+      try {
+        const placeResponse = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(lead.googlePlaceId)}`, {
+          headers: {
+            'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY,
+            'X-Goog-FieldMask': 'id,googleMapsUri,websiteUri,nationalPhoneNumber',
+          },
+          signal: AbortSignal.timeout(3_000),
+        })
+        if (!placeResponse.ok) return
+        const place = await placeResponse.json() as { googleMapsUri?: string; websiteUri?: string; nationalPhoneNumber?: string }
+        const websiteContacts = place.websiteUri ? await contactsFromOfficialWebsite(place.websiteUri) : {}
+        verifiedContacts.set(lead.id, {
+          phone: clean(place.nationalPhoneNumber || websiteContacts.phone, 60),
+          whatsapp: clean(websiteContacts.whatsapp, 60),
+          email: clean(websiteContacts.email, 160),
+          website: clean(place.websiteUri, 240),
+          googleMapsUrl: clean(place.googleMapsUri, 400),
+          sourceUrls: [place.googleMapsUri, place.websiteUri].filter((item): item is string => Boolean(item)),
+        })
+        lead.phone = lead.phone || clean(place.nationalPhoneNumber || websiteContacts.phone, 60)
+        lead.whatsapp = lead.whatsapp || clean(websiteContacts.whatsapp, 60)
+        lead.email = lead.email || clean(websiteContacts.email, 160)
+        lead.website = lead.website || clean(place.websiteUri, 240)
+        lead.googleMapsUrl = clean(place.googleMapsUri, 400) || lead.googleMapsUrl
+        lead.sourceUrls = [...new Set([...lead.sourceUrls, place.googleMapsUri, place.websiteUri].filter((item): item is string => Boolean(item)))]
+      } catch {
+        // A análise com pesquisa web continua mesmo se o detalhe do Places estiver temporariamente indisponível.
+      }
+    }))
 
     const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -738,14 +773,17 @@ export default {
 
     const parsed = JSON.parse(outputText(openaiBody) || '{"leads":[]}') as { leads?: Array<Record<string, unknown>> }
     const requestedIds = new Set(leads.map((lead) => lead.id))
-    const enriched = (parsed.leads || []).filter((lead) => requestedIds.has(clean(lead.id, 100))).map((lead) => ({
-      id: clean(lead.id, 100),
+    const enriched = (parsed.leads || []).filter((lead) => requestedIds.has(clean(lead.id, 100))).map((lead) => {
+      const id = clean(lead.id, 100)
+      const verified = verifiedContacts.get(id)
+      return {
+      id,
       contactName: clean(lead.contactName, 160),
       address: clean(lead.address, 300),
-      phone: clean(lead.phone, 60),
-      whatsapp: clean(lead.whatsapp, 60),
-      email: clean(lead.email, 160),
-      website: clean(lead.website, 240),
+      phone: clean(lead.phone || verified?.phone, 60),
+      whatsapp: clean(lead.whatsapp || verified?.whatsapp, 60),
+      email: clean(lead.email || verified?.email, 160),
+      website: clean(lead.website || verified?.website, 240),
       instagram: clean(lead.instagram, 160),
       airbnbUrl: clean(lead.airbnbUrl, 400),
       bookingUrl: clean(lead.bookingUrl, 400),
@@ -761,8 +799,11 @@ export default {
           ? (lead.visualAssessment as { opportunityReasons: unknown[] }).opportunityReasons.slice(0, 5).map((item) => clean(item, 180))
           : [],
       },
-      sourceUrls: Array.isArray(lead.sourceUrls) ? lead.sourceUrls.map((item) => clean(item, 400)).filter((item) => /^https?:\/\//i.test(item)).slice(0, 8) : [],
-    }))
+      sourceUrls: [...new Set([
+        ...(Array.isArray(lead.sourceUrls) ? lead.sourceUrls.map((item) => clean(item, 400)).filter((item) => /^https?:\/\//i.test(item)) : []),
+        ...(verified?.sourceUrls || []),
+      ])].slice(0, 8),
+    }})
     return json({ leads: enriched, tokenUsage: openaiBody.usage?.total_tokens || 0 }, 200, origin)
   },
 }

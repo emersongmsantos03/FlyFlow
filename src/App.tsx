@@ -6286,7 +6286,10 @@ Hero Drone`,
                       )
                     return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()]
                   })()
-                let city = candidateCities[0]
+                const citiesWithinRadius = candidateCities.filter((item) =>
+                  filters.cityIds.length ? filters.cityIds.includes(item.id) || item.distanceFromBaseKm <= filters.radiusKm : item.distanceFromBaseKm <= filters.radiusKm,
+                )
+                let city = citiesWithinRadius[0]
                 const selectedCategories = filters.categoryIds.length
                   ? (() => {
                     const explicitlySelected = activeCategories.filter((item) => filters.categoryIds.includes(item.id) && isEligibleLeadSegment(item.name))
@@ -6316,7 +6319,7 @@ Hero Drone`,
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = Math.max(5, Math.min(state.leadHunterSettings?.maxResultsPerSearch || 10, 25))
                   const candidateTarget = resultsPerSearch * 2
-                  const searchCities = candidateCities.slice(0, filters.cityIds.length ? 4 : 3)
+                  const searchCities = citiesWithinRadius.slice(0, filters.cityIds.length ? 4 : 3)
                   const providerLimit = Math.max(20, Math.min(50, Math.ceil(candidateTarget / Math.max(searchCities.length, 1)) + 12))
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; phone?: string; whatsapp?: string; website?: string; externalIds?: Record<string, string> }) => {
@@ -6390,7 +6393,7 @@ Hero Drone`,
                   }
                   try {
                     const backendResult = await discoverLeadsFromBackend({
-                      cities: candidateCities.slice(0, 12).map((item) => item.name),
+                      cities: citiesWithinRadius.slice(0, 12).map((item) => item.name),
                       categories: selectedCategories.map((item) => item.name),
                       limit: candidateTarget,
                       excludedNames: knownProspects.map((item) => item.name).slice(0, 300),
