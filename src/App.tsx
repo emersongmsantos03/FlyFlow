@@ -6287,7 +6287,7 @@ Hero Drone`,
                     return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()]
                   })()
                 const citiesWithinRadius = candidateCities.filter((item) =>
-                  filters.cityIds.length ? filters.cityIds.includes(item.id) || item.distanceFromBaseKm <= filters.radiusKm : item.distanceFromBaseKm <= filters.radiusKm,
+                  item.distanceFromBaseKm <= Math.min(filters.radiusKm, 50),
                 )
                 let city = citiesWithinRadius[0]
                 const selectedCategories = filters.categoryIds.length

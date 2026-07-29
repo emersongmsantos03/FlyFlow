@@ -164,7 +164,7 @@ export function LeadHunterPage({
   );
   const [cityId, setCityId] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [radiusKm, setRadiusKm] = useState(settings.radiusKm);
+  const [radiusKm, setRadiusKm] = useState(Math.min(settings.radiusKm, 50));
   const [minimumScore, setMinimumScore] = useState(0);
   const [onlyNew, setOnlyNew] = useState(false);
   const [includeKnown, setIncludeKnown] = useState(false);
@@ -229,6 +229,7 @@ export function LeadHunterPage({
               (contactFilter === "ai" && lead.sources.some((source) => /openai/i.test(source)));
             return (
             !lead.discardedPermanently &&
+            (typeof lead.distanceKm !== "number" || lead.distanceKm <= 50) &&
             lead.status !== "Descartado" &&
             lead.status !== "Importado" &&
             !lead.leadId &&
@@ -247,7 +248,8 @@ export function LeadHunterPage({
   );
   const availableProspectCount = useMemo(
     () => deduplicateLeadHunterProspects(prospects).filter((lead) =>
-      !lead.discardedPermanently && lead.status !== "Descartado" && lead.status !== "Importado" && !lead.leadId,
+      !lead.discardedPermanently && lead.status !== "Descartado" && lead.status !== "Importado" && !lead.leadId &&
+      (typeof lead.distanceKm !== "number" || lead.distanceKm <= 50),
     ).length,
     [prospects],
   );
@@ -413,7 +415,7 @@ export function LeadHunterPage({
               <label className="text-xs font-medium text-gray-600">
                 Raio da busca
                 <select className="field-input mt-1" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))}>
-                  {[10, 25, 30, 40, 50, 100].map((distance) => <option key={distance} value={distance}>{distance} km</option>)}
+                  {[10, 25, 30, 40, 50].map((distance) => <option key={distance} value={distance}>{distance} km</option>)}
                 </select>
               </label>
               <label className="text-xs font-medium text-gray-600">

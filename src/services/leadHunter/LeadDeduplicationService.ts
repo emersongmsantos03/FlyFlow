@@ -12,8 +12,20 @@ const prospectKey = (lead: Pick<LeadHunterProspect, 'name' | 'city'>) =>
 export const deduplicateLeadHunterProspects = (prospects: LeadHunterProspect[]) => {
   const unique = new Map<string, LeadHunterProspect>()
   for (const prospect of prospects) {
-    const key = prospectKey(prospect)
-    const existing = unique.get(key)
+    const businessId = prospect.externalIds.googlePlaces || prospect.externalIds.googleBusiness || prospect.externalIds.openstreetmap
+    const prospectPhone = digits(prospect.whatsapp || prospect.phone)
+    const prospectDomain = domain(prospect.website)
+    const matchingEntry = [...unique.entries()].find(([, item]) => {
+      const itemBusinessId = item.externalIds.googlePlaces || item.externalIds.googleBusiness || item.externalIds.openstreetmap
+      return Boolean(
+        (businessId && itemBusinessId === businessId) ||
+        (prospectPhone && prospectPhone === digits(item.whatsapp || item.phone)) ||
+        (prospectDomain && prospectDomain === domain(item.website)) ||
+        prospectKey(item) === prospectKey(prospect)
+      )
+    })
+    const key = matchingEntry?.[0] || businessId || prospectKey(prospect)
+    const existing = matchingEntry?.[1]
     if (!existing) {
       unique.set(key, prospect)
       continue
