@@ -4,11 +4,11 @@ const normalize = (value = '') =>
 const MAXIMUM_PRIORITY =
   /chale|cabana|casa de temporada|airbnb|booking|chacara|sitio para locacao|hotel fazenda|hospedagem|pousada|glamping|refugio/
 const HIGH_PRIORITY =
-  /resort independente|eco.?resort independente|clube|campo de golfe|parque aquatico|parque|condominio|haras|pesqueiro|vinicola|buffet|espaco para eventos|local para eventos|casa de eventos/
+  /vinicola|restaurante rural|clube|campo de golfe|resort|condominio.*grande area|parque privado/
 const MEDIUM_PRIORITY =
-  /concessionaria|loteamento|incorporadora|imobiliaria|construtora|engenharia|inspecao|administradora de condominio/
+  /concessionaria|loteamento|imobiliaria.*alto padrao|condominio.*construcao/
 const FORBIDDEN =
-  /bar\b|restaurante|clinica|consultorio|salao de beleza|farmacia|mercado|supermercado|padaria|shopping|loja|academia|escola|colegio|escritorio(?! de engenharia)|pequeno comercio/
+  /bar\b|restaurante urbano|clinica|hospital|consultorio|salao de beleza|farmacia|mercado|supermercado|padaria|shopping|loja|academia|escola|colegio|escritorio|evento|igreja|pequeno comercio/
 
 export const leadSegmentPriority = (value: string) => {
   const normalized = normalize(value)

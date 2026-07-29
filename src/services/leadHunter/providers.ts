@@ -32,12 +32,15 @@ export interface LeadEnrichmentResult {
   email?: string
   website?: string
   instagram?: string
+  airbnbUrl?: string
+  bookingUrl?: string
   aiSummary?: string
   aiApproach?: string
   aiOpportunityLevel?: 'Excelente' | 'Boa' | 'Média' | 'Ruim'
   aiSocialInsight?: string
   aiContactHook?: string
   aiFirstMessage?: string
+  visualAssessment?: LeadHunterProspect['visualAssessment']
   sourceUrls: string[]
 }
 

@@ -176,7 +176,6 @@ export function LeadHunterPage({
   const [syncing, setSyncing] = useState(false);
   const [resultQuery, setResultQuery] = useState("");
   const [contactFilter, setContactFilter] = useState<"all" | "whatsapp" | "instagram" | "website" | "email" | "contactable" | "never-contacted" | "contacted" | "ai">("all");
-  const [sortMode, setSortMode] = useState<"priority" | "score" | "newest">("priority");
   const [searchBatchId, setSearchBatchId] = useState("");
   const [showMetrics, setShowMetrics] = useState(false);
   const [contactPrompt, setContactPrompt] = useState<{ lead: LeadHunterProspect; channel: "WhatsApp" | "Email" } | null>(null);
@@ -197,10 +196,6 @@ export function LeadHunterPage({
   const aiCallsToday = usageToday.calls;
   const effectiveDailyAiLimit = settings.maxDailyCalls;
   const tokensToday = usageToday.tokens;
-  const searchRank = useMemo(
-    () => new globalThis.Map(searches.map((search, index) => [search.id, index])),
-    [searches],
-  );
   const decisionMetrics = useMemo(() => leadDecisionMetrics(prospects), [prospects]);
   const latestSearchId = searches[0]?.id || "";
   useEffect(() => {
@@ -247,16 +242,8 @@ export function LeadHunterPage({
             );
           },
         )
-        .sort((a, b) => {
-          const batchDifference =
-            (searchRank.get(a.lastSearchId || "") ?? Number.MAX_SAFE_INTEGER) -
-            (searchRank.get(b.lastSearchId || "") ?? Number.MAX_SAFE_INTEGER);
-          if (batchDifference) return batchDifference;
-          return sortMode === "score" ? b.score - a.score :
-            sortMode === "newest" ? b.lastDiscoveredAt.localeCompare(a.lastDiscoveredAt) :
-            qualificationPriority(b) - qualificationPriority(a) || leadContactPriority(b) - leadContactPriority(a);
-        }),
-    [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, searchBatchId, searchRank, sortMode],
+        .sort((a, b) => b.score - a.score || qualificationPriority(b) - qualificationPriority(a) || leadContactPriority(b) - leadContactPriority(a)),
+    [categoryId, cityId, contactFilter, minimumScore, onlyNew, prospects, resultQuery, searchBatchId],
   );
   const availableProspectCount = useMemo(
     () => deduplicateLeadHunterProspects(prospects).filter((lead) =>
@@ -587,11 +574,7 @@ export function LeadHunterPage({
                   </option>
                 ))}
               </select>
-              <select aria-label="Ordenar resultados" className="field-input min-w-0" value={sortMode} onChange={(event) => setSortMode(event.target.value as typeof sortMode)}>
-                <option value="priority">Melhor oportunidade</option>
-                <option value="score">Maior score</option>
-                <option value="newest">Mais recente</option>
-              </select>
+              <div className="field-input flex min-w-0 items-center text-sm font-medium text-gray-600">Ordenado por maior score</div>
             </div>
             <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
               {[[90, "Excelente"], [75, "Boa"], [55, "Média"], [30, "Ruim"]].map(([score, label]) => (
@@ -1480,6 +1463,8 @@ function LeadDetail({
               ["E-mail", lead.email],
               ["Instagram", lead.instagram],
               ["Site", lead.website],
+              ["Airbnb", lead.airbnbUrl],
+              ["Booking.com", lead.bookingUrl],
               ["Endereço", lead.address],
               ["Bairro", lead.neighborhood],
               ["Cidade", lead.city],
@@ -1495,6 +1480,10 @@ function LeadDetail({
               </div>
             ))}
           </dl>
+          {lead.airbnbUrl || lead.bookingUrl ? <div className="mt-2 flex flex-wrap gap-2">
+            {lead.airbnbUrl ? <a className="text-xs font-semibold text-rose-700 hover:underline" href={lead.airbnbUrl} target="_blank" rel="noreferrer">Abrir anúncio no Airbnb</a> : null}
+            {lead.bookingUrl ? <a className="text-xs font-semibold text-blue-700 hover:underline" href={lead.bookingUrl} target="_blank" rel="noreferrer">Abrir anúncio no Booking.com</a> : null}
+          </div> : null}
           {lead.contactValidation ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {([
@@ -1531,6 +1520,12 @@ function LeadDetail({
               {lead.aiContactHook ? <div>
                 <strong className="block text-xs uppercase tracking-wide text-amber-800">Gancho personalizado</strong>
                 <p className="mt-1">{lead.aiContactHook}</p>
+              </div> : null}
+              {lead.visualAssessment?.opportunityReasons?.length ? <div>
+                <strong className="block text-xs uppercase tracking-wide text-amber-800">Motivos da oportunidade</strong>
+                <ul className="mt-1 list-disc space-y-1 pl-5">
+                  {lead.visualAssessment.opportunityReasons.slice(0, 5).map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
               </div> : null}
               {lead.aiFirstMessage ? <div className="rounded-lg border border-amber-200 bg-white p-3">
                 <strong className="block text-xs uppercase tracking-wide text-amber-800">Mensagem pronta</strong>

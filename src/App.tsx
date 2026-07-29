@@ -172,9 +172,10 @@ import {
 import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState } from './services/storage'
 import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapProvider'
 import type { LeadSearchProviderResult } from './services/leadHunter/providers'
-import { enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
+import { discoverLeadsFromBackend, enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
 import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
 import { buildGoogleBusinessUrl, buildInstagramUrl, buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
+import { calculateVisualOpportunityScore } from './services/leadHunter/LeadScoringService'
 import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './services/leadHunter/LeadLearningService'
 import { qualifyLead } from './services/leadHunter/LeadQualificationService'
 import { remainingAiCalls, shouldSkipManualEnrichment } from './services/leadHunter/LeadAiUsage'
@@ -697,7 +698,7 @@ const searchGooglePlacesLeads = async ({
   const service = new PlacesService(container)
   const leads: LeadSearchProviderResult['leads'] = []
   const warnings: string[] = []
-  const categoryQueries = [...new Set(categories.map((category) => category.trim()).filter(Boolean))].slice(0, 3)
+  const categoryQueries = [...new Set(categories.map((category) => category.trim()).filter(Boolean))].slice(0, 2)
 
   const getDetails = (placeId: string) => new Promise<GooglePlaceSearchResult | null>((resolve) => {
     let settled = false
@@ -728,7 +729,7 @@ const searchGooglePlacesLeads = async ({
       const timeout = window.setTimeout(() => {
         warnings.push(`Google Places: a consulta de “${category}” excedeu o tempo limite.`)
         finish([])
-      }, 8_000)
+      }, 6_000)
       service.textSearch(
         { query: `${category} em ${city}, Paraná, Brasil`, region: 'br', language: 'pt-BR' },
         (items, status) => {
@@ -741,8 +742,14 @@ const searchGooglePlacesLeads = async ({
       )
     })
 
-    for (const summary of results) {
-      const details = summary.place_id ? await getDetails(summary.place_id) : null
+    const remaining = Math.max(0, limit - leads.length)
+    const detailedResults = await Promise.all(
+      results.slice(0, remaining).map(async (summary) => ({
+        summary,
+        details: summary.place_id ? await getDetails(summary.place_id) : null,
+      })),
+    )
+    for (const { summary, details } of detailedResults) {
       const place = { ...summary, ...(details || {}) }
       if (!place.place_id || !place.name || place.business_status === 'CLOSED_PERMANENTLY') continue
       const latitude = place.geometry?.location?.lat()
@@ -1104,7 +1111,7 @@ const sanitizeFilenamePart = (value: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const getQuoteTitle = (quote: Quote) => quote.notes.split(/\n+/).find((line) => line.trim())?.trim() || 'Proposta comercial'
+const getQuoteTitle = (quote: Quote) => (quote.notes || '').split(/\n+/).find((line) => line.trim())?.trim() || 'Proposta comercial'
 
 const getQuoteDisplayTitle = (quote: Quote, recipientCompany = '') => {
   const title = getQuoteTitle(quote)
@@ -5852,7 +5859,11 @@ Hero Drone`,
     doc.text('Página 1 de 1', pageWidth - margin, pageHeight - 6, { align: 'right' })
     const fileName = getQuotePdfFilename(quote, recipient.company)
     const blob = doc.output('blob')
-    if (shouldDownload) doc.save(fileName)
+    if (shouldDownload) {
+      const pdfUrl = URL.createObjectURL(blob)
+      downloadUrl(pdfUrl, fileName)
+      window.setTimeout(() => URL.revokeObjectURL(pdfUrl), 60_000)
+    }
     if (quote.status === 'Rascunho') {
       const now = new Date().toISOString()
       updateState((current) => ({
@@ -5864,6 +5875,19 @@ Hero Drone`,
     }
     if (shouldDownload) setToast('PDF da proposta baixado.')
     return { blob, fileName }
+  }
+
+  const handleDownloadQuotePdf = async (quote: Quote) => {
+    try {
+      await downloadQuotePdf(quote)
+    } catch (error) {
+      console.error('Falha ao gerar o PDF da proposta:', error)
+      showNotice({
+        title: 'Não foi possível baixar a proposta',
+        description: 'O PDF não pôde ser gerado. Atualize a página e tente novamente.',
+        tone: 'danger',
+      })
+    }
   }
 
   const emailQuote = async (quote: Quote) => {
@@ -6184,7 +6208,7 @@ Hero Drone`,
               onEmailQuote={emailQuote}
               onScheduleReturn={(lead) => openAppointmentModal({ title: `Retorno - ${contactDisplayName(lead)}`, appointmentType: 'Follow-up', leadId: lead.id })}
               onRegisterDeposit={openQuotePayment}
-              onDownloadQuote={(quote) => { void downloadQuotePdf(quote) }}
+              onDownloadQuote={handleDownloadQuotePdf}
               onApproveQuote={confirmQuoteApproval}
               onMarkPaymentPaid={markPaymentPaid}
               onCreateProject={(lead) => beginServiceConfirmation(lead)}
@@ -6261,23 +6285,22 @@ Hero Drone`,
                     return [...explicitlySelected, ...related].slice(0, 4)
                   })()
                   : (() => {
-                    const ranked = [...(publicSearchCategories.length ? publicSearchCategories : activeCategories)]
+                    const eligible = publicSearchCategories.length ? publicSearchCategories : activeCategories
+                    const maximumPriority = eligible.filter((category) => leadSegmentPriorityPoints(category.name) === 30)
+                    const ranked = [...(maximumPriority.length ? maximumPriority : eligible)]
                       .sort((a, b) =>
                         (categoryCoveragePriority(b.name) + b.weight * 2 - b.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(b.name)] || 0)) -
                         (categoryCoveragePriority(a.name) + a.weight * 2 - a.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(a.name)] || 0)),
                       )
-                    const mixed = ranked.filter((category, index, list) =>
-                      list.findIndex((candidate) => candidate.group === category.group) === index,
-                    ).slice(0, 4)
-                    return [...mixed, ...ranked.filter((category) => !mixed.some((item) => item.id === category.id))].slice(0, 4)
+                    return ranked.slice(0, 4)
                   })()
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
                 try {
                   const provider = new OpenStreetMapLeadProvider()
                   const resultsPerSearch = Math.max(5, Math.min(state.leadHunterSettings?.maxResultsPerSearch || 10, 25))
-                  const candidateTarget = resultsPerSearch * 3
-                  const searchCities = candidateCities.slice(0, filters.cityIds.length ? 6 : 5)
+                  const candidateTarget = resultsPerSearch * 2
+                  const searchCities = candidateCities.slice(0, filters.cityIds.length ? 4 : 3)
                   const providerLimit = Math.max(20, Math.min(50, Math.ceil(candidateTarget / Math.max(searchCities.length, 1)) + 12))
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; phone?: string; whatsapp?: string; website?: string; externalIds?: Record<string, string> }) => {
@@ -6335,37 +6358,63 @@ Hero Drone`,
                       sourceUrls: [...new Set([...(existing.sourceUrls || []), ...(lead.sourceUrls || [])])],
                     })
                   }
-                  for (const searchCity of searchCities) {
-                    try {
-                      const cityResult = await provider.search(
-                        { cityNames: [searchCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
-                        AbortSignal.timeout(25_000),
-                      )
-                      cityResult.sources.forEach((source) => combinedSources.add(source))
-                      cityResult.warnings.forEach((warning) => searchWarnings.push(`${searchCity.name}: ${warning}`))
-                      cityResult.leads.forEach(addCandidate)
-                      if (combinedLeads.size >= candidateTarget) break
-                    } catch (error) {
-                      searchWarnings.push(`${searchCity.name}: ${error instanceof Error ? error.message : 'fonte indisponível'}`)
+                  const collectPublicResult = (settled: PromiseSettledResult<{
+                    searchCity: (typeof searchCities)[number]
+                    searchResult: Awaited<ReturnType<typeof provider.search>>
+                    source: string
+                  }>) => {
+                    if (settled.status === 'rejected') {
+                      searchWarnings.push(settled.reason instanceof Error ? settled.reason.message : 'Fonte pública indisponível')
+                      return
                     }
+                    const { searchCity, searchResult, source } = settled.value
+                    searchResult.sources.forEach((item) => combinedSources.add(item))
+                    searchResult.warnings.forEach((warning) => searchWarnings.push(`${source} (${searchCity.name}): ${warning}`))
+                    searchResult.leads.forEach(addCandidate)
                   }
-                  for (const searchCity of searchCities) {
-                    if (combinedLeads.size >= candidateTarget) break
-                    try {
-                      const googleResult = await searchGooglePlacesLeads({
-                        city: searchCity.name,
-                        categories: selectedCategories.map((item) => item.name),
-                        limit: 20,
-                      })
-                      googleResult.sources.forEach((source) => combinedSources.add(source))
-                      googleResult.warnings.forEach((warning) => searchWarnings.push(`${searchCity.name}: ${warning}`))
-                      googleResult.leads.forEach(addCandidate)
-                    } catch (error) {
-                      searchWarnings.push(`Google Places (${searchCity.name}): ${error instanceof Error ? error.message : 'consulta indisponível'}`)
-                    }
+                  try {
+                    const backendResult = await discoverLeadsFromBackend({
+                      cities: candidateCities.slice(0, 12).map((item) => item.name),
+                      categories: selectedCategories.map((item) => item.name),
+                      limit: candidateTarget,
+                      excludedNames: knownProspects.map((item) => item.name).slice(0, 300),
+                    }, AbortSignal.timeout(25_000))
+                    backendResult.sources.forEach((item) => combinedSources.add(item))
+                    backendResult.warnings.forEach((warning) => searchWarnings.push(`Busca protegida: ${warning}`))
+                    backendResult.leads.forEach(addCandidate)
+                  } catch (error) {
+                    searchWarnings.push(`Busca protegida: ${error instanceof Error ? error.message : 'indisponível'}`)
+                  }
+                  const primaryCity = searchCities[0]
+                  const primaryResults = combinedLeads.size >= resultsPerSearch ? [] : await Promise.allSettled([
+                    provider.search(
+                      { cityNames: [primaryCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
+                      AbortSignal.timeout(20_000),
+                    ).then((searchResult) => ({ searchCity: primaryCity, searchResult, source: 'Mapa público' })),
+                    searchGooglePlacesLeads({
+                      city: primaryCity.name,
+                      categories: selectedCategories.map((item) => item.name),
+                      limit: 16,
+                    }).then((searchResult) => ({ searchCity: primaryCity, searchResult, source: 'Google Places' })),
+                  ])
+                  primaryResults.forEach(collectPublicResult)
+                  // Só consulta outras cidades quando a primeira não formou um
+                  // lote útil. Isso evita rate limit sem voltar ao fluxo lento.
+                  for (const fallbackCity of searchCities.slice(1)) {
+                    if (combinedLeads.size >= resultsPerSearch) break
+                    const fallbackResult = await Promise.allSettled([
+                      provider.search(
+                        { cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
+                        AbortSignal.timeout(20_000),
+                      ).then((searchResult) => ({ searchCity: fallbackCity, searchResult, source: 'Mapa público' })),
+                    ])
+                    fallbackResult.forEach(collectPublicResult)
                   }
                   if (!combinedLeads.size && searchWarnings.length >= searchCities.length) {
-                    throw new Error('As fontes públicas não responderam nesta rodada. Tente novamente em instantes.')
+                    const diagnostic = searchWarnings.slice(-2).join(' · ')
+                    throw new Error(diagnostic
+                      ? `Nenhum lead novo foi localizado. ${diagnostic}`
+                      : 'Nenhum lead novo foi localizado nesta rodada.')
                   }
                   const allRankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
                   const newRankedLeads = allRankedLeads
@@ -6421,7 +6470,7 @@ Hero Drone`,
                         )
                         return !alreadyKnown
                       }).sort((a, b) => enrichmentPriority(b) - enrichmentPriority(a))
-                        .slice(0, resultsPerSearch).map((raw) => ({
+                        .slice(0, Math.min(resultsPerSearch, 6)).map((raw) => ({
                         externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '',
                         sources: [], sourceUrls: [], score: 0, scoreReasons: [], normalizedName: normalizeLeadText(raw.name), categoryId: '', status: 'Descoberto' as const,
                         isNew: true, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, changedSinceLastDisplay: false,
@@ -6430,7 +6479,7 @@ Hero Drone`,
                       }))
                       if (enrichmentInput.length) {
                         const batches = Array.from({ length: Math.ceil(enrichmentInput.length / 3) }, (_, index) => enrichmentInput.slice(index * 3, index * 3 + 3))
-                        const enrichments = await Promise.all(batches.map((batch) => enrichLeadsWithOpenAI(batch, AbortSignal.timeout(110_000))))
+                        const enrichments = await Promise.all(batches.map((batch) => enrichLeadsWithOpenAI(batch, AbortSignal.timeout(60_000))))
                         tokenUsage = enrichments.reduce((total, enrichment) => total + enrichment.tokenUsage, 0)
                         enrichmentById = new Map(enrichments.flatMap((enrichment) => enrichment.leads).map((lead) => [lead.id, lead]))
                       }
@@ -6459,12 +6508,15 @@ Hero Drone`,
                         email: enrichment.email || raw.email,
                         website: enrichment.website || raw.website,
                         instagram: enrichment.instagram || raw.instagram,
+                        airbnbUrl: enrichment.airbnbUrl || raw.airbnbUrl,
+                        bookingUrl: enrichment.bookingUrl || raw.bookingUrl,
                         aiSummary: enrichment.aiSummary || raw.aiSummary,
                         aiApproach: enrichment.aiApproach || raw.aiApproach,
                         aiOpportunityLevel: enrichment.aiOpportunityLevel || raw.aiOpportunityLevel,
                         aiSocialInsight: enrichment.aiSocialInsight || raw.aiSocialInsight,
                         aiContactHook: enrichment.aiContactHook || raw.aiContactHook,
                         aiFirstMessage: enrichment.aiFirstMessage || raw.aiFirstMessage,
+                        visualAssessment: enrichment.visualAssessment || raw.visualAssessment,
                         sources: [...new Set([...(raw.sources || []), 'OpenAI Web Search'])],
                         sourceUrls: [...new Set([...(raw.sourceUrls || []), ...enrichment.sourceUrls])],
                       } : raw
@@ -6496,7 +6548,14 @@ Hero Drone`,
                         distanceKm: leadCity.distanceFromBaseKm,
                       }
                       const qualification = qualifyLead(provisionalRaw)
-                      const evaluatedRaw = { ...provisionalRaw, qualification, score: qualification.total }
+                      const visualScore = calculateVisualOpportunityScore(provisionalRaw)
+                      const hasVisualResearch = Boolean(provisionalRaw.visualAssessment)
+                      const evaluatedRaw = {
+                        ...provisionalRaw,
+                        qualification,
+                        score: hasVisualResearch ? visualScore.score : qualification.total,
+                        scoreReasons: hasVisualResearch ? visualScore.reasons : provisionalRaw.scoreReasons,
+                      }
                       if (learningAdjustment) {
                         evaluatedRaw.scoreReasons = [
                           ...evaluatedRaw.scoreReasons,
@@ -6543,7 +6602,8 @@ Hero Drone`,
                       return hasLocation && hasPublicEvidence && isEligibleLeadSegment(lead.categoryName, lead.name)
                     })
                     incoming = incoming
-                      .sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
+                      .filter((lead) => lead.visualAssessment?.worthCommercialTime !== false)
+                      .sort((a, b) => b.score - a.score || leadContactPriority(b) - leadContactPriority(a))
                       .slice(0, resultsPerSearch)
                     newCount = incoming.filter((lead) => lead.isNew).length
                     repeatedCount = incoming.length - newCount
@@ -6579,7 +6639,7 @@ Hero Drone`,
                   return
                 }
                 try {
-                  const enrichment = await enrichLeadsWithOpenAI([prospect], AbortSignal.timeout(110_000))
+                  const enrichment = await enrichLeadsWithOpenAI([prospect], AbortSignal.timeout(75_000))
                   const enriched = enrichment.leads.find((item) => item.id === prospect.id)
                   if (!enriched) {
                     setToast('A IA não encontrou informações públicas adicionais para este lead.')
@@ -6598,12 +6658,15 @@ Hero Drone`,
                       email: enriched.email || item.email,
                       website: enriched.website || item.website,
                       instagram: enriched.instagram || item.instagram,
+                      airbnbUrl: enriched.airbnbUrl || item.airbnbUrl,
+                      bookingUrl: enriched.bookingUrl || item.bookingUrl,
                       aiSummary: enriched.aiSummary || item.aiSummary,
                       aiApproach: enriched.aiApproach || item.aiApproach,
                       aiOpportunityLevel: enriched.aiOpportunityLevel || item.aiOpportunityLevel,
                       aiSocialInsight: enriched.aiSocialInsight || item.aiSocialInsight,
                       aiContactHook: enriched.aiContactHook || item.aiContactHook,
                       aiFirstMessage: enriched.aiFirstMessage || item.aiFirstMessage,
+                      visualAssessment: enriched.visualAssessment || item.visualAssessment,
                       sources: [...new Set([...item.sources, 'OpenAI Web Search'])],
                       sourceUrls: [...new Set([...item.sourceUrls, ...enriched.sourceUrls])],
                       contactValidation: validateLeadContacts({
@@ -6848,6 +6911,14 @@ Hero Drone`,
               calendarView={calendarView}
               onCalendarViewChange={setCalendarView}
               onCreateTask={openTaskModal}
+              onCreateEvent={(defaults) => openAppointmentModal({
+                title: '',
+                appointmentType: 'Evento',
+                status: 'Agendado',
+                color: '#7c3aed',
+                createGoogleCalendar: true,
+                ...defaults,
+              })}
               onOpenAppointment={openExistingAppointment}
               onResizeAppointment={resizeAppointment}
               onMoveAppointment={moveAppointment}
@@ -6862,7 +6933,7 @@ Hero Drone`,
               onDeleteQuote={openDeleteProposal}
               onArchiveQuote={archiveProposal}
               onRestoreQuote={restoreProposal}
-              onDownloadPdf={(quote) => { void downloadQuotePdf(quote) }}
+              onDownloadPdf={handleDownloadQuotePdf}
               onEmailQuote={emailQuote}
               onApprove={confirmQuoteApproval}
               onRegisterDeposit={openQuotePayment}
@@ -8645,6 +8716,7 @@ function AgendaPage({
   calendarView,
   onCalendarViewChange,
   onCreateTask,
+  onCreateEvent,
   onOpenAppointment,
   onResizeAppointment,
   onMoveAppointment,
@@ -8653,6 +8725,7 @@ function AgendaPage({
   calendarView: 'mensal' | 'semanal' | 'diaria' | 'lista'
   onCalendarViewChange: (view: 'mensal' | 'semanal' | 'diaria' | 'lista') => void
   onCreateTask: (defaults?: TaskFormDefaults) => void
+  onCreateEvent: (defaults?: AppointmentFormDefaults) => void
   onOpenAppointment: (appointment: Appointment) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
   onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
@@ -8672,9 +8745,9 @@ function AgendaPage({
   const conflicts = findAppointmentConflicts(sortedAppointments)
   const [calendarDate, setCalendarDate] = useState(() => new Date())
   const createAtSlot = (startAt: string, endAt: string) => {
-    onCreateTask({
-      dueAt: startAt,
-      durationMinutes: getDurationMinutes(startAt, endAt),
+    onCreateEvent({
+      startAt,
+      endAt,
     })
   }
   const moveCalendar = (direction: -1 | 1) => {
@@ -8710,7 +8783,10 @@ function AgendaPage({
       <PageToolbar
         title="Agenda"
         description="Planeje compromissos, captações e retornos sem perder conflitos de horário."
-        action={<Button type="button" onClick={() => onCreateTask()}><Plus size={16} /> Novo compromisso</Button>}
+        action={<div className="flex flex-wrap gap-2">
+          <Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button>
+          <Button type="button" onClick={() => onCreateEvent()}><CalendarDays size={16} /> Novo evento</Button>
+        </div>}
       />
 
       <section className="agenda-summary-strip">

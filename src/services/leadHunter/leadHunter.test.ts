@@ -6,7 +6,7 @@ import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContac
 import { buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, opportunityLevel, refineLeadOpportunity } from './LeadOpportunityService'
 import { shouldDisplayLead } from './LeadRotationService'
 import { buildGoogleMapsRouteUrl, recommendDailyMission } from './LeadRouteService'
-import { calculateLeadScore } from './LeadScoringService'
+import { calculateLeadScore, calculateVisualOpportunityScore } from './LeadScoringService'
 import { isEligibleLeadSegment, isForbiddenLeadSegment, leadSegmentPriority } from './LeadTargetingPolicy'
 import { assessLeadEmailConfidence, assessLeadPreferredChannel, leadOutreachIdempotencyKey } from './LeadOutreachAutomation'
 import { qualifyLead } from './LeadQualificationService'
@@ -30,6 +30,22 @@ describe('Lead Hunter services', () => {
     const result = calculateLeadScore({ noDroneContent: true, largeOutdoorArea: true, duplicate: true }, createDefaultLeadHunterSettings())
     expect(result.score).toBe(45)
     expect(result.reasons).toHaveLength(3)
+  })
+
+  it('aplica a pontuação visual v2.0 e limita o resultado a 100', () => {
+    const result = calculateVisualOpportunityScore(prospect({
+      airbnbUrl: 'https://airbnb.com/rooms/1',
+      bookingUrl: 'https://booking.com/hotel/br/refugio',
+      googleRating: 4.9,
+      googleReviewCount: 140,
+      visualAssessment: {
+        hasDroneImages: false, simpleImages: true, largeOutdoorArea: true,
+        strikingNature: true, poolLakeOrView: true, activeInstagram: true,
+        professionalWebsite: true, goodVisualIdentity: true, beautifulArchitecture: true,
+      },
+    }))
+    expect(result.score).toBe(100)
+    expect(result.reasons).toContainEqual(expect.objectContaining({ id: 'no-drone', points: 30 }))
   })
 
   it('prioriza inédito e bloqueia cooldown conhecido', () => {
@@ -122,9 +138,10 @@ describe('Lead Hunter services', () => {
   it('prioriza hospedagem e exclui segmentos de baixo potencial', () => {
     expect(leadSegmentPriority('Chalé ou cabana')).toBe(3)
     expect(leadSegmentPriority('Clube e campo de golfe')).toBe(2)
-    expect(leadSegmentPriority('Construtora ou incorporadora')).toBe(1)
+    expect(leadSegmentPriority('Loteamento')).toBe(1)
     expect(isEligibleLeadSegment('Hotel ou hospedagem')).toBe(true)
-    expect(isForbiddenLeadSegment('Restaurante')).toBe(true)
+    expect(isForbiddenLeadSegment('Restaurante urbano')).toBe(true)
+    expect(leadSegmentPriority('Restaurante rural')).toBe(2)
     expect(isEligibleLeadSegment('Clínica odontológica')).toBe(false)
   })
 

@@ -125,6 +125,7 @@ export const financialStatuses = [
 
 export const appointmentTypes = [
   'Tarefa',
+  'Evento',
   'Captação',
   'Reunião',
   'Follow-up',
@@ -483,6 +484,8 @@ export interface LeadHunterProspect {
   instagram: string
   website: string
   googleMapsUrl: string
+  airbnbUrl?: string
+  bookingUrl?: string
   googleRating?: number
   googleReviewCount?: number
   photoUrl?: string
@@ -514,6 +517,25 @@ export interface LeadHunterProspect {
   aiSocialInsight?: string
   aiContactHook?: string
   aiFirstMessage?: string
+  visualAssessment?: {
+    hasDroneImages?: boolean
+    professionalImages?: boolean
+    simpleImages?: boolean
+    largeOutdoorArea?: boolean
+    strikingNature?: boolean
+    poolLakeOrView?: boolean
+    activeInstagram?: boolean
+    professionalWebsite?: boolean
+    goodVisualIdentity?: boolean
+    beautifulArchitecture?: boolean
+    lake?: boolean
+    pool?: boolean
+    forest?: boolean
+    panoramicView?: boolean
+    river?: boolean
+    worthCommercialTime?: boolean
+    opportunityReasons?: string[]
+  }
   decision?: 'Aceito' | 'Rejeitado'
   decisionAt?: string
   contactValidation?: {
