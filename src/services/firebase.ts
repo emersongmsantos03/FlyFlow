@@ -99,6 +99,22 @@ export const updateFirebaseUserTemporaryPassword = async (email: string, passwor
   if (!response.ok) throw new Error(body.error || 'Não foi possível alterar a senha temporária.')
 }
 
+export const claimFirebaseWorkspaceInvitation = async () => {
+  if (!firebaseAuth?.currentUser) throw new Error('Sessão de login indisponível.')
+  const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
+  if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
+  const token = await firebaseAuth.currentUser.getIdToken()
+  const response = await fetch(`${workerBaseUrl}/auth/claim-invitation`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  const body = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(body.error || 'Não foi possível ativar o convite.')
+}
+
 export const observeFirebaseAuth = (listener: (user: FirebaseUser | null) => void) => {
   if (!firebaseAuth) return () => undefined
   return onAuthStateChanged(firebaseAuth, listener)

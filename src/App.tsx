@@ -195,6 +195,7 @@ import {
   isFirebaseConfigured,
   observeFirebaseAuth,
   requestFirebasePasswordReset,
+  claimFirebaseWorkspaceInvitation,
   signInWithFirebase,
   signOutFromFirebase,
   updateCurrentFirebasePassword,
@@ -2576,6 +2577,13 @@ Hero Drone`,
           new Promise<never>((_, reject) => window.setTimeout(
             () => reject(new Error('O Firebase não respondeu. Verifique sua conexão e tente novamente.')),
             12_000,
+          )),
+        ])
+        await Promise.race([
+          claimFirebaseWorkspaceInvitation(),
+          new Promise<never>((_, reject) => window.setTimeout(
+            () => reject(new Error('Não foi possível ativar o convite. Tente novamente.')),
+            15_000,
           )),
         ])
         await Promise.race([

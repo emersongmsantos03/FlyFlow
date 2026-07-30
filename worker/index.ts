@@ -193,6 +193,104 @@ const updateFirebaseTemporaryPassword = async (env: Env, email: string, password
   if (!update.ok) throw new Error(updateBody.error?.message || 'O Firebase recusou a nova senha.')
 }
 
+const claimFirebaseInvitation = async (env: Env, identity: { userId: string; email: string }) => {
+  const accessToken = await firebaseAdminAccessToken(env)
+  const documentsBase = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents`
+  const invitationResponse = await fetch(`${documentsBase}/workspaceInvitations/${encodeURIComponent(identity.email)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (invitationResponse.status === 404) return false
+  const invitationDocument = await invitationResponse.json() as {
+    fields?: {
+      workspaceId?: { stringValue?: string }
+      email?: { stringValue?: string }
+      profile?: { mapValue?: { fields?: {
+        name?: { stringValue?: string }
+        role?: { stringValue?: string }
+        permissions?: { arrayValue?: { values?: Array<{ stringValue?: string }> } }
+      } } }
+    }
+  }
+  if (!invitationResponse.ok) throw new Error('Não foi possível carregar o convite.')
+  const fields = invitationDocument.fields
+  const workspaceId = fields?.workspaceId?.stringValue || ''
+  const invitationEmail = fields?.email?.stringValue?.toLowerCase() || ''
+  const profileFields = fields?.profile?.mapValue?.fields
+  const role = profileFields?.role?.stringValue || ''
+  const permissions = (profileFields?.permissions?.arrayValue?.values || [])
+    .map((item) => item.stringValue || '')
+    .filter(Boolean)
+  if (!workspaceId || invitationEmail !== identity.email || !role || !permissions.length) {
+    throw new Error('O convite está incompleto. Reenvie o acesso pela conta administradora.')
+  }
+
+  const now = new Date().toISOString()
+  const profile = {
+    mapValue: {
+      fields: {
+        id: { stringValue: identity.userId },
+        name: { stringValue: profileFields?.name?.stringValue || identity.email.split('@')[0] },
+        email: { stringValue: identity.email },
+        role: { stringValue: role },
+        permissions: { arrayValue: { values: permissions.map((permission) => ({ stringValue: permission })) } },
+        mustChangePassword: { booleanValue: true },
+        active: { booleanValue: true },
+        createdAt: { stringValue: now },
+        updatedAt: { stringValue: now },
+      },
+    },
+  }
+  const commitResponse = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents:commit`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        writes: [
+          {
+            update: {
+              name: `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/memberships/${identity.userId}`,
+              fields: {
+                workspaceId: { stringValue: workspaceId },
+                email: { stringValue: identity.email },
+                active: { booleanValue: true },
+                mustChangePassword: { booleanValue: true },
+                createdAt: { stringValue: now },
+                updatedAt: { timestampValue: now },
+              },
+            },
+          },
+          {
+            update: {
+              name: `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/workspaces/${workspaceId}/collections/users/items/${identity.userId}`,
+              fields: {
+                value: profile,
+                position: { integerValue: '0' },
+                updatedAt: { timestampValue: now },
+              },
+            },
+          },
+          {
+            update: {
+              name: `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/workspaceInvitations/${identity.email}`,
+              fields: {
+                active: { booleanValue: false },
+                claimedAt: { stringValue: now },
+                claimedBy: { stringValue: identity.userId },
+                updatedAt: { timestampValue: now },
+              },
+            },
+            updateMask: { fieldPaths: ['active', 'claimedAt', 'claimedBy', 'updatedAt'] },
+          },
+        ],
+      }),
+    },
+  )
+  const commitBody = await commitResponse.json() as { error?: { message?: string } }
+  if (!commitResponse.ok) throw new Error(commitBody.error?.message || 'Não foi possível ativar o acesso.')
+  return true
+}
+
 const workspaceForUser = async (token: string, userId: string, projectId: string) => {
   const response = await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/memberships/${encodeURIComponent(userId)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -378,6 +476,16 @@ export default {
         return json({ updated: true }, 200, origin)
       } catch (error) {
         return json({ error: error instanceof Error ? error.message : 'Não foi possível alterar a senha.' }, 400, origin)
+      }
+    }
+    if (request.method === 'POST' && url.pathname === '/auth/claim-invitation') {
+      const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
+      if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+      try {
+        const claimed = await claimFirebaseInvitation(env, identity)
+        return json({ claimed }, 200, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Não foi possível ativar o acesso.' }, 400, origin)
       }
     }
     const userId = token ? await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID) : null
