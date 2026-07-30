@@ -10,6 +10,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/memberships/$(request.auth.uid);
     }
 
+    function invitationPath() {
+      return /databases/$(database)/documents/workspaceInvitations/$(request.auth.token.email);
+    }
+
     function isActiveMember(workspaceId) {
       return signedIn()
         && exists(membershipPath())
@@ -38,6 +42,13 @@ service cloud.firestore {
       allow create: if signedIn()
         && (
           (request.auth.uid == userId && request.resource.data.workspaceId == request.auth.uid)
+          || (
+            request.auth.uid == userId
+            && exists(invitationPath())
+            && get(invitationPath()).data.active == true
+            && get(invitationPath()).data.email == request.auth.token.email
+            && request.resource.data.workspaceId == get(invitationPath()).data.workspaceId
+          )
           || isWorkspaceOwner(request.resource.data.workspaceId)
         );
 
@@ -74,9 +85,43 @@ service cloud.firestore {
 
       match /collections/{sectionId}/items/{itemId} {
         allow read: if isActiveMember(workspaceId);
-        allow create, update, delete: if isActiveMember(workspaceId)
+        allow create: if (
+            isActiveMember(workspaceId)
+            && (sectionId != 'users' || isWorkspaceOwner(workspaceId))
+          )
+          || (
+            sectionId == 'users'
+            && itemId == request.auth.uid
+            && exists(invitationPath())
+            && get(invitationPath()).data.active == true
+            && get(invitationPath()).data.workspaceId == workspaceId
+            && request.resource.data.value.email == request.auth.token.email
+            && request.resource.data.value.role == get(invitationPath()).data.profile.role
+            && request.resource.data.value.permissions == get(invitationPath()).data.profile.permissions
+          );
+        allow update, delete: if isActiveMember(workspaceId)
           && (sectionId != 'users' || isWorkspaceOwner(workspaceId));
       }
+    }
+
+    match /workspaceInvitations/{email} {
+      allow create: if isWorkspaceOwner(request.resource.data.workspaceId);
+      allow read: if signedIn()
+        && (
+          isWorkspaceOwner(resource.data.workspaceId)
+          || (request.auth.token.email == email && resource.data.email == email)
+        );
+      allow update: if isWorkspaceOwner(resource.data.workspaceId)
+        || (
+          signedIn()
+          && request.auth.token.email == email
+          && resource.data.email == email
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['active', 'claimedAt', 'claimedBy', 'updatedAt'])
+          && request.resource.data.active == false
+          && request.resource.data.claimedBy == request.auth.uid
+        );
+      allow delete: if isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /publicProposals/{proposalToken} {

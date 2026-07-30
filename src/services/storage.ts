@@ -101,7 +101,7 @@ const primaryOwnerUser = (): User => {
 }
 
 const normalizeUsers = (users: User[]) => {
-  const normalized = users
+  const normalizedCandidates = users
     .filter(Boolean)
     .map((user) => ({
       ...user,
@@ -113,6 +113,11 @@ const normalizeUsers = (users: User[]) => {
       isPrimaryOwner: user.email?.toLowerCase() === PRIMARY_OWNER_EMAIL || user.isPrimaryOwner,
       active: user.active ?? true,
     }))
+  const normalized = [...normalizedCandidates]
+    .sort((left, right) => Number(Boolean(left.invitationPending)) - Number(Boolean(right.invitationPending)))
+    .filter((user, index, collection) =>
+      collection.findIndex((candidate) => candidate.email?.toLowerCase() === user.email?.toLowerCase()) === index,
+    )
 
   const ownerIndex = normalized.findIndex((user) => user.email?.toLowerCase() === PRIMARY_OWNER_EMAIL)
   if (ownerIndex >= 0) {

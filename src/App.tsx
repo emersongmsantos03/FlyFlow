@@ -4868,9 +4868,14 @@ Hero Drone`,
       else if (isSupabaseConfigured && authSession) await saveCloudAppState(nextState)
       setState(nextState)
       setModal(null)
-      setToast(firebaseResult?.recovered
-        ? 'Acesso incompleto recuperado. O usuário já pode entrar com a senha temporária.'
-        : 'Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
+      if (firebaseResult?.requiresPasswordReset) {
+        await requestFirebasePasswordReset(normalizedEmail)
+        setToast('Convite criado e recuperação de senha enviada. O acesso será ativado no primeiro login.')
+      } else {
+        setToast(firebaseResult?.recovered
+          ? 'Acesso incompleto recuperado. O usuário já pode entrar com a senha temporária.'
+          : 'Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível criar o usuário.'
       setToast(message)
@@ -7648,7 +7653,7 @@ Hero Drone`,
         </Modal>
       ) : null}
       {modal === 'user' ? (
-        <Modal title="Novo usuário interno" onClose={() => setModal(null)}>
+        <Modal title="Adicionar pessoa ao FlyFlow" size="lg" onClose={() => setModal(null)}>
           <UserForm onCancel={() => setModal(null)} onSubmit={addUser} />
         </Modal>
       ) : null}
@@ -10668,12 +10673,14 @@ function UsersPage({
   onResetPassword: (user: User) => void
 }) {
   const canManageUsers = can(currentUser, 'manageUsers')
+  const pendingUsers = state.users.filter((user) => user.invitationPending)
+  const activeUsers = state.users.filter((user) => user.active && !user.invitationPending)
 
   return (
-    <div className="space-y-4">
+    <div className="users-page module-page space-y-4">
       <PageToolbar
         title="Usuários e permissões"
-        description="Criação interna de contas, perfis de acesso e proteção da conta principal."
+        description="Gerencie quem acessa o FlyFlow, acompanhe convites e controle cada área do sistema."
         action={
           <Button disabled={!canManageUsers} type="button" onClick={() => onOpenModal('user')}>
             <Plus size={16} /> Novo usuário
@@ -10681,23 +10688,15 @@ function UsersPage({
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-        <Panel title="Conta principal">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="mt-0.5 shrink-0 text-amber-700" size={22} />
-              <div>
-                <h3 className="font-black text-gray-950">Acesso total protegido</h3>
-                <p className="mt-1 text-sm text-gray-700">
-                  A conta {PRIMARY_OWNER.email} é a dona do sistema, não pode ser desativada e sempre mantém todas as permissões.
-                </p>
-              </div>
-            </div>
-          </div>
-        </Panel>
+      <section className="users-summary-strip">
+        <div><span><Users size={17} /></span><p>Equipe ativa<strong>{activeUsers.length}</strong><small>pessoa(s) com acesso</small></p></div>
+        <div className={pendingUsers.length ? 'is-pending' : ''}><span><Mail size={17} /></span><p>Convites pendentes<strong>{pendingUsers.length}</strong><small>aguardando primeiro acesso</small></p></div>
+        <div><span><ShieldCheck size={17} /></span><p>Conta proprietária<strong>Protegida</strong><small>{PRIMARY_OWNER.email}</small></p></div>
+      </section>
 
-        <Panel title="Usuários cadastrados">
-          <div className="overflow-x-auto">
+      <section className="users-directory">
+        <header><div><p>Diretório da equipe</p><h2>Usuários cadastrados</h2></div><small>{state.users.length} registro(s)</small></header>
+        <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
@@ -10712,19 +10711,17 @@ function UsersPage({
                 {state.users.map((user) => (
                   <tr key={user.id}>
                     <td data-label="Usuário">
-                      <div className="font-black text-gray-950">{user.name}</div>
-                      <div className="text-sm text-gray-500">{user.email}</div>
-                      {user.isPrimaryOwner ? <div className="mt-1"><Tag>Conta principal</Tag></div> : null}
+                      <div className="users-identity"><span>{user.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</span><div><strong>{user.name}</strong><small>{user.email}</small><div>{user.isPrimaryOwner ? <Tag>Conta principal</Tag> : user.invitationPending ? <Tag>Convite enviado</Tag> : null}</div></div></div>
                     </td>
                     <td data-label="Perfil">{user.role}</td>
                     <td data-label="Permissões">{permissionSummary(user)}</td>
-                    <td data-label="Status"><StatusBadge>{user.active ? 'Ativo' : 'Inativo'}</StatusBadge></td>
+                    <td data-label="Status"><StatusBadge>{user.invitationPending ? 'Pendente' : user.active ? 'Ativo' : 'Inativo'}</StatusBadge></td>
                     <td data-label="Ações">
                       <div className="flex flex-wrap gap-2">
                         <Button disabled={!canManageUsers} variant="secondary" type="button" onClick={() => onResetPassword(user)}>
-                          Redefinir senha
+                          {user.invitationPending ? 'Reenviar acesso' : 'Redefinir senha'}
                         </Button>
-                        <Button disabled={!canManageUsers || user.isPrimaryOwner} variant="ghost" type="button" onClick={() => onToggleActive(user)}>
+                        <Button disabled={!canManageUsers || user.isPrimaryOwner || user.invitationPending} variant="ghost" type="button" onClick={() => onToggleActive(user)}>
                           {user.active ? 'Desativar' : 'Ativar'}
                         </Button>
                       </div>
@@ -10733,18 +10730,14 @@ function UsersPage({
                 ))}
               </tbody>
             </table>
-          </div>
-        </Panel>
-      </div>
+        </div>
+      </section>
 
-      <Panel title="Matriz de permissões">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <Panel title="Cobertura de permissões" action={<span className="text-xs font-bold text-gray-500">Acessos ativos por módulo</span>}>
+        <div className="users-permission-grid">
           {allPermissions.map((permission) => (
-            <div key={permission} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="font-black text-gray-950">{permissionLabels[permission]}</p>
-              <p className="mt-1 text-sm text-gray-500">
-                {state.users.filter((user) => can(user, permission)).length} usuário(s) com acesso
-              </p>
+            <div key={permission}>
+              <span><ShieldCheck size={15} /></span><p><strong>{permissionLabels[permission]}</strong><small>{state.users.filter((user) => !user.invitationPending && can(user, permission)).length} usuário(s) ativo(s)</small></p>
             </div>
           ))}
         </div>
@@ -13586,44 +13579,56 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
   }
 
   return (
-    <form className="space-y-5" onSubmit={submit}>
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div> : null}
-      <div className="grid gap-4 md:grid-cols-2">
+    <form className="user-create-form" onSubmit={submit}>
+      <div className="user-create-intro">
+        <span><UserPlus size={22} /></span>
+        <div><strong>Novo acesso para a equipe</strong><p>Defina a identidade, o perfil e exatamente quais áreas essa pessoa poderá acessar.</p></div>
+      </div>
+      {error ? <div className="user-create-error"><AlertTriangle size={18} /><div><strong>Não foi possível concluir o cadastro</strong><p>{error}</p></div></div> : null}
+      <section className="user-create-section">
+        <header><span>1</span><div><strong>Dados de acesso</strong><small>A senha é temporária e deverá ser alterada no primeiro login.</small></div></header>
+        <div className="grid gap-4 md:grid-cols-2">
         <InputField label="Nome do usuário">
-          <input className="field-input" value={name} onChange={(event) => setName(event.target.value)} />
+          <input autoFocus className="field-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome e sobrenome" />
         </InputField>
         <InputField label="E-mail">
-          <input className="field-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input autoComplete="off" className="field-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="pessoa@empresa.com" />
         </InputField>
         <InputField label="Senha inicial">
           <input autoComplete="new-password" className="field-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo 8 caracteres, letra e número" />
         </InputField>
-        <InputField label="Perfil">
+        <InputField label="Perfil de acesso">
           <select className="field-input" value={role} onChange={(event) => changeRole(event.target.value as UserRole)}>
             {Object.keys(rolePermissionPresets).map((roleName) => (
               <option key={roleName} value={roleName}>{roleName}</option>
             ))}
           </select>
         </InputField>
-      </div>
+        </div>
+        <div className="user-password-hint"><ShieldCheck size={15} /><span>O usuário receberá acesso com segurança e será orientado a cadastrar uma nova senha pessoal.</span></div>
+      </section>
 
-      <div>
-        <p className="field-label">Permissões</p>
-        <div className="grid gap-2 md:grid-cols-2">
+      <section className="user-create-section">
+        <header><span>2</span><div><strong>Permissões do sistema</strong><small>O perfil selecionado sugere uma configuração; você pode personalizar abaixo.</small></div><em>{permissions.length}/{allPermissions.length} selecionadas</em></header>
+        <div className="user-permission-selector">
           {allPermissions.map((permission) => (
-            <label key={permission} className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-700">
+            <label key={permission} className={permissions.includes(permission) ? 'is-selected' : ''}>
               <input
-                className="mt-1 h-4 w-4 accent-[#d8a500]"
                 type="checkbox"
                 checked={permissions.includes(permission)}
                 onChange={() => togglePermission(permission)}
               />
-              <span>{permissionLabels[permission]}</span>
+              <span><CheckCircle2 size={16} /></span>
+              <strong>{permissionLabels[permission]}</strong>
             </label>
           ))}
         </div>
+      </section>
+
+      <div className="user-create-actions">
+        <div><ShieldCheck size={16} /><span>Permissões protegidas pelo Firebase</span></div>
+        <div><Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button><Button disabled={saving} type="submit"><UserPlus size={16} /> {saving ? 'Criando acesso…' : 'Criar usuário'}</Button></div>
       </div>
-      <FormActions onCancel={onCancel} submitDisabled={saving} submitLabel={saving ? 'Criando acesso…' : 'Criar usuário'} />
     </form>
   )
 }

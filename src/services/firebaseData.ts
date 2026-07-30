@@ -275,6 +275,63 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
     return activeWorkspaceId
   }
 
+  const normalizedEmail = user.email?.trim().toLowerCase() || ''
+  if (normalizedEmail) {
+    const invitationRef = doc(db, 'workspaceInvitations', normalizedEmail)
+    const invitationSnapshot = await getDoc(invitationRef)
+    if (invitationSnapshot.exists()) {
+      const invitation = invitationSnapshot.data() as {
+        workspaceId?: string
+        email?: string
+        active?: boolean
+        profile?: {
+          name?: string
+          role?: UserRole
+          permissions?: UserPermission[]
+        }
+      }
+      if (invitation.active && invitation.workspaceId && invitation.email === normalizedEmail && invitation.profile?.role && invitation.profile.permissions?.length) {
+        const now = new Date().toISOString()
+        const profile = {
+          id: user.uid,
+          name: invitation.profile.name || user.displayName || normalizedEmail.split('@')[0],
+          email: normalizedEmail,
+          role: invitation.profile.role,
+          permissions: invitation.profile.permissions,
+          mustChangePassword: false,
+          passwordChangedAt: now,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+        }
+        const batch = writeBatch(db)
+        batch.set(membershipRef, {
+          workspaceId: invitation.workspaceId,
+          email: normalizedEmail,
+          active: true,
+          mustChangePassword: false,
+          passwordChangedAt: now,
+          createdAt: now,
+          updatedAt: serverTimestamp(),
+        })
+        batch.set(
+          doc(db, 'workspaces', invitation.workspaceId, 'collections', 'users', 'items', user.uid),
+          { value: profile, position: 0, updatedAt: serverTimestamp() },
+        )
+        batch.set(invitationRef, {
+          active: false,
+          claimedAt: now,
+          claimedBy: user.uid,
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
+        await batch.commit()
+        activeWorkspaceId = invitation.workspaceId
+        activeMembershipRequiresPasswordChange = false
+        return activeWorkspaceId
+      }
+    }
+  }
+
   const workspaceId = user.uid
   const now = new Date().toISOString()
   const batch = writeBatch(db)
@@ -465,6 +522,34 @@ export const createFirebaseWorkspaceUser = async (input: {
   }
   const provisioned = await provisionFirebaseAuthUser(input.email, input.password)
   const now = new Date().toISOString()
+  if (provisioned.requiresPasswordReset) {
+    const pendingId = `invite-${input.email.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+    const user = {
+      id: pendingId,
+      name: input.name,
+      email: provisioned.email,
+      role: input.role,
+      permissions: input.permissions,
+      mustChangePassword: true,
+      invitationPending: true,
+      active: false,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await setDoc(doc(db, 'workspaceInvitations', provisioned.email), {
+      workspaceId: activeWorkspaceId,
+      email: provisioned.email,
+      active: true,
+      profile: {
+        name: input.name,
+        role: input.role,
+        permissions: input.permissions,
+      },
+      createdAt: now,
+      updatedAt: serverTimestamp(),
+    }, { merge: true })
+    return { user, recovered: true, requiresPasswordReset: true }
+  }
   const user = {
     id: provisioned.uid,
     name: input.name,
@@ -492,7 +577,7 @@ export const createFirebaseWorkspaceUser = async (input: {
     }
     throw error
   }
-  return { user, recovered: provisioned.recovered }
+  return { user, recovered: provisioned.recovered, requiresPasswordReset: false }
 }
 
 export const setFirebaseWorkspaceUserActive = async (userId: string, active: boolean) => {

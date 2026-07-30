@@ -100,7 +100,7 @@ export const provisionFirebaseAuthUser = async (email: string, password: string)
       } catch (signInError) {
         const signInCode = typeof signInError === 'object' && signInError && 'code' in signInError ? String(signInError.code) : ''
         if (signInCode.includes('invalid-credential') || signInCode.includes('wrong-password')) {
-          throw new Error('Este e-mail já foi criado em uma tentativa anterior, mas a senha temporária não confere. Use a senha da primeira tentativa ou redefina a senha.')
+          return { uid: '', email: normalizedEmail, recovered: false, requiresPasswordReset: true }
         }
         throw signInError
       }

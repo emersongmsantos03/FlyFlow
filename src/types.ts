@@ -319,6 +319,7 @@ export interface User {
   bio?: string
   mustChangePassword?: boolean
   passwordChangedAt?: string
+  invitationPending?: boolean
   active: boolean
   createdAt: string
   updatedAt: string
