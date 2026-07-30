@@ -8397,7 +8397,7 @@ function LoginScreen({
         <div className="login-pitch max-w-3xl py-12">
           <p className="text-sm font-bold uppercase text-[#d8a500]">Gestão para operações aéreas</p>
           <h2 className="mt-3 max-w-2xl text-4xl font-black leading-tight text-white sm:text-5xl">
-            Sua operação sob controle, do briefing à entrega.
+            Sua operação sob controle.<span>Do briefing à entrega.</span>
           </h2>
           <p className="mt-5 max-w-xl text-base leading-7 text-white/60">Um workspace simples para organizar clientes, propostas, agenda, captações, entregas e financeiro.</p>
           <div className="login-workflow" aria-label="Fluxo de trabalho do FlyFlow">
