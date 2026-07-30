@@ -183,15 +183,29 @@ const updateFirebaseTemporaryPassword = async (env: Env, email: string, password
     body: JSON.stringify({ email: [email] }),
   })
   const lookupBody = await lookup.json() as { users?: Array<{ localId?: string }>; error?: { message?: string } }
-  const localId = lookupBody.users?.[0]?.localId
-  if (!lookup.ok || !localId) throw new Error(lookupBody.error?.message === 'USER_NOT_FOUND' ? 'Conta de login não encontrada.' : 'Não foi possível localizar a conta.')
-  const update = await fetch(`${baseUrl}/accounts:update`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ localId, password }),
-  })
-  const updateBody = await update.json() as { error?: { message?: string } }
-  if (!update.ok) throw new Error(updateBody.error?.message || 'O Firebase recusou a nova senha.')
+  let localId = lookupBody.users?.[0]?.localId
+
+  // Se a conta de e-mail ainda não tiver sido registrada no Firebase Auth, crie-a via Admin API do Cloudflare Worker
+  if (!localId) {
+    const signup = await fetch(`${baseUrl}/accounts:signUp`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: false }),
+    })
+    const signupBody = await signup.json() as { localId?: string; error?: { message?: string } }
+    if (!signup.ok || !signupBody.localId) {
+      throw new Error(signupBody.error?.message || 'Não foi possível criar a conta no Firebase.')
+    }
+    localId = signupBody.localId
+  } else {
+    const update = await fetch(`${baseUrl}/accounts:update`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ localId, password }),
+    })
+    const updateBody = await update.json() as { error?: { message?: string } }
+    if (!update.ok) throw new Error(updateBody.error?.message || 'O Firebase recusou a nova senha.')
+  }
 }
 
 const claimFirebaseInvitation = async (env: Env, identity: { userId: string; email: string }) => {
