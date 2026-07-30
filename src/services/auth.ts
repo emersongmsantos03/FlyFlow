@@ -159,16 +159,34 @@ export const updateUserPassword = async (email: string, password: string) => {
   const normalizedEmail = email.trim().toLowerCase()
   const accounts = getAccounts()
   const index = accounts.findIndex((account) => account.email.toLowerCase() === normalizedEmail)
-  if (index < 0) throw new Error('Conta não encontrada.')
-
+  
   const salt = createSalt()
+  const now = new Date().toISOString()
+  const passwordHash = await hashPassword(password, salt)
+
+  if (index < 0) {
+    // Se for um usuário criado por convite/workspace e ainda sem conta auth local, crie-a agora
+    const newAccount: AuthAccount = {
+      userId: createId('usr'),
+      email: normalizedEmail,
+      salt,
+      passwordHash,
+      mustChangePassword: true,
+      createdAt: now,
+      updatedAt: now,
+      passwordChangedAt: now,
+    }
+    saveAccounts([newAccount, ...accounts])
+    return
+  }
+
   accounts[index] = {
     ...accounts[index],
     salt,
-    passwordHash: await hashPassword(password, salt),
+    passwordHash,
     mustChangePassword: false,
-    passwordChangedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    passwordChangedAt: now,
+    updatedAt: now,
   }
   saveAccounts(accounts)
 }
