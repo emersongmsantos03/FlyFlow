@@ -6,12 +6,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function hasEmail() {
+      return signedIn() && 'email' in request.auth.token && request.auth.token.email != null;
+    }
+
+    function userEmail() {
+      return request.auth.token.email;
+    }
+
     function membershipPath() {
       return /databases/$(database)/documents/memberships/$(request.auth.uid);
     }
 
     function invitationPath() {
-      return /databases/$(database)/documents/workspaceInvitations/$(request.auth.token.email);
+      return /databases/$(database)/documents/workspaceInvitations/$(userEmail());
     }
 
     function isActiveMember(workspaceId) {
@@ -29,7 +37,8 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUid == request.auth.uid
           )
           || (
-            request.auth.token.email == 'herodronecwb@gmail.com'
+            hasEmail()
+            && userEmail() == 'herodronecwb@gmail.com'
             && isActiveMember(workspaceId)
           )
         );
@@ -37,32 +46,37 @@ service cloud.firestore {
 
     match /memberships/{userId} {
       allow read: if signedIn()
-        && (request.auth.uid == userId || isWorkspaceOwner(resource.data.workspaceId));
+        && (
+          request.auth.uid == userId
+          || (resource != null && isWorkspaceOwner(resource.data.workspaceId))
+        );
 
       allow create: if signedIn()
         && (
           (request.auth.uid == userId && request.resource.data.workspaceId == request.auth.uid)
           || (
             request.auth.uid == userId
+            && hasEmail()
             && exists(invitationPath())
             && get(invitationPath()).data.active == true
-            && get(invitationPath()).data.email == request.auth.token.email
+            && get(invitationPath()).data.email == userEmail()
             && request.resource.data.workspaceId == get(invitationPath()).data.workspaceId
           )
           || isWorkspaceOwner(request.resource.data.workspaceId)
         );
 
-      allow update: if isWorkspaceOwner(resource.data.workspaceId)
+      allow update: if (resource != null && isWorkspaceOwner(resource.data.workspaceId))
         || (
           signedIn()
           && request.auth.uid == userId
+          && resource != null
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['mustChangePassword', 'passwordChangedAt', 'updatedAt'])
           && request.resource.data.workspaceId == resource.data.workspaceId
           && request.resource.data.active == resource.data.active
           && request.resource.data.mustChangePassword == false
         );
-      allow delete: if isWorkspaceOwner(resource.data.workspaceId);
+      allow delete: if resource != null && isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /workspaces/{workspaceId} {
@@ -73,6 +87,7 @@ service cloud.firestore {
       allow update: if isWorkspaceOwner(workspaceId)
         || (
           isActiveMember(workspaceId)
+          && resource != null
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
         );
       allow delete: if isWorkspaceOwner(workspaceId);
@@ -92,10 +107,11 @@ service cloud.firestore {
           || (
             sectionId == 'users'
             && itemId == request.auth.uid
+            && hasEmail()
             && exists(invitationPath())
             && get(invitationPath()).data.active == true
             && get(invitationPath()).data.workspaceId == workspaceId
-            && request.resource.data.value.email == request.auth.token.email
+            && request.resource.data.value.email == userEmail()
             && request.resource.data.value.role == get(invitationPath()).data.profile.role
             && request.resource.data.value.permissions == get(invitationPath()).data.profile.permissions
           );
@@ -108,20 +124,21 @@ service cloud.firestore {
       allow create: if isWorkspaceOwner(request.resource.data.workspaceId);
       allow read: if signedIn()
         && (
-          isWorkspaceOwner(resource.data.workspaceId)
-          || (request.auth.token.email == email && resource.data.email == email)
+          (hasEmail() && userEmail() == email)
+          || (resource != null && isWorkspaceOwner(resource.data.workspaceId))
         );
-      allow update: if isWorkspaceOwner(resource.data.workspaceId)
+      allow update: if (resource != null && isWorkspaceOwner(resource.data.workspaceId))
         || (
-          signedIn()
-          && request.auth.token.email == email
+          hasEmail()
+          && userEmail() == email
+          && resource != null
           && resource.data.email == email
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['active', 'claimedAt', 'claimedBy', 'updatedAt'])
           && request.resource.data.active == false
           && request.resource.data.claimedBy == request.auth.uid
         );
-      allow delete: if isWorkspaceOwner(resource.data.workspaceId);
+      allow delete: if resource != null && isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /publicProposals/{proposalToken} {
@@ -129,7 +146,8 @@ service cloud.firestore {
       allow create, delete: if signedIn();
       allow update: if signedIn()
         || (
-          resource.data.status in ['Gerada', 'Enviada', 'Visualizada', 'Em negociação']
+          resource != null
+          && resource.data.status in ['Gerada', 'Enviada', 'Visualizada', 'Em negociação']
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'acceptedAt', 'acceptedBy', 'acceptanceDocument', 'acceptanceIpNotice'])
           && request.resource.data.status == 'Aprovada'

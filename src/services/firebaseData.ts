@@ -266,7 +266,7 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
   const membershipSnapshot = await getDoc(membershipRef)
   const normalizedEmail = user.email?.trim().toLowerCase() || ''
   const invitationRef = normalizedEmail ? doc(db, 'workspaceInvitations', normalizedEmail) : null
-  const invitationSnapshot = invitationRef ? await getDoc(invitationRef) : null
+  const invitationSnapshot = invitationRef ? await getDoc(invitationRef).catch(() => null) : null
   const invitation = invitationSnapshot?.exists() ? invitationSnapshot.data() as {
     workspaceId?: string
     email?: string
