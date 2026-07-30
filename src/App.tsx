@@ -2647,7 +2647,7 @@ Hero Drone`,
           setAuthSession(getAuthSession())
           setFirstLoginUserId(cloudflareWorkspace.mustChangePassword ? internalUser.id : '')
           setPage(canOpenPage(internalUser, 'dashboard') ? 'dashboard' : navigation.find((item) => canOpenPage(internalUser, item.page))?.page ?? 'dashboard')
-          setToast('Login realizado com dados do Cloudflare.')
+          setToast('Login realizado no workspace compartilhado.')
           return
         }
         await Promise.race([
@@ -6397,7 +6397,16 @@ Hero Drone`,
             })}
           </nav>
           <div className="app-sidebar-footer space-y-2 border-t border-white/10 p-3 text-[0.7rem] text-white/50">
-            <p className="app-sync-status"><span aria-hidden="true" />{isFirebaseConfigured ? 'Firebase sincronizado' : isSupabaseConfigured ? 'Supabase configurado' : 'Dados locais neste navegador'}</p>
+            <p className="app-sync-status">
+              <span aria-hidden="true" />
+              {cloudflareDataReady
+                ? 'Workspace Cloudflare compartilhado'
+                : isFirebaseConfigured
+                  ? 'Conectando ao workspace'
+                  : isSupabaseConfigured
+                    ? 'Supabase configurado'
+                    : 'Dados locais neste navegador'}
+            </p>
             <details className="app-admin-menu">
               <summary>Administração</summary>
               <Button className="mt-2 w-full text-white/55 hover:bg-white/5 hover:text-red-300" variant="ghost" type="button" onClick={restoreDemo}>Limpar banco</Button>
