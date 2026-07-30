@@ -682,6 +682,14 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) })
     const url = new URL(request.url)
     if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'flyflow-lead-api' }, 200, origin)
+    if (request.method === 'GET' && url.pathname === '/internal/status') {
+      return json({
+        ok: true,
+        hasServiceAccount: Boolean(env.FIREBASE_SERVICE_ACCOUNT_JSON),
+        hasD1: Boolean(env.FLYFLOW_DB),
+        firebaseProjectId: Boolean(env.FIREBASE_PROJECT_ID),
+      }, 200, origin)
+    }
     if (request.method === 'GET' && url.pathname === '/health/places') {
       const queries = ['cabana Curitiba PR', 'chácara hospedagem São José dos Pinhais PR', 'pousada Campo Largo PR', 'casa de temporada Curitiba PR']
       const checks = await Promise.all(queries.map(async (textQuery) => {
