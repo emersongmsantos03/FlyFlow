@@ -4831,22 +4831,83 @@ Hero Drone`,
       throw new Error('Já existe um usuário com este e-mail.')
     }
 
-    try {
+    if (isFirebaseConfigured) {
       const now = new Date().toISOString()
-      const firebaseResult = isFirebaseConfigured
-        ? await createFirebaseWorkspaceUser({
+      const pendingUser: User = {
+        id: `invite-${normalizedEmail.replace(/[^a-z0-9]+/g, '-')}`,
+        name: values.name.trim(),
+        email: normalizedEmail,
+        role: values.role,
+        permissions: values.permissions,
+        mustChangePassword: true,
+        invitationPending: true,
+        active: false,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const pendingState = synchronizeOperationalState({
+        ...latestState.current,
+        users: [pendingUser, ...latestState.current.users],
+        updatedAt: now,
+      })
+      latestState.current = pendingState
+      saveAppState(pendingState)
+      setState(pendingState)
+      setModal(null)
+      setToast('Usuário adicionado. Finalizando o convite…')
+      void requestFirebasePasswordReset(normalizedEmail).catch(() => undefined)
+
+      void (async () => {
+        try {
+          const firebaseResult = await createFirebaseWorkspaceUser({
             name: values.name.trim(),
             email: normalizedEmail,
             password: values.password,
             role: values.role,
             permissions: values.permissions,
           })
-        : null
-      const localAccount = !isFirebaseConfigured
-        ? await createUserAuthAccount(normalizedEmail, values.password)
-        : null
-      const user: User = firebaseResult?.user ?? {
-        id: localAccount!.userId,
+          const completedAt = new Date().toISOString()
+          const completedState = synchronizeOperationalState({
+            ...latestState.current,
+            users: [
+              firebaseResult.user,
+              ...latestState.current.users.filter((user) => user.email.toLowerCase() !== normalizedEmail),
+            ],
+            updatedAt: completedAt,
+          })
+          latestState.current = completedState
+          saveAppState(completedState)
+          setState(completedState)
+
+          if (firebaseResult.requiresPasswordReset) {
+            setToast('Convite salvo. Enviando o e-mail para definir a senha…')
+            await requestFirebasePasswordReset(normalizedEmail)
+            setToast('Convite enviado. O acesso será ativado após a definição da senha.')
+          } else {
+            setToast(firebaseResult.recovered
+              ? 'Acesso recuperado. O usuário já pode entrar com a senha temporária.'
+              : 'Usuário criado. A senha deverá ser alterada no primeiro acesso.')
+          }
+
+          if (authSession) {
+            void Promise.race([
+              saveFirebaseAppState(completedState),
+              new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('Tempo limite.')), 10_000)),
+            ]).catch(() => undefined)
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Não foi possível finalizar o convite.'
+          setToast(`Usuário adicionado à lista, mas o convite não foi concluído: ${message}`)
+        }
+      })()
+      return
+    }
+
+    try {
+      const now = new Date().toISOString()
+      const localAccount = await createUserAuthAccount(normalizedEmail, values.password)
+      const user: User = {
+        id: localAccount.userId,
         name: values.name,
         email: normalizedEmail,
         role: values.role,
@@ -4866,22 +4927,8 @@ Hero Drone`,
       saveAppState(nextState)
       setState(nextState)
       setModal(null)
-      if (firebaseResult?.requiresPasswordReset) {
-        setToast('Convite criado. Enviando o e-mail para definir a senha…')
-        void requestFirebasePasswordReset(normalizedEmail)
-          .then(() => setToast('Convite enviado. O acesso será ativado após a definição da senha.'))
-          .catch(() => setToast('Convite salvo. Use “Reenviar acesso” para enviar novamente o e-mail.'))
-      } else {
-        setToast(firebaseResult?.recovered
-          ? 'Acesso incompleto recuperado. O usuário já pode entrar com a senha temporária.'
-          : 'Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
-      }
-      if (isFirebaseConfigured && authSession) {
-        void Promise.race([
-          saveFirebaseAppState(nextState),
-          new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('Tempo limite.')), 10_000)),
-        ]).catch(() => undefined)
-      } else if (isSupabaseConfigured && authSession) {
+      setToast('Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
+      if (isSupabaseConfigured && authSession) {
         void saveCloudAppState(nextState).catch(() => undefined)
       }
     } catch (error) {

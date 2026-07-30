@@ -520,10 +520,28 @@ export const createFirebaseWorkspaceUser = async (input: {
   if (!activeWorkspaceId || !auth.currentUser) {
     throw new Error('Entre novamente antes de criar um usuário.')
   }
-  const provisioned = await provisionFirebaseAuthUser(input.email, input.password)
   const now = new Date().toISOString()
+  const normalizedEmail = input.email.trim().toLowerCase()
+
+  // O convite precisa existir antes da chamada ao Authentication. Em conexões
+  // instáveis essa chamada pode demorar, mas o usuário convidado ainda consegue
+  // definir a senha e concluir o vínculo no primeiro login.
+  await setDoc(doc(db, 'workspaceInvitations', normalizedEmail), {
+    workspaceId: activeWorkspaceId,
+    email: normalizedEmail,
+    active: true,
+    profile: {
+      name: input.name,
+      role: input.role,
+      permissions: input.permissions,
+    },
+    createdAt: now,
+    updatedAt: serverTimestamp(),
+  }, { merge: true })
+
+  const provisioned = await provisionFirebaseAuthUser(normalizedEmail, input.password)
   if (provisioned.requiresPasswordReset) {
-    const pendingId = `invite-${input.email.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+    const pendingId = `invite-${normalizedEmail.replace(/[^a-z0-9]+/g, '-')}`
     const user = {
       id: pendingId,
       name: input.name,
@@ -536,18 +554,6 @@ export const createFirebaseWorkspaceUser = async (input: {
       createdAt: now,
       updatedAt: now,
     }
-    await setDoc(doc(db, 'workspaceInvitations', provisioned.email), {
-      workspaceId: activeWorkspaceId,
-      email: provisioned.email,
-      active: true,
-      profile: {
-        name: input.name,
-        role: input.role,
-        permissions: input.permissions,
-      },
-      createdAt: now,
-      updatedAt: serverTimestamp(),
-    }, { merge: true })
     return { user, recovered: true, requiresPasswordReset: true }
   }
   const user = {
