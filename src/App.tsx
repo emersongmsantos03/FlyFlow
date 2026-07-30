@@ -9709,7 +9709,7 @@ function QuotesPage({
 
   return (
     <div className="quotes-page module-page space-y-4">
-      <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+      <section className="quotes-toolbar rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-black text-gray-950">Propostas</h2>
@@ -9722,7 +9722,10 @@ function QuotesPage({
         </div>
         <div className="mt-3 flex flex-col gap-2 border-t border-gray-100 pt-3 md:flex-row md:items-center">
           <label className="relative block flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input className="field-input field-input-with-leading-icon min-h-9 py-1.5 text-sm" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar número, cliente ou serviço…" /></label>
-          <div className="flex gap-2"><Button className="min-h-9 px-3 py-1 text-xs" variant={scope === 'active' ? 'primary' : 'secondary'} type="button" onClick={() => setScope('active')}>Ativas</Button><Button className="min-h-9 px-3 py-1 text-xs" variant={scope === 'history' ? 'primary' : 'secondary'} type="button" onClick={() => setScope('history')}>Histórico</Button></div>
+          <div className="quotes-segmented flex gap-1">
+            <Button className="min-h-9 px-3 py-1 text-xs" variant={scope === 'active' ? 'primary' : 'secondary'} type="button" onClick={() => setScope('active')}>Ativas</Button>
+            <Button className="min-h-9 px-3 py-1 text-xs" variant={scope === 'history' ? 'primary' : 'secondary'} type="button" onClick={() => setScope('history')}>Histórico</Button>
+          </div>
         </div>
       </section>
 
@@ -9756,15 +9759,15 @@ function QuotesPage({
           return (
             <article key={quote.id} className="quote-card overflow-hidden rounded-xl border shadow-sm">
               <div className="quote-card-summary grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
-                <button className="min-w-0 text-left" type="button" onClick={() => setExpandedQuoteId(expanded ? '' : quote.id)}>
-                  <div className="flex flex-wrap items-center gap-2"><span className="text-[0.68rem] font-black uppercase tracking-wide text-gray-400">{quote.quoteNumber}</span><StatusBadge>{quote.status}</StatusBadge>{receipts.length ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Paperclip size={13} /> {receipts.length}</span> : null}</div>
+                <button className="quote-card-toggle min-w-0 text-left" type="button" onClick={() => setExpandedQuoteId(expanded ? '' : quote.id)}>
+                  <div className="quote-card-meta flex flex-wrap items-center gap-2"><span className="text-[0.68rem] font-black uppercase tracking-wide text-gray-400">{quote.quoteNumber}</span><StatusBadge>{quote.status}</StatusBadge>{receipts.length ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Paperclip size={13} /> {receipts.length}</span> : null}</div>
                   <h3 className="mt-1 truncate text-sm font-black text-gray-950 sm:text-base">{displayTitle}</h3>
                   <p className="mt-0.5 truncate text-xs text-gray-500">{recipientCompany} · {items.length} item(ns) · validade {formatDate(quote.expirationDate)}</p>
                 </button>
-                <div className="grid grid-cols-2 gap-4 text-right text-xs lg:min-w-[170px]"><div><p className="font-bold text-gray-400">Total</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.totalValue)}</p></div><div><p className="font-bold text-gray-400">Sinal</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.depositValue)}</p></div></div>
+                <div className="quote-card-values grid grid-cols-2 gap-4 text-right text-xs lg:min-w-[170px]"><div><p className="font-bold text-gray-400">Total</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.totalValue)}</p></div><div><p className="font-bold text-gray-400">Sinal</p><p className="mt-0.5 font-black text-gray-900">{formatCurrency(quote.depositValue)}</p></div></div>
                 <div className="quote-card-primary-actions flex flex-wrap items-center gap-1.5 lg:justify-end">
                   {quote.archivedAt || quote.deletedAt ? <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onRestoreQuote(quote)}>Restaurar</Button> : primaryAction}
-                  <button className="focus-ring min-h-9 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-600 hover:bg-gray-50" type="button" onClick={() => setExpandedQuoteId(expanded ? '' : quote.id)}>{expanded ? 'Fechar' : 'Detalhes'}</button>
+                  <button className="quote-details-button focus-ring min-h-9 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-600 hover:bg-gray-50" type="button" onClick={() => setExpandedQuoteId(expanded ? '' : quote.id)}>{expanded ? 'Fechar' : 'Detalhes'}</button>
                 </div>
               </div>
 

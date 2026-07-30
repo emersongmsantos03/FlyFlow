@@ -5857,12 +5857,36 @@ html[data-theme='dark'] .page-toolbar h1 {
 .customer-project-add:hover{background:#f6f7fb;color:#252832}
 
 .quotes-page .page-toolbar::before{content:"COMERCIAL • DOCUMENTOS E APROVAÇÕES"}
-.quotes-page .quote-card{border-color:#dfe4df!important;border-radius:1rem!important;background:#fff;box-shadow:0 4px 15px rgb(20 29 22/.045)!important;transition:transform .17s ease,border-color .17s ease,box-shadow .17s ease}
-.quotes-page .quote-card:hover{border-color:rgb(216 174 55/.45)!important;box-shadow:0 16px 34px rgb(20 29 22/.085)!important;transform:translateY(-2px)}
-.quotes-page .quote-card-summary{min-height:6.3rem;padding:1rem 1.15rem!important;background:linear-gradient(100deg,#fff,#f8faf7)}
-.quotes-page .quote-card-details{padding:1rem!important;background:#f6f8f5}
-.quotes-page .quote-card-section{border-color:#dfe4df!important;background:#fff}
-.quotes-page .quote-card-actions{padding:.65rem;border:1px solid #e0e5e0;border-radius:.75rem;background:#fff}
+.quotes-page{--quote-ink:#18201a;--quote-muted:#7c857e;--quote-line:#e5e9e5;--quote-soft:#f7f8f6}
+.quotes-page .quotes-toolbar{border-color:var(--quote-line)!important;border-radius:1rem!important;box-shadow:0 5px 18px rgb(21 30 23/.045)!important}
+.quotes-page .quotes-toolbar>div:first-child{gap:1rem}
+.quotes-page .quotes-toolbar input{border-color:#dfe4df;background:#fafbf9}
+.quotes-page .quotes-toolbar input:focus{border-color:#d2ac3d;background:#fff;box-shadow:0 0 0 3px rgb(216 174 55/.1)}
+.quotes-page .quotes-segmented{padding:.22rem;border:1px solid var(--quote-line);border-radius:.72rem;background:#f3f5f2}
+.quotes-page .quotes-segmented .app-button{min-height:2.05rem!important;border:0!important;border-radius:.52rem!important;box-shadow:none!important}
+.quotes-page .quotes-segmented .app-button-secondary{background:transparent!important}
+.quotes-page .quote-card{border-color:var(--quote-line)!important;border-radius:1rem!important;background:#fff;box-shadow:0 3px 12px rgb(20 29 22/.035)!important;transition:border-color .17s ease,box-shadow .17s ease,transform .17s ease}
+.quotes-page .quote-card:hover{border-color:#d7ddd7!important;box-shadow:0 9px 25px rgb(20 29 22/.07)!important;transform:translateY(-1px)}
+.quotes-page .quote-card-summary{min-height:5.6rem;padding:.9rem 1rem!important;background:#fff}
+.quotes-page .quote-card-toggle{padding-left:.15rem}
+.quotes-page .quote-card-toggle h3{margin-top:.42rem;color:var(--quote-ink);font-size:.91rem;font-weight:760;letter-spacing:-.018em}
+.quotes-page .quote-card-toggle>p{margin-top:.26rem;color:var(--quote-muted);font-size:.72rem}
+.quotes-page .quote-card-meta .status-badge{min-height:1.4rem;padding:.16rem .55rem;border:1px solid #e2e6e2;background:#f2f4f1;color:#59625b;font-size:.62rem;font-weight:750}
+.quotes-page .quote-card-values{gap:1.25rem;padding:0 .2rem}
+.quotes-page .quote-card-values>div{min-width:5.5rem}
+.quotes-page .quote-card-values p:first-child{color:#98a099;font-size:.63rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase}
+.quotes-page .quote-card-values p:last-child{margin-top:.2rem;color:var(--quote-ink);font-size:.82rem;font-weight:780}
+.quotes-page .quote-card-primary-actions{flex-wrap:nowrap}
+.quotes-page .quote-card-primary-actions .app-button{min-height:2.35rem!important;border:1px solid #dfe4df!important;border-radius:.68rem!important;background:#fff!important;color:#263029!important;box-shadow:none!important;white-space:nowrap}
+.quotes-page .quote-card-primary-actions .app-button svg{color:#b78a0d}
+.quotes-page .quote-card-primary-actions .app-button:hover{border-color:#cdb45f!important;background:#fffaf0!important}
+.quotes-page .quote-details-button{min-height:2.35rem!important;border-color:transparent!important;background:#f4f6f3;color:#59625b}
+.quotes-page .quote-details-button:hover{background:#ecefeb}
+.quotes-page .quote-card-details{padding:1rem!important;background:var(--quote-soft)}
+.quotes-page .quote-card-section{border-color:var(--quote-line)!important;background:#fff}
+.quotes-page .quote-card-actions{padding:.65rem;border:1px solid var(--quote-line);border-radius:.75rem;background:#fff}
+@media(max-width:1023px){.quotes-page .quote-card-values{justify-self:start;text-align:left}.quotes-page .quote-card-primary-actions{justify-content:flex-start}}
+@media(max-width:639px){.quotes-page .quote-card-summary{padding:.9rem!important}.quotes-page .quote-card-primary-actions{width:100%;flex-wrap:wrap}.quotes-page .quote-card-primary-actions .app-button{flex:1}.quotes-page .quote-details-button{flex:1}.quotes-page .quote-card-values{width:100%;padding:.65rem 0;border-top:1px solid var(--quote-line);border-bottom:1px solid var(--quote-line)}}
 
 .login-screen{position:relative;overflow:hidden;background:#0d120f!important}
 .login-screen::before{position:absolute;inset:-30% auto auto -15%;width:52rem;height:52rem;border-radius:50%;background:radial-gradient(circle,rgb(216 174 55/.15),transparent 65%);content:"";pointer-events:none}
