@@ -411,6 +411,7 @@ export const observeFirebaseWorkspace = (
   if (!activeWorkspaceId) return () => undefined
 
   let initialized = false
+  let awaitingLocalWriteConfirmation = false
   return onSnapshot(
     doc(db, 'workspaces', activeWorkspaceId),
     (snapshot) => {
@@ -418,9 +419,18 @@ export const observeFirebaseWorkspace = (
         initialized = true
         return
       }
-      // A interface local ja foi atualizada de forma otimista. Esperamos apenas
-      // eventos confirmados para evitar reler dados ainda pendentes no cliente.
-      if (!snapshot.metadata.hasPendingWrites) onChange()
+      // Uma gravação local gera dois eventos: pendente e confirmado. A interface
+      // já contém essa alteração, então reler todas as coleções na confirmação
+      // apenas duplica milhares de leituras e pode esgotar a cota do Firestore.
+      if (snapshot.metadata.hasPendingWrites) {
+        awaitingLocalWriteConfirmation = true
+        return
+      }
+      if (awaitingLocalWriteConfirmation) {
+        awaitingLocalWriteConfirmation = false
+        return
+      }
+      onChange()
     },
     (error) => onError?.(error),
   )

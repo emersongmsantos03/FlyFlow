@@ -201,6 +201,7 @@ const claimFirebaseInvitation = async (env: Env, identity: { userId: string; ema
   })
   if (invitationResponse.status === 404) return false
   const invitationDocument = await invitationResponse.json() as {
+    error?: { message?: string; status?: string }
     fields?: {
       workspaceId?: { stringValue?: string }
       email?: { stringValue?: string }
@@ -211,7 +212,9 @@ const claimFirebaseInvitation = async (env: Env, identity: { userId: string; ema
       } } }
     }
   }
-  if (!invitationResponse.ok) throw new Error('Não foi possível carregar o convite.')
+  if (!invitationResponse.ok) {
+    throw new Error(invitationDocument.error?.message || `Não foi possível carregar o convite (${invitationResponse.status}).`)
+  }
   const fields = invitationDocument.fields
   const workspaceId = fields?.workspaceId?.stringValue || ''
   const invitationEmail = fields?.email?.stringValue?.toLowerCase() || ''
