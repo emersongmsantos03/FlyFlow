@@ -5380,10 +5380,12 @@ html[data-theme='dark'] .dashboard-attention-list > button strong {
 .users-directory .data-table th{background:#fff}
 .users-identity{display:flex;align-items:center;gap:.7rem;min-width:13rem}
 .users-identity>span{display:grid;width:2.35rem;height:2.35rem;flex:0 0 auto;place-items:center;border-radius:.72rem;background:linear-gradient(145deg,#202821,#3b463d);color:#f4d66f;font-size:.66rem;font-weight:900}
+.users-identity>span img{width:100%;height:100%;border-radius:inherit;object-fit:cover}
 .users-identity strong,.users-identity small{display:block}
 .users-identity strong{color:#172019;font-size:.76rem}
 .users-identity small{margin-top:.08rem;color:#778078;font-size:.67rem}
 .users-identity div>div{margin-top:.28rem}
+.users-awaiting-login{display:inline-flex;align-items:center;min-height:2rem;padding:0 .55rem;color:#7b837c;font-size:.62rem;font-weight:750;white-space:nowrap}
 .users-permission-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}
 .users-permission-grid>div{display:flex;align-items:center;gap:.65rem;padding:.75rem;border:1px solid #e3e7e3;border-radius:.75rem;background:#f8faf8}
 .users-permission-grid>div>span{display:grid;width:1.8rem;height:1.8rem;flex:0 0 auto;place-items:center;border-radius:.5rem;background:#fff4cf;color:#967000}

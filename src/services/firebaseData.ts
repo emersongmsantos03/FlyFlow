@@ -296,6 +296,7 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
           id: user.uid,
           name: invitation.profile.name || user.displayName || normalizedEmail.split('@')[0],
           email: normalizedEmail,
+          ...(user.photoURL ? { avatarUrl: user.photoURL } : {}),
           role: invitation.profile.role,
           permissions: invitation.profile.permissions,
           mustChangePassword: false,

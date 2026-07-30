@@ -2570,8 +2570,20 @@ Hero Drone`,
     if (isFirebaseConfigured) {
       firebaseLoginInProgress.current = true
       try {
-        const credential = await signInWithFirebase(values.email, values.password, values.remember)
-        await ensureFirebaseWorkspace(credential.user)
+        const credential = await Promise.race([
+          signInWithFirebase(values.email, values.password, values.remember),
+          new Promise<never>((_, reject) => window.setTimeout(
+            () => reject(new Error('O Firebase não respondeu. Verifique sua conexão e tente novamente.')),
+            12_000,
+          )),
+        ])
+        await Promise.race([
+          ensureFirebaseWorkspace(credential.user),
+          new Promise<never>((_, reject) => window.setTimeout(
+            () => reject(new Error('Não foi possível carregar o acesso deste usuário. Tente novamente.')),
+            12_000,
+          )),
+        ])
         const provisionalUser = state.users.find(
           (item) => item.email.toLowerCase() === values.email.trim().toLowerCase() && item.active,
         )
@@ -2580,7 +2592,13 @@ Hero Drone`,
           setAuthSession(getAuthSession())
           setPage(canOpenPage(provisionalUser, 'dashboard') ? 'dashboard' : availableNavigation[0]?.page ?? 'dashboard')
         }
-        const cloudState = await loadFirebaseAppState(state)
+        const cloudState = await Promise.race([
+          loadFirebaseAppState(state),
+          new Promise<never>((_, reject) => window.setTimeout(
+            () => reject(new Error('O acesso foi validado, mas os dados demoraram para carregar. Tente entrar novamente.')),
+            15_000,
+          )),
+        ])
         const resolved = resolveFirebaseState(cloudState, state)
         const resolvedState = await reconcilePublicProposalAcceptances(resolved.state)
         const internalUser = resolvedState.users.find(
@@ -2607,7 +2625,7 @@ Hero Drone`,
         )
         setToast('Login realizado e dados sincronizados com o Firebase.')
       } catch (error) {
-        await signOutFromFirebase().catch(() => undefined)
+        void signOutFromFirebase().catch(() => undefined)
         clearActiveFirebaseWorkspace()
         const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
         setToast(
@@ -6175,7 +6193,12 @@ Hero Drone`,
   }
 
   if (!authSession || !currentUser) {
-    return <LoginScreen onSubmit={handleLogin} onPasswordReset={handlePasswordReset} />
+    return (
+      <>
+        <LoginScreen onSubmit={handleLogin} onPasswordReset={handlePasswordReset} />
+        {toast ? <Toast message={toast} /> : null}
+      </>
+    )
   }
 
   if (firstLoginUserId === currentUser.id) {
@@ -10766,7 +10789,14 @@ function UsersPage({
                 {state.users.map((user) => (
                   <tr key={user.id}>
                     <td data-label="Usuário">
-                      <div className="users-identity"><span>{user.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</span><div><strong>{user.name}</strong><small>{user.email}</small><div>{user.isPrimaryOwner ? <Tag>Conta principal</Tag> : user.invitationPending ? <Tag>Convite enviado</Tag> : null}</div></div></div>
+                      <div className="users-identity">
+                        <span>
+                          {user.avatarUrl
+                            ? <img src={user.avatarUrl} alt={`Foto de ${user.name}`} />
+                            : user.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}
+                        </span>
+                        <div><strong>{user.name}</strong><small>{user.email}</small><div>{user.isPrimaryOwner ? <Tag>Conta principal</Tag> : user.invitationPending ? <Tag>Aguardando definição de senha</Tag> : null}</div></div>
+                      </div>
                     </td>
                     <td data-label="Perfil">{user.role}</td>
                     <td data-label="Permissões">{permissionSummary(user)}</td>
@@ -10774,11 +10804,13 @@ function UsersPage({
                     <td data-label="Ações">
                       <div className="flex flex-wrap gap-2">
                         <Button disabled={!canManageUsers} variant="secondary" type="button" onClick={() => onResetPassword(user)}>
-                          {user.invitationPending ? 'Reenviar acesso' : 'Redefinir senha'}
+                          {user.invitationPending ? 'Enviar link de senha' : 'Redefinir senha'}
                         </Button>
-                        <Button disabled={!canManageUsers || user.isPrimaryOwner || user.invitationPending} variant="ghost" type="button" onClick={() => onToggleActive(user)}>
-                          {user.active ? 'Desativar' : 'Ativar'}
-                        </Button>
+                        {user.invitationPending
+                          ? <span className="users-awaiting-login">Ativa no primeiro login</span>
+                          : <Button disabled={!canManageUsers || user.isPrimaryOwner} variant="ghost" type="button" onClick={() => onToggleActive(user)}>
+                              {user.active ? 'Desativar' : 'Ativar'}
+                            </Button>}
                       </div>
                     </td>
                   </tr>
