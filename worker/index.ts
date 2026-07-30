@@ -488,9 +488,22 @@ const loadD1Workspace = async (env: Env, identity: { userId: string; email: stri
   if (!workspace) return null
   const state = JSON.parse(workspace.state_json) as Record<string, unknown>
   const users = Array.isArray(state.users) ? state.users as D1UserProfile[] : []
+  const membershipRows = await env.FLYFLOW_DB.prepare(
+    'SELECT profile_json FROM memberships WHERE workspace_id = ? AND active = 1',
+  ).bind(access.workspaceId).all<{ profile_json: string }>()
+  const membershipProfiles = membershipRows.results
+    .map((row) => {
+      try {
+        return JSON.parse(row.profile_json) as D1UserProfile
+      } catch {
+        return null
+      }
+    })
+    .filter((profile): profile is D1UserProfile => Boolean(profile?.email))
+  const profileEmails = new Set(membershipProfiles.map((profile) => String(profile.email).toLowerCase()))
   state.users = [
-    access.profile,
-    ...users.filter((user) => String(user.email || '').toLowerCase() !== identity.email),
+    ...membershipProfiles,
+    ...users.filter((user) => !profileEmails.has(String(user.email || '').toLowerCase())),
   ]
   return { state, profile: access.profile, mustChangePassword: access.mustChangePassword, updatedAt: workspace.updated_at }
 }
@@ -744,6 +757,30 @@ export default {
         await env.FLYFLOW_DB.prepare(
           'UPDATE workspaces SET state_json = ?, updated_at = ? WHERE workspace_id = ?',
         ).bind(stateJson, new Date().toISOString(), access.workspaceId).run()
+        const users = Array.isArray(body.state.users) ? body.state.users as D1UserProfile[] : []
+        const now = new Date().toISOString()
+        const profileStatements = users
+          .filter((user) => user.email)
+          .map((user) => {
+            const email = String(user.email).trim().toLowerCase()
+            if (user.invitationPending) {
+              return env.FLYFLOW_DB.prepare(`
+                INSERT INTO invitations (email, workspace_id, profile_json, active, updated_at)
+                VALUES (?, ?, ?, 1, ?)
+                ON CONFLICT(email) DO UPDATE SET
+                  workspace_id = excluded.workspace_id,
+                  profile_json = excluded.profile_json,
+                  active = 1,
+                  updated_at = excluded.updated_at
+              `).bind(email, access.workspaceId, JSON.stringify(user), now)
+            }
+            return env.FLYFLOW_DB.prepare(`
+              UPDATE memberships
+              SET profile_json = ?, active = ?, updated_at = ?
+              WHERE workspace_id = ? AND email = ?
+            `).bind(JSON.stringify(user), user.active === false ? 0 : 1, now, access.workspaceId, email)
+          })
+        if (profileStatements.length) await env.FLYFLOW_DB.batch(profileStatements)
         return json({ saved: true }, 200, origin)
       } catch (error) {
         return json({ error: error instanceof Error ? error.message : 'Não foi possível salvar no Cloudflare.' }, 400, origin)
