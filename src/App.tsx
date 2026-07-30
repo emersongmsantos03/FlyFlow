@@ -1469,11 +1469,26 @@ function App() {
             // is temporarily unreachable or blocked by the user's network.
           }
           if (cloudflareWorkspace) {
-            const resolvedState = normalizeAppState(cloudflareWorkspace.state)
+            let resolvedState = normalizeAppState(cloudflareWorkspace.state)
+            const userEmail = firebaseUser.email?.toLowerCase() || ''
+            const localUser = localState.users.find((user) => user.email.toLowerCase() === userEmail)
             const internalUser = resolvedState.users.find(
-              (user) => user.email.toLowerCase() === firebaseUser.email?.toLowerCase(),
+              (user) => user.email.toLowerCase() === userEmail,
             )
             if (!internalUser?.active) throw new Error('Usuário sem perfil ativo no Cloudflare.')
+
+            const bestAvatarUrl = internalUser.avatarUrl || localUser?.avatarUrl || firebaseUser.photoURL || ''
+            let stateWasUpdated = false
+            if (bestAvatarUrl && internalUser.avatarUrl !== bestAvatarUrl) {
+              resolvedState = {
+                ...resolvedState,
+                users: resolvedState.users.map((user) =>
+                  user.email.toLowerCase() === userEmail ? { ...user, avatarUrl: bestAvatarUrl } : user,
+                ),
+              }
+              stateWasUpdated = true
+            }
+
             if (cancelled) return
             latestState.current = resolvedState
             saveAppState(resolvedState)
@@ -1483,6 +1498,12 @@ function App() {
             setFirstLoginUserId(cloudflareWorkspace.mustChangePassword ? internalUser.id : '')
             saveAuthSession({ userId: internalUser.id, email: internalUser.email }, true)
             setAuthSession(getAuthSession())
+
+            if (stateWasUpdated) {
+              void saveCloudflareWorkspace(resolvedState, cloudflareWorkspace.updatedAt)
+                .then((newUpdatedAt) => { if (newUpdatedAt) cloudflareVersion.current = newUpdatedAt })
+                .catch(() => undefined)
+            }
             return
           }
 

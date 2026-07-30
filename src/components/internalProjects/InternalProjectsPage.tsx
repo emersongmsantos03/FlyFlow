@@ -102,6 +102,31 @@ export function InternalProjectsPage({
   const [editing, setEditing] = useState<InternalProject | null>(null)
   const [menuId, setMenuId] = useState('')
   const [sortBy, setSortBy] = useState<'updated' | 'due' | 'priority'>('updated')
+  const [expandedChecklistId, setExpandedChecklistId] = useState<string | null>(null)
+
+  const toggleChecklistItem = (project: InternalProject, categoryId: string, itemId: string) => {
+    const updatedChecklist = (project.checklist || []).map((category) => {
+      if (category.id !== categoryId) return category
+      return {
+        ...category,
+        items: category.items.map((item) => {
+          if (item.id !== itemId) return item
+          const completed = !item.completed
+          return {
+            ...item,
+            completed,
+            completedAt: completed ? new Date().toISOString() : undefined,
+          }
+        }),
+      }
+    })
+    const allItems = updatedChecklist.flatMap((cat) => cat.items)
+    const progress = allItems.length
+      ? Math.round((allItems.filter((item) => item.completed).length / allItems.length) * 100)
+      : project.progress
+    const updatedStatus = progress === 100 ? 'Concluído' : (project.status === 'Concluído' ? 'Em andamento' : project.status)
+    patch(project.id, { checklist: updatedChecklist, progress, status: updatedStatus }, 'Checklist atualizado.')
+  }
 
   const visible = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('pt-BR')
@@ -172,10 +197,11 @@ export function InternalProjectsPage({
     const due = daysTo(project.dueDate)
     const late = due !== null && due < 0 && project.status !== 'Concluído'
     const checklist = checklistStats(project)
+    const isExpanded = expandedChecklistId === project.id
     return (
       <article
         key={project.id}
-        className="group relative rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md"
+        className="group relative rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm transition hover:border-gray-300 hover:shadow-md"
       >
         <div className="flex items-start justify-between gap-2">
           <button className="min-w-0 flex-1 text-left" type="button" onClick={() => setEditing({ ...project })}>
@@ -199,12 +225,43 @@ export function InternalProjectsPage({
           {project.tags.slice(0, 2).map((tag) => <span key={tag} className="rounded-md bg-amber-50 px-2 py-1 text-[0.65rem] font-semibold text-amber-700">#{tag}</span>)}
         </div>
         <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between text-[0.68rem] font-semibold text-gray-500"><span>{checklist.total ? `${checklist.completed}/${checklist.total} tarefas` : 'Progresso'}</span><span>{checklist.progress}%</span></div>
+          <button
+            type="button"
+            className="mb-1.5 flex w-full items-center justify-between text-[0.68rem] font-semibold text-gray-500 hover:text-gray-900"
+            onClick={() => setExpandedChecklistId(isExpanded ? null : project.id)}
+          >
+            <span className="flex items-center gap-1.5"><ListChecks size={13} /> {checklist.total ? `${checklist.completed}/${checklist.total} tarefas` : 'Adicionar checklist'}</span>
+            <span>{checklist.progress}%</span>
+          </button>
           <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#c9a227] transition-all" style={{ width: `${checklist.progress}%` }} /></div>
         </div>
+        {isExpanded && (project.checklist || []).length > 0 ? (
+          <div className="mt-3 space-y-2 rounded-lg border border-gray-100 bg-gray-50/70 p-2.5 text-xs">
+            {(project.checklist || []).map((cat) => (
+              <div key={cat.id} className="space-y-1">
+                <p className="text-[0.68rem] font-bold text-gray-700">{cat.name}</p>
+                {cat.items.map((item) => (
+                  <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-white">
+                    <input
+                      type="checkbox"
+                      checked={item.completed}
+                      onChange={() => toggleChecklistItem(project, cat.id, item.id)}
+                      className="h-3.5 w-3.5 rounded border-gray-300 accent-[#c9a227]"
+                    />
+                    <span className={`text-[0.72rem] ${item.completed ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{item.title}</span>
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-[0.68rem] font-semibold">
           <span className={`inline-flex items-center gap-1.5 ${late ? 'text-red-600' : 'text-gray-500'}`}><CalendarDays size={13} /> {late ? `${Math.abs(due!)}d atrasado` : formatDate(project.dueDate)}</span>
-          <span className="flex items-center gap-1.5 text-gray-500" title={owner?.name}><span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-[0.6rem] font-bold text-white">{owner ? owner.name.split(' ').slice(0, 2).map((part) => part[0]).join('') : <UserRound size={12} />}</span></span>
+          <span className="flex items-center gap-1.5 text-gray-500" title={owner?.name}>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-900 text-[0.6rem] font-bold text-white">
+              {owner?.avatarUrl ? <img src={owner.avatarUrl} alt={owner.name} className="h-full w-full object-cover" /> : owner ? owner.name.split(' ').slice(0, 2).map((part) => part[0]).join('') : <UserRound size={12} />}
+            </span>
+          </span>
         </div>
       </article>
     )

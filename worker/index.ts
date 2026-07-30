@@ -426,7 +426,7 @@ const bootstrapD1Workspace = async (
     env.FLYFLOW_DB.prepare(`
       INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
       VALUES (?, ?, ?, ?, 1, 0, ?)
-      ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json, active = 1, updated_at = excluded.updated_at
+      ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, profile_json = excluded.profile_json, active = 1, updated_at = excluded.updated_at
     `).bind(ownerUserId, workspaceId, 'herodronecwb@gmail.com', JSON.stringify({ ...owner, id: ownerUserId, active: true }), now),
   ]
   users
@@ -446,7 +446,7 @@ const bootstrapD1Workspace = async (
       statements.push(env.FLYFLOW_DB.prepare(`
         INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
         VALUES (?, ?, ?, ?, 1, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
+        ON CONFLICT(email) DO UPDATE SET
           workspace_id = excluded.workspace_id,
           email = excluded.email,
           profile_json = excluded.profile_json,
@@ -507,7 +507,7 @@ const claimD1Invitation = async (env: Env, identity: { userId: string; email: st
     env.FLYFLOW_DB.prepare(`
       INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
       VALUES (?, ?, ?, ?, 1, 1, ?)
-      ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json, active = 1, must_change_password = 1, updated_at = excluded.updated_at
+      ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, profile_json = excluded.profile_json, active = 1, must_change_password = 1, updated_at = excluded.updated_at
     `).bind(identity.userId, invitation.workspace_id, identity.email, JSON.stringify(profile), now),
     env.FLYFLOW_DB.prepare('UPDATE invitations SET active = 0, updated_at = ? WHERE email = ?').bind(now, identity.email),
   ])
