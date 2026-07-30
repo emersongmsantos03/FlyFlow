@@ -264,48 +264,71 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
   const { db } = ensureServices()
   const membershipRef = doc(db, 'memberships', user.uid)
   const membershipSnapshot = await getDoc(membershipRef)
+  const normalizedEmail = user.email?.trim().toLowerCase() || ''
+  const invitationRef = normalizedEmail ? doc(db, 'workspaceInvitations', normalizedEmail) : null
+  const invitationSnapshot = invitationRef ? await getDoc(invitationRef) : null
+  const invitation = invitationSnapshot?.exists() ? invitationSnapshot.data() as {
+    workspaceId?: string
+    email?: string
+    active?: boolean
+    profile?: {
+      name?: string
+      role?: UserRole
+      permissions?: UserPermission[]
+    }
+  } : null
+
+  const validInvitation = Boolean(
+    invitation?.active
+    && invitation.workspaceId
+    && invitation.email === normalizedEmail
+    && invitation.profile?.role
+    && invitation.profile.permissions?.length,
+  )
+
+  const claimInvitation = async (workspaceId: string) => {
+    if (!validInvitation || !invitationRef || !invitation?.profile) return
+    const now = new Date().toISOString()
+    const profile = {
+      id: user.uid,
+      name: invitation.profile.name || user.displayName || normalizedEmail.split('@')[0],
+      email: normalizedEmail,
+      ...(user.photoURL ? { avatarUrl: user.photoURL } : {}),
+      role: invitation.profile.role,
+      permissions: invitation.profile.permissions,
+      mustChangePassword: true,
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await setDoc(
+      doc(db, 'workspaces', workspaceId, 'collections', 'users', 'items', user.uid),
+      { value: profile, position: 0, updatedAt: serverTimestamp() },
+    )
+    await setDoc(invitationRef, {
+      active: false,
+      claimedAt: now,
+      claimedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    }, { merge: true })
+  }
 
   if (membershipSnapshot.exists()) {
     const membership = membershipSnapshot.data() as { workspaceId?: string; active?: boolean; mustChangePassword?: boolean }
     if (!membership.active || !membership.workspaceId) {
       throw new Error('Usuário sem acesso ativo ao espaço de trabalho.')
     }
+    if (validInvitation && invitation?.workspaceId === membership.workspaceId) {
+      await claimInvitation(membership.workspaceId)
+    }
     activeWorkspaceId = membership.workspaceId
     activeMembershipRequiresPasswordChange = Boolean(membership.mustChangePassword)
     return activeWorkspaceId
   }
 
-  const normalizedEmail = user.email?.trim().toLowerCase() || ''
-  if (normalizedEmail) {
-    const invitationRef = doc(db, 'workspaceInvitations', normalizedEmail)
-    const invitationSnapshot = await getDoc(invitationRef)
-    if (invitationSnapshot.exists()) {
-      const invitation = invitationSnapshot.data() as {
-        workspaceId?: string
-        email?: string
-        active?: boolean
-        profile?: {
-          name?: string
-          role?: UserRole
-          permissions?: UserPermission[]
-        }
-      }
-      if (invitation.active && invitation.workspaceId && invitation.email === normalizedEmail && invitation.profile?.role && invitation.profile.permissions?.length) {
+  if (validInvitation && invitation?.workspaceId) {
         const now = new Date().toISOString()
-        const profile = {
-          id: user.uid,
-          name: invitation.profile.name || user.displayName || normalizedEmail.split('@')[0],
-          email: normalizedEmail,
-          ...(user.photoURL ? { avatarUrl: user.photoURL } : {}),
-          role: invitation.profile.role,
-          permissions: invitation.profile.permissions,
-          mustChangePassword: true,
-          active: true,
-          createdAt: now,
-          updatedAt: now,
-        }
-        const batch = writeBatch(db)
-        batch.set(membershipRef, {
+        await setDoc(membershipRef, {
           workspaceId: invitation.workspaceId,
           email: normalizedEmail,
           active: true,
@@ -313,22 +336,10 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
           createdAt: now,
           updatedAt: serverTimestamp(),
         })
-        batch.set(
-          doc(db, 'workspaces', invitation.workspaceId, 'collections', 'users', 'items', user.uid),
-          { value: profile, position: 0, updatedAt: serverTimestamp() },
-        )
-        batch.set(invitationRef, {
-          active: false,
-          claimedAt: now,
-          claimedBy: user.uid,
-          updatedAt: serverTimestamp(),
-        }, { merge: true })
-        await batch.commit()
+        await claimInvitation(invitation.workspaceId)
         activeWorkspaceId = invitation.workspaceId
         activeMembershipRequiresPasswordChange = true
         return activeWorkspaceId
-      }
-    }
   }
 
   const workspaceId = user.uid
