@@ -84,13 +84,20 @@ export const observeFirebaseAuth = (listener: (user: FirebaseUser | null) => voi
 
 export const provisionFirebaseAuthUser = async (email: string, password: string) => {
   if (!isFirebaseConfigured) throw new Error('Firebase não configurado.')
-
   const secondaryApp = initializeApp(firebaseConfig, `flyflow-user-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   const secondaryAuth = getAuth(secondaryApp)
 
   try {
     const credential = await createUserWithEmailAndPassword(secondaryAuth, email.trim().toLowerCase(), password)
     return { uid: credential.user.uid, email: credential.user.email ?? email.trim().toLowerCase() }
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+    if (code.includes('email-already-in-use')) throw new Error('Já existe uma conta de login com este e-mail. Use outro e-mail ou redefina a senha da conta existente.')
+    if (code.includes('weak-password')) throw new Error('A senha temporária é muito fraca. Use pelo menos 8 caracteres, uma letra e um número.')
+    if (code.includes('invalid-email')) throw new Error('O e-mail informado é inválido.')
+    if (code.includes('operation-not-allowed')) throw new Error('A criação de usuários por e-mail está desativada no Firebase Authentication.')
+    if (code.includes('too-many-requests')) throw new Error('Muitas tentativas foram realizadas. Aguarde alguns minutos e tente novamente.')
+    throw error
   } finally {
     await signOut(secondaryAuth).catch(() => undefined)
     await deleteApp(secondaryApp)

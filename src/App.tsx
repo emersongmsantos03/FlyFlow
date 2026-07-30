@@ -37,6 +37,7 @@ import {
   MessageCircle,
   Moon,
   PackageCheck,
+  Palette,
   Paperclip,
   Pencil,
   Plus,
@@ -4833,12 +4834,21 @@ Hero Drone`,
     }
 
     try {
-      const account = isFirebaseConfigured
-        ? await createFirebaseWorkspaceUser(normalizedEmail, values.password)
-        : await createUserAuthAccount(normalizedEmail, values.password)
       const now = new Date().toISOString()
-      const user: User = {
-        id: account.userId,
+      const firebaseResult = isFirebaseConfigured
+        ? await createFirebaseWorkspaceUser({
+            name: values.name.trim(),
+            email: normalizedEmail,
+            password: values.password,
+            role: values.role,
+            permissions: values.permissions,
+          })
+        : null
+      const localAccount = !isFirebaseConfigured
+        ? await createUserAuthAccount(normalizedEmail, values.password)
+        : null
+      const user: User = firebaseResult?.user ?? {
+        id: localAccount!.userId,
         name: values.name,
         email: normalizedEmail,
         role: values.role,
@@ -4860,7 +4870,9 @@ Hero Drone`,
       else if (isSupabaseConfigured && authSession) await saveCloudAppState(nextState)
       setState(nextState)
       setModal(null)
-      setToast('Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
+      setToast(firebaseResult?.recovered
+        ? 'Acesso incompleto recuperado. O usuário já pode entrar com a senha temporária.'
+        : 'Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Não foi possível criar o usuário.')
     }
@@ -11576,9 +11588,8 @@ function MapsAddressField({
           )}
         </div>
 
-        {isLoading || suggestions.length ? (
+        {suggestions.length ? (
           <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl">
-            {isLoading ? <p className="px-3 py-2 text-sm font-bold text-gray-500">Buscando no Maps...</p> : null}
             {suggestions.map((suggestion) => (
               <button
                 key={suggestion.place_id}
@@ -11595,6 +11606,7 @@ function MapsAddressField({
             ))}
           </div>
         ) : null}
+        {isLoading ? <p className="mt-1.5 flex items-center gap-2 px-1 text-xs font-semibold text-gray-500"><span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-[#d8a500]" /> Buscando endereços no Maps…</p> : null}
       </div>
     </InputField>
   )
@@ -12950,13 +12962,13 @@ function AppointmentForm({
   }, [getValues, setValue, state.leads, watchedLeadId])
 
   return (
-    <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
+    <form className="appointment-form" onSubmit={handleSubmit(onSubmit)}>
       <input type="hidden" {...register('clientId')} />
       <input type="hidden" {...register('leadId')} />
       <input type="hidden" {...register('color')} />
       <input type="hidden" {...register('address')} />
       {isEditing ? (
-        <div className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+        <div className="appointment-form__editing">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-gray-500">Agendamento vinculado</p>
@@ -12972,71 +12984,104 @@ function AppointmentForm({
           <p className="mt-3 text-sm text-gray-600">Edite só o que muda de fato: nome, horário, endereço, status e observações.</p>
         </div>
       ) : null}
-      <InputField label={isEditing ? 'Título' : 'Título da tarefa'} error={getError(errors.title?.message)}><input className="field-input" {...register('title')} /></InputField>
-      {!isEditing ? <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><Select options={appointmentTypes} register={register('appointmentType')} /></InputField> : null}
-      {!isEditing ? (
-        <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
-          <select className="field-input" value={selectedContactKey} onChange={(event) => chooseContact(event.target.value)}>
-            <option value="">Nenhum</option>
-            {contactOptions.map((contact) => (
-              <option key={contact.key} value={contact.key}>
-                {contact.label} | {contact.detail}
-              </option>
-            ))}
-          </select>
-        </InputField>
-      ) : null}
-      {!isEditing ? <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Nenhum</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select></InputField> : null}
-      <InputField label="Status" error={getError(errors.status?.message)}><Select options={appointmentStatuses} register={register('status')} /></InputField>
-      <InputField label="Início" error={getError(errors.startAt?.message)}><input className="field-input" type="datetime-local" {...register('startAt')} /></InputField>
-      <InputField label="Fim" error={getError(errors.endAt?.message)}><input className="field-input" type="datetime-local" {...register('endAt')} /></InputField>
-      <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-gray-700">
-        Tempo calculado: <span className="text-gray-950">{formatDurationLabel(currentDuration)}</span>
-      </div>
-      <div className="md:col-span-2">
-        <MapsAddressField
-          label="Endereço / local"
-          error={getError(errors.address?.message)}
-          value={watchedAddress}
-          onChange={(nextValue) => setValue('address', nextValue, { shouldDirty: true, shouldValidate: true })}
-        />
-      </div>
-      {!isEditing ? (
-        <div className="md:col-span-2">
-          <InputField label="Cor" error={getError(errors.color?.message)}>
-            <div className="flex flex-wrap gap-1.5">
-              {appointmentColorOptions.map((option) => (
-                <button
-                  key={option.value}
-                  aria-label={option.label}
-                  aria-pressed={watchedColor === option.value}
-                  className={`focus-ring h-5 w-5 rounded-full border transition ${watchedColor === option.value ? 'border-gray-950 ring-2 ring-[#d8a500]/35' : 'border-gray-200'}`}
-                  style={{ backgroundColor: option.value }}
-                  type="button"
-                  onClick={() => setValue('color', option.value)}
-                  title={option.label}
-                />
-              ))}
-            </div>
+      <section className="appointment-form__section">
+        <header className="appointment-form__section-heading">
+          <span><CalendarDays size={17} /></span>
+          <div><strong>Informações do evento</strong><small>Defina o compromisso e como ele aparecerá na agenda.</small></div>
+        </header>
+        <div className="appointment-form__grid">
+          <div className="md:col-span-2"><InputField label={isEditing ? 'Título' : 'Título do agendamento'} error={getError(errors.title?.message)}><input autoFocus={!isEditing} className="field-input" placeholder="Ex.: Reunião de alinhamento com cliente" {...register('title')} /></InputField></div>
+          {!isEditing ? <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><Select options={appointmentTypes} register={register('appointmentType')} /></InputField> : null}
+          <InputField label="Status" error={getError(errors.status?.message)}><Select options={appointmentStatuses} register={register('status')} /></InputField>
+        </div>
+      </section>
+
+      {!isEditing ? <section className="appointment-form__section">
+        <header className="appointment-form__section-heading">
+          <span><ContactRound size={17} /></span>
+          <div><strong>Vínculos</strong><small>Conecte o evento ao contato e ao projeto correspondente.</small></div>
+        </header>
+        <div className="appointment-form__grid">
+          <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
+            <select className="field-input" value={selectedContactKey} onChange={(event) => chooseContact(event.target.value)}>
+              <option value="">Sem contato vinculado</option>
+              {contactOptions.map((contact) => <option key={contact.key} value={contact.key}>{contact.label} · {contact.detail}</option>)}
+            </select>
+          </InputField>
+          <InputField label="Projeto" error={getError(errors.projectId?.message)}>
+            <select className="field-input" {...register('projectId')}><option value="">Sem projeto vinculado</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select>
           </InputField>
         </div>
-      ) : null}
-      <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24" {...register('notes')} /></InputField></div>
-      {!isEditing ? (
-        <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-700 md:col-span-2">
-          <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" {...register('createGoogleCalendar')} />
-          Sincronizar diretamente com o Google Calendar {watchedCreateGoogleCalendar ? '(ativado)' : '(desativado)'}
-        </label>
-      ) : null}
-      <FormActions
-        onCancel={onCancel}
-        leftAction={appointment && onDelete ? (
-          <Button variant="danger" type="button" onClick={onDelete}>
-            <Trash2 size={16} /> Excluir agendamento
-          </Button>
-        ) : undefined}
-        submitLabel={appointment ? 'Salvar agendamento' : 'Criar agendamento'}
-      />
+      </section> : null}
+
+      <section className="appointment-form__section">
+        <header className="appointment-form__section-heading">
+          <span><Clock size={17} /></span>
+          <div><strong>Quando e onde</strong><small>Organize o horário e o local do compromisso.</small></div>
+          <div className="appointment-form__duration"><small>Duração</small><strong>{formatDurationLabel(currentDuration)}</strong></div>
+        </header>
+        <div className="appointment-form__grid">
+          <InputField label="Início" error={getError(errors.startAt?.message)}><input className="field-input" type="datetime-local" {...register('startAt')} /></InputField>
+          <InputField label="Fim" error={getError(errors.endAt?.message)}><input className="field-input" type="datetime-local" {...register('endAt')} /></InputField>
+          <div className="md:col-span-2">
+            <MapsAddressField
+              label="Endereço ou local"
+              error={getError(errors.address?.message)}
+              value={watchedAddress}
+              onChange={(nextValue) => setValue('address', nextValue, { shouldDirty: true, shouldValidate: true })}
+              placeholder="Busque um endereço ou informe o local do evento"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="appointment-form__section">
+        <header className="appointment-form__section-heading">
+          <span><Palette size={17} /></span>
+          <div><strong>Detalhes e identificação</strong><small>Adicione contexto e escolha como o evento será destacado.</small></div>
+        </header>
+        <div className="appointment-form__grid">
+          <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24 resize-y" placeholder="Briefing, pontos importantes, links ou instruções…" {...register('notes')} /></InputField></div>
+          {!isEditing ? (
+            <div className="md:col-span-2">
+              <InputField label="Cor na agenda" error={getError(errors.color?.message)}>
+                <div className="appointment-form__colors">
+                  {appointmentColorOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      aria-label={option.label}
+                      aria-pressed={watchedColor === option.value}
+                      className={watchedColor === option.value ? 'is-selected' : ''}
+                      style={{ '--appointment-color': option.value } as React.CSSProperties}
+                      type="button"
+                      onClick={() => setValue('color', option.value)}
+                      title={option.label}
+                    ><span />{watchedColor === option.value ? <CheckCircle2 size={14} /> : null}</button>
+                  ))}
+                </div>
+              </InputField>
+            </div>
+          ) : null}
+          {!isEditing ? (
+            <label className={`appointment-form__calendar-sync md:col-span-2 ${watchedCreateGoogleCalendar ? 'is-active' : ''}`}>
+              <input type="checkbox" {...register('createGoogleCalendar')} />
+              <span><CalendarDays size={18} /></span>
+              <div><strong>Adicionar ao Google Calendar</strong><small>O evento será sincronizado automaticamente após salvar.</small></div>
+              <i>{watchedCreateGoogleCalendar ? 'Ativado' : 'Desativado'}</i>
+            </label>
+          ) : null}
+        </div>
+      </section>
+
+      <div className="appointment-form__actions">
+        <div>
+          {appointment && onDelete ? <Button variant="danger" type="button" onClick={onDelete}><Trash2 size={16} /> Excluir agendamento</Button> : null}
+        </div>
+        <div>
+          <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
+          <Button type="submit"><CheckCircle2 size={16} /> {appointment ? 'Salvar alterações' : 'Criar agendamento'}</Button>
+        </div>
+      </div>
     </form>
   )
 }
@@ -13515,6 +13560,10 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
       setError('A senha precisa ter pelo menos 8 caracteres.')
       return
     }
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setError('A senha temporária precisa conter pelo menos uma letra e um número.')
+      return
+    }
     if (permissions.length === 0) {
       setError('Selecione pelo menos uma permissão.')
       return
@@ -13540,7 +13589,7 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
           <input className="field-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
         </InputField>
         <InputField label="Senha inicial">
-          <input className="field-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <input autoComplete="new-password" className="field-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo 8 caracteres, letra e número" />
         </InputField>
         <InputField label="Perfil">
           <select className="field-input" value={role} onChange={(event) => changeRole(event.target.value as UserRole)}>

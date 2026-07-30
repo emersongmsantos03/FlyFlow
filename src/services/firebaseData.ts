@@ -9,7 +9,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import type { User as FirebaseUser } from 'firebase/auth'
-import type { AppState, Expense, Payment, ProjectFile } from '../types'
+import type { AppState, Expense, Payment, ProjectFile, UserPermission, UserRole } from '../types'
 import { firebaseAuth, firebaseDb, isFirebaseConfigured, provisionFirebaseAuthUser } from './firebase'
 
 const ARRAY_SECTION_KEYS = [
@@ -452,25 +452,43 @@ export const saveFirebaseAppState = async (state: AppState) => {
   cachedSchemaVersion = DATA_SCHEMA_VERSION
 }
 
-export const createFirebaseWorkspaceUser = async (email: string, password: string) => {
-  const { db, auth } = ensureServices()
+export const createFirebaseWorkspaceUser = async (input: {
+  name: string
+  email: string
+  password: string
+  role: UserRole
+  permissions: UserPermission[]
+}) => {
+  const { auth, db } = ensureServices()
   if (!activeWorkspaceId || !auth.currentUser) {
     throw new Error('Entre novamente antes de criar um usuário.')
   }
-  if (auth.currentUser.uid !== activeWorkspaceId) {
+  const workspace = await getDoc(doc(db, 'workspaces', activeWorkspaceId))
+  if (!workspace.exists() || workspace.data().ownerUid !== auth.currentUser.uid) {
     throw new Error('Somente o proprietário do workspace pode criar acessos no Firebase.')
   }
-
-  const provisioned = await provisionFirebaseAuthUser(email, password)
+  const provisioned = await provisionFirebaseAuthUser(input.email, input.password)
+  const now = new Date().toISOString()
+  const user = {
+    id: provisioned.uid,
+    name: input.name,
+    email: provisioned.email,
+    role: input.role,
+    permissions: input.permissions,
+    mustChangePassword: true,
+    active: true,
+    createdAt: now,
+    updatedAt: now,
+  }
   await setDoc(doc(db, 'memberships', provisioned.uid), {
     workspaceId: activeWorkspaceId,
     email: provisioned.email,
     active: true,
     mustChangePassword: true,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
     updatedAt: serverTimestamp(),
   })
-  return { userId: provisioned.uid, email: provisioned.email }
+  return { user, recovered: false }
 }
 
 export const setFirebaseWorkspaceUserActive = async (userId: string, active: boolean) => {
