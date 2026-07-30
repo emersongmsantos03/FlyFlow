@@ -1792,6 +1792,435 @@ html[data-theme='dark'] .data-table tr {
   }
 }
 
+/* Login: simple, quiet and aligned with the FlyFlow design system. */
+.login-screen {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(28rem, .78fr) !important;
+  min-height: 100svh;
+  overflow: hidden;
+  background: #f5f6f3 !important;
+}
+
+.login-screen::before {
+  display: none !important;
+}
+
+.login-hero {
+  position: relative;
+  display: flex;
+  min-height: 100svh !important;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: clamp(2rem, 4vw, 4rem) clamp(2rem, 6vw, 6rem) !important;
+  border: 0 !important;
+  background: #111713 !important;
+  color: #fff;
+}
+
+.login-hero::before {
+  position: absolute !important;
+  inset: auto -10rem -15rem auto !important;
+  width: 34rem !important;
+  height: 34rem !important;
+  border: 1px solid rgb(216 174 55 / .1);
+  border-radius: 50%;
+  background: transparent !important;
+  box-shadow: 0 0 0 6rem rgb(216 174 55 / .025), 0 0 0 12rem rgb(216 174 55 / .015);
+  content: "";
+}
+
+.login-hero::after {
+  position: absolute;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: linear-gradient(135deg, rgb(255 255 255 / .025), transparent 48%) !important;
+  box-shadow: none !important;
+  content: "";
+  pointer-events: none;
+}
+
+.login-brand,
+.login-pitch,
+.login-hero-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+}
+
+.login-logo {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / .1);
+  border-radius: .9rem;
+  background: rgb(255 255 255 / .055);
+}
+
+.login-logo img {
+  width: 2.45rem !important;
+  height: 2.45rem !important;
+  object-fit: contain;
+  filter: none !important;
+}
+
+.login-brand h1 {
+  color: #fff;
+  font-size: 1.05rem !important;
+  font-weight: 720 !important;
+  letter-spacing: -.025em;
+}
+
+.login-brand p {
+  margin-top: .1rem;
+  color: #d8ae37;
+  font-size: .68rem !important;
+  font-weight: 650;
+}
+
+.login-pitch {
+  max-width: 36rem !important;
+  padding: 3rem 0 !important;
+}
+
+.login-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  color: #d8ae37;
+  font-size: .67rem;
+  font-weight: 750;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.login-eyebrow::before {
+  width: 1.5rem;
+  height: 1px;
+  background: currentColor;
+  content: "";
+}
+
+.login-pitch h2 {
+  max-width: none !important;
+  margin-top: 1.35rem !important;
+  color: #f5f7f5;
+  font-size: clamp(2.8rem, 4.6vw, 4.65rem) !important;
+  font-weight: 520 !important;
+  letter-spacing: -.06em !important;
+  line-height: 1.02 !important;
+}
+
+.login-pitch h2 strong {
+  color: #d8ae37;
+  font-weight: 720;
+}
+
+.login-pitch > p {
+  max-width: 31rem !important;
+  margin-top: 1.5rem !important;
+  color: rgb(255 255 255 / .58) !important;
+  font-size: .95rem !important;
+  line-height: 1.75 !important;
+}
+
+.login-hero-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: rgb(255 255 255 / .38);
+  font-size: .65rem;
+}
+
+.login-hero-footer span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: rgb(255 255 255 / .56);
+}
+
+.login-form-section {
+  position: relative;
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: clamp(1.5rem, 5vw, 5rem) !important;
+  background: #f5f6f3 !important;
+}
+
+.login-form-section::before {
+  display: none !important;
+}
+
+.login-form-section form {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 26rem !important;
+  padding: 2.25rem !important;
+  border: 1px solid #e1e4df !important;
+  border-radius: 1.25rem !important;
+  background: #fff !important;
+  box-shadow: 0 18px 50px rgb(17 23 19 / .08) !important;
+  animation: none !important;
+  backdrop-filter: none;
+}
+
+.login-form-section form::before {
+  display: none !important;
+}
+
+.login-form-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: .9rem;
+}
+
+.login-form-icon {
+  display: grid;
+  width: 2.65rem;
+  height: 2.65rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: .75rem;
+  background: #f8f1d9;
+  color: #9a7405;
+}
+
+.login-form-section form h2 {
+  color: #1b211d;
+  font-size: 1.45rem !important;
+  font-weight: 730 !important;
+  letter-spacing: -.04em !important;
+}
+
+.login-form-heading p {
+  margin-top: .25rem;
+  color: #7a817b;
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.login-fields {
+  display: grid;
+  gap: 1.05rem;
+  margin-top: 1.8rem;
+}
+
+.login-form-section form label {
+  color: #4e5650 !important;
+  font-size: .7rem !important;
+  font-weight: 650 !important;
+}
+
+.login-input-wrap,
+.login-password-field {
+  position: relative;
+  display: block;
+}
+
+.login-input-wrap > svg,
+.login-password-field > svg {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: .85rem;
+  color: #969d97;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.login-form-section .field-input {
+  min-height: 3rem !important;
+  padding-left: 2.55rem !important;
+  border-color: #dfe3df !important;
+  border-radius: .72rem !important;
+  background: #fafbf9 !important;
+  color: #1d241f !important;
+  font-size: .82rem !important;
+  box-shadow: none !important;
+}
+
+.login-form-section .field-input::placeholder {
+  color: #a5aba6;
+}
+
+.login-form-section .field-input:hover {
+  border-color: #cbd1cb !important;
+  background: #fff !important;
+}
+
+.login-form-section .field-input:focus {
+  border-color: #c9a227 !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgb(201 162 39 / .13) !important;
+}
+
+.login-password-field .field-input {
+  padding-right: 3rem !important;
+}
+
+.login-password-field > button {
+  right: .42rem;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: .55rem;
+}
+
+.login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: -.05rem;
+}
+
+.login-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  white-space: nowrap;
+}
+
+.login-options input {
+  width: .95rem;
+  height: .95rem;
+  accent-color: #b78b0d;
+}
+
+.login-options button {
+  padding: .2rem 0;
+  color: #737b74 !important;
+  font-size: .7rem;
+  font-weight: 650;
+  text-decoration: none !important;
+}
+
+.login-options button:hover {
+  color: #8a6808 !important;
+}
+
+.login-form-section .login-submit {
+  display: flex;
+  width: 100%;
+  min-height: 3rem !important;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: .15rem;
+  padding-inline: 1rem !important;
+  border: 1px solid #111713 !important;
+  border-radius: .72rem !important;
+  background: #111713 !important;
+  color: #f3d777 !important;
+  box-shadow: 0 9px 20px rgb(17 23 19 / .15) !important;
+  font-size: .8rem;
+}
+
+.login-form-section .login-submit:hover {
+  border-color: #232d26 !important;
+  background: #232d26 !important;
+  box-shadow: 0 11px 24px rgb(17 23 19 / .18) !important;
+  transform: translateY(-1px);
+}
+
+.login-access-note {
+  margin-top: 1.4rem;
+  color: #9aa09b;
+  font-size: .59rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@media (max-width: 1023px) {
+  .login-screen {
+    grid-template-columns: minmax(0, 1fr) !important;
+    overflow: visible;
+  }
+
+  .login-hero {
+    min-height: 24rem !important;
+    padding: 1.75rem 2rem !important;
+  }
+
+  .login-pitch {
+    padding: 3rem 0 2rem !important;
+  }
+
+  .login-pitch h2 {
+    max-width: 32rem !important;
+    font-size: clamp(2.5rem, 8vw, 3.8rem) !important;
+  }
+
+  .login-form-section {
+    min-height: auto;
+    padding: 3rem 1.25rem !important;
+  }
+}
+
+@media (max-width: 639px) {
+  .login-hero {
+    min-height: 21rem !important;
+    padding: 1.25rem !important;
+  }
+
+  .login-logo {
+    width: 2.85rem;
+    height: 2.85rem;
+  }
+
+  .login-logo img {
+    width: 2.1rem !important;
+    height: 2.1rem !important;
+  }
+
+  .login-pitch {
+    padding: 2.35rem 0 1.25rem !important;
+  }
+
+  .login-pitch h2 {
+    font-size: 2.35rem !important;
+  }
+
+  .login-pitch > p {
+    margin-top: 1rem !important;
+    font-size: .78rem !important;
+    line-height: 1.6 !important;
+  }
+
+  .login-hero-footer span:last-child {
+    display: none;
+  }
+
+  .login-form-section {
+    padding: 1rem !important;
+  }
+
+  .login-form-section form {
+    padding: 1.45rem !important;
+    border-radius: 1rem !important;
+  }
+
+  .login-options {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-form-section .login-submit {
+    transition: none;
+  }
+}
+
 /* FlyFlow product system — unified SaaS workspace */
 :root {
   --ff-gold: #d6ad3c;

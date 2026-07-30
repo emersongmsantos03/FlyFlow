@@ -1457,11 +1457,16 @@ function App() {
         try {
           const localState = loadAppState()
           const isMasterAccount = firebaseUser.email?.toLowerCase() === 'herodronecwb@gmail.com'
-          if (isMasterAccount) await bootstrapCloudflareWorkspace(localState)
-          let cloudflareWorkspace = await loadCloudflareWorkspace()
-          if (!cloudflareWorkspace) {
-            await bootstrapCloudflareWorkspace(localState)
+          let cloudflareWorkspace = null
+          try {
             cloudflareWorkspace = await loadCloudflareWorkspace()
+            if (!cloudflareWorkspace && isMasterAccount) {
+              await bootstrapCloudflareWorkspace(localState)
+              cloudflareWorkspace = await loadCloudflareWorkspace()
+            }
+          } catch {
+            // Keep login available through Firestore if the Cloudflare endpoint
+            // is temporarily unreachable or blocked by the user's network.
           }
           if (cloudflareWorkspace) {
             const resolvedState = normalizeAppState(cloudflareWorkspace.state)
@@ -2627,17 +2632,23 @@ Hero Drone`,
             12_000,
           )),
         ])
-        if (credential.user.email?.toLowerCase() === 'herodronecwb@gmail.com') {
-          await bootstrapCloudflareWorkspace(loadAppState())
+        let cloudflareWorkspace = null
+        let cloudflareAvailable = true
+        try {
+          cloudflareWorkspace = await Promise.race([
+            loadCloudflareWorkspace(),
+            new Promise<never>((_, reject) => window.setTimeout(
+              () => reject(new Error('O Cloudflare demorou para carregar os dados.')),
+              15_000,
+            )),
+          ])
+        } catch {
+          cloudflareAvailable = false
         }
-        let cloudflareWorkspace = await Promise.race([
-          loadCloudflareWorkspace(),
-          new Promise<never>((_, reject) => window.setTimeout(
-            () => reject(new Error('O Cloudflare demorou para carregar os dados. Tente novamente.')),
-            15_000,
-          )),
-        ])
-        if (!cloudflareWorkspace) {
+        if (!cloudflareWorkspace && cloudflareAvailable) {
+          if (credential.user.email?.toLowerCase() !== PRIMARY_OWNER.email) {
+            throw new Error('Workspace compartilhado não encontrado para este usuário.')
+          }
           await bootstrapCloudflareWorkspace(loadAppState())
           cloudflareWorkspace = await loadCloudflareWorkspace()
         }
@@ -8374,66 +8385,56 @@ function LoginScreen({
   })
 
   return (
-    <main className="login-screen grid min-h-screen bg-[#171717] lg:grid-cols-[1.15fr_0.85fr]">
-      <section className="login-hero flex min-h-[42vh] flex-col justify-between overflow-hidden bg-[#171717] p-6 text-white lg:min-h-screen lg:p-10">
-        <div className="login-airspace" aria-hidden="true">
-          <span className="login-radar"><i /><i /><i /></span>
-          <span className="login-flight-path" />
-          <span className="login-drone">
-            <i className="rotor rotor-a" /><i className="rotor rotor-b" />
-            <b><Camera size={14} /></b>
-            <i className="rotor rotor-c" /><i className="rotor rotor-d" />
-          </span>
-          <span className="login-scan-line" />
-        </div>
-        <div className="flex items-center gap-3">
-          <img className="h-16 w-16 shrink-0 object-contain" src={heroLogoSrc} alt="FlyFlow by Hero Drone" />
+    <main className="login-screen">
+      <section className="login-hero" aria-label="FlyFlow by Hero Drone">
+        <div className="login-brand">
+          <span className="login-logo"><img src={heroLogoSrc} alt="" /></span>
           <div>
-            <h1 className="text-2xl font-black">{appShortName}</h1>
-            <p className="text-sm font-bold text-[#d4af37]">{appSubtitle}</p>
-            <p className="text-sm text-white/60">CRM, projetos e gestão financeira</p>
+            <h1>{appShortName}</h1>
+            <p>{appSubtitle}</p>
           </div>
         </div>
-        <div className="login-pitch max-w-3xl py-12">
-          <p className="text-sm font-bold uppercase text-[#d8a500]">Gestão para operações aéreas</p>
-          <h2 className="mt-3 max-w-2xl text-4xl font-black leading-tight text-white sm:text-5xl">
-            Sua operação sob controle.<span>Do briefing à entrega.</span>
-          </h2>
-          <p className="mt-5 max-w-xl text-base leading-7 text-white/60">Um workspace simples para organizar clientes, propostas, agenda, captações, entregas e financeiro.</p>
-          <div className="login-workflow" aria-label="Fluxo de trabalho do FlyFlow">
-            {['Contato', 'Planejamento', 'Voo', 'Entrega'].map((item, index) => (
-              <span key={item}><i>{String(index + 1).padStart(2, '0')}</i>{item}</span>
-            ))}
-          </div>
+        <div className="login-pitch">
+          <span className="login-eyebrow">Workspace Hero Drone</span>
+          <h2>Toda a operação,<br /><strong>em um só lugar.</strong></h2>
+          <p>Clientes, projetos, agenda e financeiro organizados para sua equipe trabalhar com mais clareza.</p>
         </div>
-        <p className="login-timezone text-xs text-white/50">Fuso horário padrão: America/Sao_Paulo</p>
+        <div className="login-hero-footer">
+          <span><ShieldCheck size={14} /> Ambiente privado</span>
+          <span>Curitiba · PR</span>
+        </div>
       </section>
-      <section className="login-form-section flex items-center justify-center bg-white p-4 sm:p-8">
-        <form className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 shadow-xl" onSubmit={handleSubmit(onSubmit)}>
-          <div className="login-form-status"><span /> AMBIENTE SEGURO</div>
-          <h2 className="text-2xl font-black text-gray-950">Bem-vindo de volta</h2>
-          <p className="mt-1 text-sm text-gray-500">Entre para continuar sua operação.</p>
-          <div className="mt-6 space-y-4">
+      <section className="login-form-section">
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="login-form-heading">
+            <span className="login-form-icon"><ShieldCheck size={19} /></span>
+            <div>
+              <h2>Bem-vindo de volta</h2>
+              <p>Use seus dados para acessar o FlyFlow.</p>
+            </div>
+          </div>
+          <div className="login-fields">
             <InputField label="E-mail" error={getError(errors.email?.message)}>
-              <input autoComplete="username" autoFocus className="field-input" placeholder="seu@email.com" type="email" {...register('email')} />
+              <span className="login-input-wrap"><Mail size={16} /><input autoComplete="username" autoFocus className="field-input" placeholder="nome@herodrone.com.br" type="email" {...register('email')} /></span>
             </InputField>
             <InputField label="Senha" error={getError(errors.password?.message)}>
-              <span className="login-password-field"><input autoComplete="current-password" className="field-input" placeholder="Digite sua senha" type={showPassword ? 'text' : 'password'} {...register('password')} /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span>
+              <span className="login-password-field"><KeyRound size={16} /><input autoComplete="current-password" className="field-input" placeholder="Digite sua senha" type={showPassword ? 'text' : 'password'} {...register('password')} /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span>
             </InputField>
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-              <label className="inline-flex items-center gap-2 font-bold text-gray-700">
-                <input className="h-4 w-4 accent-[#d8a500]" type="checkbox" {...register('remember')} />
+            <div className="login-options">
+              <label>
+                <input type="checkbox" {...register('remember')} />
                 Manter conectado
               </label>
-              <button className="font-bold text-gray-700 underline" type="button" onClick={() => onPasswordReset(watch('email') || '')}>
-                Recuperar senha
+              <button type="button" onClick={() => onPasswordReset(watch('email') || '')}>
+                Esqueci minha senha
               </button>
             </div>
-            <Button className="w-full" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Entrando…' : 'Entrar no sistema'}
+            <Button className="login-submit" disabled={isSubmitting} type="submit">
+              <span>{isSubmitting ? 'Entrando…' : 'Entrar no FlyFlow'}</span>
+              {!isSubmitting ? <ArrowRight size={17} /> : null}
             </Button>
-            <p className="login-access-note">Acesso restrito à equipe Hero Drone.</p>
           </div>
+          <p className="login-access-note">Acesso exclusivo para a equipe Hero Drone.</p>
         </form>
       </section>
     </main>
