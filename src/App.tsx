@@ -9237,7 +9237,7 @@ function ProjectsPage({
     const ownerInitials = owner?.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
 
     return (
-      <article key={project.id} className={`customer-project-row grid grid-cols-[minmax(18rem,1.7fr)_8rem_11rem_10rem_10rem_10rem_8rem] ${deadline.level === 'danger' ? 'is-late' : ''}`}>
+      <article key={project.id} className={`customer-project-row customer-project-grid grid ${deadline.level === 'danger' ? 'is-late' : ''}`}>
         <button className="customer-project-name min-w-0 text-left" type="button" onClick={() => setOpenedProjectId(project.id)}>
           <span className="customer-project-color" />
           <span className="min-w-0">
@@ -9294,9 +9294,9 @@ function ProjectsPage({
             <span />
             <div><h2>{scope === 'active' ? 'Projetos ativos' : 'Projetos finalizados'}</h2><small>{shownProjects.length} projeto(s)</small></div>
           </div>
-          <div className="overflow-x-auto">
-            <div className="min-w-[1120px]">
-              <div className="customer-project-header grid grid-cols-[minmax(18rem,1.7fr)_8rem_11rem_10rem_10rem_10rem_8rem]">
+          <div className="customer-project-scroll overflow-x-auto">
+            <div className="customer-project-table">
+              <div className="customer-project-header customer-project-grid grid">
                 <span>Projeto / cliente</span><span>Responsável</span><span>Captação</span><span>Produção</span><span>Financeiro</span><span>Etapas</span><span>Ações</span>
               </div>
               {shownProjects.map(renderProjectRow)}
