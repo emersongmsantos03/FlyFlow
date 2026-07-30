@@ -8,6 +8,7 @@ interface Env {
   GOOGLE_OAUTH_CLIENT_SECRET: string
   FIREBASE_SERVICE_ACCOUNT_JSON: string
   GOOGLE_OAUTH: KVNamespace
+  FLYFLOW_DB: D1Database
 }
 
 type InputLead = {
@@ -294,6 +295,143 @@ const claimFirebaseInvitation = async (env: Env, identity: { userId: string; ema
   return true
 }
 
+type D1UserProfile = {
+  id?: string
+  name?: string
+  email?: string
+  role?: string
+  permissions?: string[]
+  invitationPending?: boolean
+  active?: boolean
+  mustChangePassword?: boolean
+  [key: string]: unknown
+}
+
+const bootstrapD1Workspace = async (
+  env: Env,
+  identity: { userId: string; email: string },
+  state: Record<string, unknown>,
+) => {
+  if (identity.email !== 'herodronecwb@gmail.com') throw new Error('A migração inicial exige a conta master.')
+  const users = Array.isArray(state.users) ? state.users as D1UserProfile[] : []
+  const owner = users.find((user) => String(user.email || '').toLowerCase() === identity.email)
+  if (!owner) throw new Error('A cópia local não contém a conta proprietária.')
+  const workspaceId = identity.userId
+  const now = new Date().toISOString()
+  const stateJson = JSON.stringify(state)
+  if (new TextEncoder().encode(stateJson).byteLength > 20_000_000) {
+    throw new Error('O estado excede o limite seguro de migração.')
+  }
+  const statements = [
+    env.FLYFLOW_DB.prepare(`
+      INSERT INTO workspaces (workspace_id, owner_uid, state_json, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(workspace_id) DO NOTHING
+    `).bind(workspaceId, identity.userId, stateJson, now),
+    env.FLYFLOW_DB.prepare(`
+      INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
+      VALUES (?, ?, ?, ?, 1, 0, ?)
+      ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json, active = 1, updated_at = excluded.updated_at
+    `).bind(identity.userId, workspaceId, identity.email, JSON.stringify({ ...owner, id: identity.userId, active: true }), now),
+  ]
+  users
+    .filter((user) => user.invitationPending && user.email)
+    .forEach((user) => {
+      const email = String(user.email).trim().toLowerCase()
+      statements.push(env.FLYFLOW_DB.prepare(`
+        INSERT INTO invitations (email, workspace_id, profile_json, active, updated_at)
+        VALUES (?, ?, ?, 1, ?)
+        ON CONFLICT(email) DO UPDATE SET profile_json = excluded.profile_json, active = 1, updated_at = excluded.updated_at
+      `).bind(email, workspaceId, JSON.stringify(user), now))
+    })
+  users
+    .filter((user) => user.active && !user.invitationPending && user.email && user.id && user.email.toLowerCase() !== identity.email)
+    .forEach((user) => {
+      const email = String(user.email).trim().toLowerCase()
+      statements.push(env.FLYFLOW_DB.prepare(`
+        INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          workspace_id = excluded.workspace_id,
+          email = excluded.email,
+          profile_json = excluded.profile_json,
+          active = 1,
+          must_change_password = excluded.must_change_password,
+          updated_at = excluded.updated_at
+      `).bind(
+        String(user.id),
+        workspaceId,
+        email,
+        JSON.stringify(user),
+        user.mustChangePassword ? 1 : 0,
+        now,
+      ))
+    })
+  await env.FLYFLOW_DB.batch(statements)
+  return workspaceId
+}
+
+const claimD1Invitation = async (env: Env, identity: { userId: string; email: string }) => {
+  const existing = await env.FLYFLOW_DB.prepare(
+    'SELECT workspace_id, profile_json, active, must_change_password FROM memberships WHERE user_id = ? OR email = ? LIMIT 1',
+  ).bind(identity.userId, identity.email).first<{
+    workspace_id: string
+    profile_json: string
+    active: number
+    must_change_password: number
+  }>()
+  if (existing?.active) {
+    if (!existing.profile_json) return null
+    const profile = JSON.parse(existing.profile_json) as D1UserProfile
+    if (profile.id !== identity.userId) {
+      profile.id = identity.userId
+      await env.FLYFLOW_DB.prepare(
+        'UPDATE memberships SET user_id = ?, profile_json = ?, updated_at = ? WHERE email = ?',
+      ).bind(identity.userId, JSON.stringify(profile), new Date().toISOString(), identity.email).run()
+    }
+    return { workspaceId: existing.workspace_id, profile, mustChangePassword: Boolean(existing.must_change_password) }
+  }
+  const invitation = await env.FLYFLOW_DB.prepare(
+    'SELECT workspace_id, profile_json FROM invitations WHERE email = ? AND active = 1',
+  ).bind(identity.email).first<{ workspace_id: string; profile_json: string }>()
+  if (!invitation) return null
+  const now = new Date().toISOString()
+  const profile = {
+    ...(JSON.parse(invitation.profile_json) as D1UserProfile),
+    id: identity.userId,
+    email: identity.email,
+    invitationPending: false,
+    active: true,
+    mustChangePassword: true,
+    updatedAt: now,
+  }
+  await env.FLYFLOW_DB.batch([
+    env.FLYFLOW_DB.prepare(`
+      INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
+      VALUES (?, ?, ?, ?, 1, 1, ?)
+      ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json, active = 1, must_change_password = 1, updated_at = excluded.updated_at
+    `).bind(identity.userId, invitation.workspace_id, identity.email, JSON.stringify(profile), now),
+    env.FLYFLOW_DB.prepare('UPDATE invitations SET active = 0, updated_at = ? WHERE email = ?').bind(now, identity.email),
+  ])
+  return { workspaceId: invitation.workspace_id, profile, mustChangePassword: true }
+}
+
+const loadD1Workspace = async (env: Env, identity: { userId: string; email: string }) => {
+  const access = await claimD1Invitation(env, identity)
+  if (!access) return null
+  const workspace = await env.FLYFLOW_DB.prepare(
+    'SELECT state_json, updated_at FROM workspaces WHERE workspace_id = ?',
+  ).bind(access.workspaceId).first<{ state_json: string; updated_at: string }>()
+  if (!workspace) return null
+  const state = JSON.parse(workspace.state_json) as Record<string, unknown>
+  const users = Array.isArray(state.users) ? state.users as D1UserProfile[] : []
+  state.users = [
+    access.profile,
+    ...users.filter((user) => String(user.email || '').toLowerCase() !== identity.email),
+  ]
+  return { state, profile: access.profile, mustChangePassword: access.mustChangePassword, updatedAt: workspace.updated_at }
+}
+
 const workspaceForUser = async (token: string, userId: string, projectId: string) => {
   const response = await fetch(`https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/memberships/${encodeURIComponent(userId)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -485,10 +623,67 @@ export default {
       const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
       if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
       try {
+        const d1Access = await claimD1Invitation(env, identity)
+        if (d1Access) return json({ claimed: true, source: 'cloudflare' }, 200, origin)
         const claimed = await claimFirebaseInvitation(env, identity)
         return json({ claimed }, 200, origin)
       } catch (error) {
         return json({ error: error instanceof Error ? error.message : 'Não foi possível ativar o acesso.' }, 400, origin)
+      }
+    }
+    if (request.method === 'POST' && url.pathname === '/auth/complete-first-login') {
+      const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
+      if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+      const membership = await env.FLYFLOW_DB.prepare(
+        'SELECT profile_json FROM memberships WHERE user_id = ? AND active = 1',
+      ).bind(identity.userId).first<{ profile_json: string }>()
+      if (!membership) return json({ error: 'Perfil não encontrado no Cloudflare.' }, 404, origin)
+      const profile = { ...(JSON.parse(membership.profile_json) as D1UserProfile), mustChangePassword: false, passwordChangedAt: new Date().toISOString() }
+      await env.FLYFLOW_DB.prepare(
+        'UPDATE memberships SET profile_json = ?, must_change_password = 0, updated_at = ? WHERE user_id = ?',
+      ).bind(JSON.stringify(profile), new Date().toISOString(), identity.userId).run()
+      return json({ completed: true }, 200, origin)
+    }
+    if (request.method === 'POST' && url.pathname === '/data/bootstrap') {
+      const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
+      if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+      const body = await request.json().catch(() => null) as { state?: Record<string, unknown> } | null
+      if (!body?.state) return json({ error: 'Estado do sistema não informado.' }, 400, origin)
+      try {
+        const workspaceId = await bootstrapD1Workspace(env, identity, body.state)
+        return json({ migrated: true, workspaceId }, 200, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Não foi possível migrar os dados.' }, 400, origin)
+      }
+    }
+    if (request.method === 'GET' && url.pathname === '/data/state') {
+      const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
+      if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+      try {
+        const workspace = await loadD1Workspace(env, identity)
+        return workspace ? json(workspace, 200, origin) : json({ error: 'Workspace ainda não migrado.' }, 404, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Não foi possível carregar o workspace.' }, 400, origin)
+      }
+    }
+    if (request.method === 'POST' && url.pathname === '/data/state') {
+      const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
+      if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+      const body = await request.json().catch(() => null) as { state?: Record<string, unknown> } | null
+      if (!body?.state) return json({ error: 'Estado do sistema não informado.' }, 400, origin)
+      try {
+        const access = await claimD1Invitation(env, identity)
+        if (!access) return json({ error: 'Usuário sem workspace no Cloudflare.' }, 403, origin)
+        const stateJson = JSON.stringify(body.state)
+        if (new TextEncoder().encode(stateJson).byteLength > 20_000_000) {
+          return json({ error: 'Os dados excedem o limite seguro de sincronização.' }, 413, origin)
+        }
+        await env.FLYFLOW_DB.prepare(
+          'UPDATE workspaces SET state_json = ?, updated_at = ? WHERE workspace_id = ?',
+        ).bind(stateJson, new Date().toISOString(), access.workspaceId).run()
+        return json({ saved: true }, 200, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Não foi possível salvar no Cloudflare.' }, 400, origin)
       }
     }
     const userId = token ? await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID) : null

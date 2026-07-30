@@ -192,10 +192,14 @@ import {
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   firebaseAuth,
+  bootstrapCloudflareWorkspace,
+  loadCloudflareWorkspace,
+  saveCloudflareWorkspace,
   isFirebaseConfigured,
   observeFirebaseAuth,
   requestFirebasePasswordReset,
   claimFirebaseWorkspaceInvitation,
+  completeCloudflareFirstLogin,
   signInWithFirebase,
   signOutFromFirebase,
   updateCurrentFirebasePassword,
@@ -1284,6 +1288,7 @@ function App() {
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [authSession, setAuthSession] = useState(() => getAuthSession())
   const [firebaseAuthReady, setFirebaseAuthReady] = useState(!isFirebaseConfigured)
+  const [cloudflareDataReady, setCloudflareDataReady] = useState(false)
   const [firstLoginUserId, setFirstLoginUserId] = useState('')
   const firebaseLoginInProgress = useRef(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -1449,8 +1454,30 @@ function App() {
         }
 
         try {
-          await ensureFirebaseWorkspace(firebaseUser)
           const localState = loadAppState()
+          let cloudflareWorkspace = await loadCloudflareWorkspace()
+          if (!cloudflareWorkspace && firebaseUser.email?.toLowerCase() === 'herodronecwb@gmail.com') {
+            await bootstrapCloudflareWorkspace(localState)
+            cloudflareWorkspace = await loadCloudflareWorkspace()
+          }
+          if (cloudflareWorkspace) {
+            const resolvedState = normalizeAppState(cloudflareWorkspace.state)
+            const internalUser = resolvedState.users.find(
+              (user) => user.email.toLowerCase() === firebaseUser.email?.toLowerCase(),
+            )
+            if (!internalUser?.active) throw new Error('Usuário sem perfil ativo no Cloudflare.')
+            if (cancelled) return
+            latestState.current = resolvedState
+            saveAppState(resolvedState)
+            setState(resolvedState)
+            setCloudflareDataReady(true)
+            setFirstLoginUserId(cloudflareWorkspace.mustChangePassword ? internalUser.id : '')
+            saveAuthSession({ userId: internalUser.id, email: internalUser.email }, true)
+            setAuthSession(getAuthSession())
+            return
+          }
+
+          await ensureFirebaseWorkspace(firebaseUser)
           const cloudState = await loadFirebaseAppState(localState)
           const resolved = resolveFirebaseState(cloudState, localState)
           const resolvedState = await reconcilePublicProposalAcceptances(resolved.state)
@@ -1572,6 +1599,18 @@ function App() {
     const localTimeout = window.setTimeout(() => saveAppState(state), 350)
     if (!authSession) return () => window.clearTimeout(localTimeout)
 
+    if (isFirebaseConfigured && cloudflareDataReady) {
+      const timeout = window.setTimeout(() => {
+        void saveCloudflareWorkspace(state).catch((error) => {
+          setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar com o Cloudflare.')
+        })
+      }, 900)
+      return () => {
+        window.clearTimeout(localTimeout)
+        window.clearTimeout(timeout)
+      }
+    }
+
     if (isFirebaseConfigured) {
       const timeout = window.setTimeout(() => {
         firebaseSaveQueue.current = firebaseSaveQueue.current
@@ -1595,7 +1634,7 @@ function App() {
       window.clearTimeout(localTimeout)
       window.clearTimeout(timeout)
     }
-  }, [authSession, state])
+  }, [authSession, cloudflareDataReady, state])
 
   useEffect(() => {
     if (!toast) return
@@ -2579,13 +2618,50 @@ Hero Drone`,
             12_000,
           )),
         ])
-        await Promise.race([
-          claimFirebaseWorkspaceInvitation(),
+        let cloudflareWorkspace = await Promise.race([
+          loadCloudflareWorkspace(),
           new Promise<never>((_, reject) => window.setTimeout(
-            () => reject(new Error('Não foi possível ativar o convite. Tente novamente.')),
+            () => reject(new Error('O Cloudflare demorou para carregar os dados. Tente novamente.')),
             15_000,
           )),
         ])
+        if (!cloudflareWorkspace && credential.user.email?.toLowerCase() === 'herodronecwb@gmail.com') {
+          await bootstrapCloudflareWorkspace(loadAppState())
+          cloudflareWorkspace = await loadCloudflareWorkspace()
+        }
+        if (!cloudflareWorkspace) {
+          await Promise.race([
+            claimFirebaseWorkspaceInvitation(),
+            new Promise<never>((_, reject) => window.setTimeout(
+              () => reject(new Error('Não foi possível ativar o convite. Tente novamente.')),
+              15_000,
+            )),
+          ])
+          cloudflareWorkspace = await Promise.race([
+            loadCloudflareWorkspace(),
+            new Promise<never>((_, reject) => window.setTimeout(
+              () => reject(new Error('O Cloudflare demorou para carregar os dados. Tente novamente.')),
+              15_000,
+            )),
+          ])
+        }
+        if (cloudflareWorkspace) {
+          const resolvedState = normalizeAppState(cloudflareWorkspace.state)
+          const internalUser = resolvedState.users.find(
+            (item) => item.email.toLowerCase() === values.email.trim().toLowerCase(),
+          )
+          if (!internalUser?.active) throw new Error('Usuário sem perfil ativo no Cloudflare.')
+          latestState.current = resolvedState
+          saveAppState(resolvedState)
+          setState(resolvedState)
+          setCloudflareDataReady(true)
+          saveAuthSession({ userId: internalUser.id, email: internalUser.email }, values.remember)
+          setAuthSession(getAuthSession())
+          setFirstLoginUserId(cloudflareWorkspace.mustChangePassword ? internalUser.id : '')
+          setPage(canOpenPage(internalUser, 'dashboard') ? 'dashboard' : navigation.find((item) => canOpenPage(internalUser, item.page))?.page ?? 'dashboard')
+          setToast('Login realizado com dados do Cloudflare.')
+          return
+        }
         await Promise.race([
           ensureFirebaseWorkspace(credential.user),
           new Promise<never>((_, reject) => window.setTimeout(
@@ -6236,7 +6312,8 @@ Hero Drone`,
         onSubmit={async (password) => {
           if (isFirebaseConfigured) {
             await updateCurrentFirebasePassword(password)
-            await completeFirebaseFirstLogin()
+            if (cloudflareDataReady) await completeCloudflareFirstLogin()
+            else await completeFirebaseFirstLogin()
           } else if (isSupabaseConfigured && supabase) {
             const { error } = await supabase.auth.updateUser({ password })
             if (error) throw error

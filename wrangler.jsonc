@@ -10,6 +10,13 @@
       "id": "8f57465dc51e4e8a90947279c90f69bb"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "FLYFLOW_DB",
+      "database_name": "flyflow-db",
+      "database_id": "95722eaf-ebed-4963-86a7-686399fe8f58"
+    }
+  ],
   "vars": {
     "FIREBASE_PROJECT_ID": "flyflow-a97ab"
   }

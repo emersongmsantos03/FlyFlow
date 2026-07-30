@@ -14,6 +14,7 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth'
 import { getFirestore, initializeFirestore, type Firestore } from 'firebase/firestore'
+import type { AppState } from '../types'
 
 const env = import.meta.env
 
@@ -113,6 +114,69 @@ export const claimFirebaseWorkspaceInvitation = async () => {
   })
   const body = await response.json().catch(() => ({})) as { error?: string }
   if (!response.ok) throw new Error(body.error || 'Não foi possível ativar o convite.')
+}
+
+const cloudflareWorkerBaseUrl = () => {
+  const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
+  if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
+  return workerBaseUrl
+}
+
+const cloudflareAuthorization = async () => {
+  if (!firebaseAuth?.currentUser) throw new Error('Sessão de login indisponível.')
+  return `Bearer ${await firebaseAuth.currentUser.getIdToken()}`
+}
+
+export const bootstrapCloudflareWorkspace = async (state: AppState) => {
+  const response = await fetch(`${cloudflareWorkerBaseUrl()}/data/bootstrap`, {
+    method: 'POST',
+    headers: {
+      Authorization: await cloudflareAuthorization(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ state }),
+  })
+  const body = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(body.error || 'Não foi possível migrar os dados para o Cloudflare.')
+}
+
+export const loadCloudflareWorkspace = async () => {
+  const response = await fetch(`${cloudflareWorkerBaseUrl()}/data/state`, {
+    headers: { Authorization: await cloudflareAuthorization() },
+  })
+  if (response.status === 404) return null
+  const body = await response.json().catch(() => ({})) as {
+    state?: AppState
+    mustChangePassword?: boolean
+    error?: string
+  }
+  if (!response.ok || !body.state) throw new Error(body.error || 'Não foi possível carregar os dados do Cloudflare.')
+  return { state: body.state, mustChangePassword: Boolean(body.mustChangePassword) }
+}
+
+export const saveCloudflareWorkspace = async (state: AppState) => {
+  const response = await fetch(`${cloudflareWorkerBaseUrl()}/data/state`, {
+    method: 'POST',
+    headers: {
+      Authorization: await cloudflareAuthorization(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ state }),
+  })
+  const body = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(body.error || 'Não foi possível salvar os dados no Cloudflare.')
+}
+
+export const completeCloudflareFirstLogin = async () => {
+  const response = await fetch(`${cloudflareWorkerBaseUrl()}/auth/complete-first-login`, {
+    method: 'POST',
+    headers: {
+      Authorization: await cloudflareAuthorization(),
+      'Content-Type': 'application/json',
+    },
+  })
+  const body = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(body.error || 'Não foi possível concluir o primeiro login.')
 }
 
 export const observeFirebaseAuth = (listener: (user: FirebaseUser | null) => void) => {
