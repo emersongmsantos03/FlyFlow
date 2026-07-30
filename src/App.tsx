@@ -2649,8 +2649,14 @@ Hero Drone`,
           if (credential.user.email?.toLowerCase() !== PRIMARY_OWNER.email) {
             throw new Error('Workspace compartilhado não encontrado para este usuário.')
           }
-          await bootstrapCloudflareWorkspace(loadAppState())
-          cloudflareWorkspace = await loadCloudflareWorkspace()
+          try {
+            await bootstrapCloudflareWorkspace(loadAppState())
+            cloudflareWorkspace = await loadCloudflareWorkspace()
+          } catch (err) {
+            // Se o Worker rejeitar (por exemplo, falta de credenciais FIREBASE_SERVICE_ACCOUNT_JSON),
+            // não bloqueie o login — cair para o fluxo do Firebase.
+            cloudflareAvailable = false
+          }
         }
         if (cloudflareWorkspace) {
           const resolvedState = normalizeAppState(cloudflareWorkspace.state)
