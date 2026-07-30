@@ -535,6 +535,21 @@ const loadD1Workspace = async (env: Env, identity: { userId: string; email: stri
       }
     })
     .filter((profile): profile is D1UserProfile => Boolean(profile?.email))
+    .map((membershipProfile) => {
+      const storedProfile = users.find(
+        (user) => String(user.email || '').toLowerCase() === String(membershipProfile.email || '').toLowerCase(),
+      )
+      return storedProfile
+        ? {
+          ...membershipProfile,
+          ...storedProfile,
+          id: membershipProfile.id,
+          invitationPending: false,
+          active: true,
+          mustChangePassword: membershipProfile.mustChangePassword,
+        }
+        : membershipProfile
+    })
   const profileEmails = new Set(membershipProfiles.map((profile) => String(profile.email).toLowerCase()))
   state.users = [
     ...membershipProfiles,
