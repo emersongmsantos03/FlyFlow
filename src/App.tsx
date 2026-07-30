@@ -2833,13 +2833,13 @@ Hero Drone`,
         }
 
         const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
-        setToast(
-          code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')
-            ? 'E-mail ou senha inválidos no Firebase.'
-            : error instanceof Error
-              ? error.message
-              : 'Não foi possível entrar com o Firebase.',
-        )
+        if (code.includes('too-many-requests')) {
+          setToast('Muitas tentativas consecutivas de login. Aguarde alguns instantes ou entre com a senha alterada pelo admin.')
+        } else if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+          setToast('E-mail ou senha incorretos.')
+        } else {
+          setToast(error instanceof Error && !error.message.includes('Firebase:') ? error.message : 'Não foi possível autenticar. Verifique o e-mail e senha digitados.')
+        }
       } finally {
         firebaseLoginInProgress.current = false
       }
