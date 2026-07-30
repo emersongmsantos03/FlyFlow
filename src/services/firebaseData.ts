@@ -492,7 +492,7 @@ export const createFirebaseWorkspaceUser = async (input: {
     }
     throw error
   }
-  return { user, recovered: false }
+  return { user, recovered: provisioned.recovered }
 }
 
 export const setFirebaseWorkspaceUserActive = async (userId: string, active: boolean) => {

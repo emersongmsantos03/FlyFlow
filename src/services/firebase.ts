@@ -86,13 +86,25 @@ export const provisionFirebaseAuthUser = async (email: string, password: string)
   if (!isFirebaseConfigured) throw new Error('Firebase não configurado.')
   const secondaryApp = initializeApp(firebaseConfig, `flyflow-user-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   const secondaryAuth = getAuth(secondaryApp)
+  const normalizedEmail = email.trim().toLowerCase()
 
   try {
-    const credential = await createUserWithEmailAndPassword(secondaryAuth, email.trim().toLowerCase(), password)
-    return { uid: credential.user.uid, email: credential.user.email ?? email.trim().toLowerCase() }
+    const credential = await createUserWithEmailAndPassword(secondaryAuth, normalizedEmail, password)
+    return { uid: credential.user.uid, email: credential.user.email ?? normalizedEmail, recovered: false }
   } catch (error) {
     const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
-    if (code.includes('email-already-in-use')) throw new Error('Já existe uma conta de login com este e-mail. Use outro e-mail ou redefina a senha da conta existente.')
+    if (code.includes('email-already-in-use')) {
+      try {
+        const existing = await signInWithEmailAndPassword(secondaryAuth, normalizedEmail, password)
+        return { uid: existing.user.uid, email: existing.user.email ?? normalizedEmail, recovered: true }
+      } catch (signInError) {
+        const signInCode = typeof signInError === 'object' && signInError && 'code' in signInError ? String(signInError.code) : ''
+        if (signInCode.includes('invalid-credential') || signInCode.includes('wrong-password')) {
+          throw new Error('Este e-mail já foi criado em uma tentativa anterior, mas a senha temporária não confere. Use a senha da primeira tentativa ou redefina a senha.')
+        }
+        throw signInError
+      }
+    }
     if (code.includes('weak-password')) throw new Error('A senha temporária é muito fraca. Use pelo menos 8 caracteres, uma letra e um número.')
     if (code.includes('invalid-email')) throw new Error('O e-mail informado é inválido.')
     if (code.includes('operation-not-allowed')) throw new Error('A criação de usuários por e-mail está desativada no Firebase Authentication.')
