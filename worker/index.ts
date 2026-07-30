@@ -307,6 +307,20 @@ type D1UserProfile = {
   [key: string]: unknown
 }
 
+const allFlyFlowPermissions = [
+  'viewDashboard',
+  'manageLeads',
+  'manageClients',
+  'manageProjects',
+  'manageAgenda',
+  'manageQuotes',
+  'manageFinance',
+  'manageEquipment',
+  'viewReports',
+  'manageSettings',
+  'manageUsers',
+]
+
 const bootstrapD1Workspace = async (
   env: Env,
   identity: { userId: string; email: string },
@@ -317,13 +331,24 @@ const bootstrapD1Workspace = async (
   if (!owner) throw new Error('A cópia local não contém a conta proprietária.')
   if (identity.email !== 'herodronecwb@gmail.com') {
     const existingWorkspace = await env.FLYFLOW_DB.prepare('SELECT workspace_id FROM workspaces LIMIT 1').first()
-    const invitedUser = users.find((user) => (
-      String(user.email || '').trim().toLowerCase() === identity.email
-      && user.active !== false
-      && user.invitationPending
-    ))
-    if (existingWorkspace || !invitedUser) {
-      throw new Error('A migração inicial exige a conta master ou um convite local válido.')
+    if (existingWorkspace) throw new Error('Este usuário ainda não possui acesso ao workspace migrado.')
+    const existingUser = users.find((user) => String(user.email || '').trim().toLowerCase() === identity.email)
+    if (!existingUser) {
+      users.unshift({
+        id: identity.userId,
+        name: identity.email.split('@')[0],
+        email: identity.email,
+        role: 'Administrador',
+        permissions: allFlyFlowPermissions,
+        active: true,
+        invitationPending: true,
+        mustChangePassword: true,
+      })
+      state.users = users
+    } else {
+      existingUser.active = true
+      existingUser.invitationPending = true
+      existingUser.mustChangePassword = true
     }
   }
   const workspaceId = String(owner.id || identity.userId)
