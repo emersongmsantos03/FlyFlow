@@ -463,10 +463,6 @@ export const createFirebaseWorkspaceUser = async (input: {
   if (!activeWorkspaceId || !auth.currentUser) {
     throw new Error('Entre novamente antes de criar um usuário.')
   }
-  const workspace = await getDoc(doc(db, 'workspaces', activeWorkspaceId))
-  if (!workspace.exists() || workspace.data().ownerUid !== auth.currentUser.uid) {
-    throw new Error('Somente o proprietário do workspace pode criar acessos no Firebase.')
-  }
   const provisioned = await provisionFirebaseAuthUser(input.email, input.password)
   const now = new Date().toISOString()
   const user = {
@@ -480,23 +476,29 @@ export const createFirebaseWorkspaceUser = async (input: {
     createdAt: now,
     updatedAt: now,
   }
-  await setDoc(doc(db, 'memberships', provisioned.uid), {
-    workspaceId: activeWorkspaceId,
-    email: provisioned.email,
-    active: true,
-    mustChangePassword: true,
-    createdAt: now,
-    updatedAt: serverTimestamp(),
-  })
+  try {
+    await setDoc(doc(db, 'memberships', provisioned.uid), {
+      workspaceId: activeWorkspaceId,
+      email: provisioned.email,
+      active: true,
+      mustChangePassword: true,
+      createdAt: now,
+      updatedAt: serverTimestamp(),
+    })
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+    if (code.includes('permission-denied')) {
+      throw new Error('A conta foi criada no login, mas o Firebase recusou o vínculo ao workspace. Atualize a página e tente novamente com outro e-mail.')
+    }
+    throw error
+  }
   return { user, recovered: false }
 }
 
 export const setFirebaseWorkspaceUserActive = async (userId: string, active: boolean) => {
   const { db, auth } = ensureServices()
   if (!activeWorkspaceId) throw new Error('Espaço de trabalho do Firebase não identificado.')
-  if (auth.currentUser?.uid !== activeWorkspaceId) {
-    throw new Error('Somente o proprietário do workspace pode alterar acessos no Firebase.')
-  }
+  if (!auth.currentUser) throw new Error('Entre novamente antes de alterar este acesso.')
   await setDoc(
     doc(db, 'memberships', userId),
     { workspaceId: activeWorkspaceId, active, updatedAt: serverTimestamp() },

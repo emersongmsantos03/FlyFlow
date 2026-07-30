@@ -4823,14 +4823,12 @@ Hero Drone`,
 
   const addUser = async (values: UserFormValues) => {
     if (!can(currentUser, 'manageUsers')) {
-      setToast('Seu usuário não tem permissão para criar contas.')
-      return
+      throw new Error('Seu usuário não tem permissão para criar contas.')
     }
 
     const normalizedEmail = values.email.trim().toLowerCase()
     if (state.users.some((user) => user.email.toLowerCase() === normalizedEmail)) {
-      setToast('Já existe um usuário com este e-mail.')
-      return
+      throw new Error('Já existe um usuário com este e-mail.')
     }
 
     try {
@@ -4874,7 +4872,9 @@ Hero Drone`,
         ? 'Acesso incompleto recuperado. O usuário já pode entrar com a senha temporária.'
         : 'Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
     } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Não foi possível criar o usuário.')
+      const message = error instanceof Error ? error.message : 'Não foi possível criar o usuário.'
+      setToast(message)
+      throw new Error(message)
     }
   }
 
@@ -13530,6 +13530,7 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
   const [role, setRole] = useState<UserRole>('Assistente')
   const [permissions, setPermissions] = useState<UserPermission[]>(rolePermissionPresets.Assistente)
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const changeRole = (nextRole: UserRole) => {
     setRole(nextRole)
@@ -13569,13 +13570,19 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
       return
     }
 
-    await onSubmit({
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      password,
-      role,
-      permissions,
-    })
+    setSaving(true)
+    try {
+      await onSubmit({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        role,
+        permissions,
+      })
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Não foi possível criar o usuário.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -13616,7 +13623,7 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
           ))}
         </div>
       </div>
-      <FormActions onCancel={onCancel} />
+      <FormActions onCancel={onCancel} submitDisabled={saving} submitLabel={saving ? 'Criando acesso…' : 'Criar usuário'} />
     </form>
   )
 }
