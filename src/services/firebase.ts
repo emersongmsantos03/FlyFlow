@@ -82,8 +82,10 @@ export const updateFirebaseUserTemporaryPassword = async (email: string, passwor
     throw new Error('Entre novamente antes de alterar a senha.')
   }
   const token = await firebaseAuth.currentUser.getIdToken()
+  const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
+  if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
   const response = await fetch(
-    `https://southamerica-east1-${firebaseConfig.projectId}.cloudfunctions.net/userAdminApi/temporary-password`,
+    `${workerBaseUrl}/admin/temporary-password`,
     {
       method: 'POST',
       headers: {

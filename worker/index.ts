@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from 'jose'
 
 interface Env {
   OPENAI_API_KEY: string
@@ -6,6 +6,7 @@ interface Env {
   FIREBASE_PROJECT_ID: string
   GOOGLE_OAUTH_CLIENT_ID: string
   GOOGLE_OAUTH_CLIENT_SECRET: string
+  FIREBASE_SERVICE_ACCOUNT_JSON: string
   GOOGLE_OAUTH: KVNamespace
 }
 
@@ -124,6 +125,72 @@ const verifyFirebaseToken = async (token: string, projectId: string) => {
   } catch {
     return null
   }
+}
+
+const verifyFirebaseIdentity = async (token: string, projectId: string) => {
+  if (!projectId) return null
+  try {
+    const { payload } = await jwtVerify(token, firebaseKeys, {
+      algorithms: ['RS256'],
+      audience: projectId,
+      issuer: `https://securetoken.google.com/${projectId}`,
+    })
+    if (!payload.sub || payload.sub.length > 128) return null
+    return { userId: payload.sub, email: String(payload.email || '').toLowerCase() }
+  } catch {
+    return null
+  }
+}
+
+const firebaseAdminAccessToken = async (env: Env) => {
+  const account = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}') as {
+    client_email?: string
+    private_key?: string
+  }
+  if (!account.client_email || !account.private_key) throw new Error('Credencial administrativa do Firebase não configurada.')
+  const key = await importPKCS8(account.private_key, 'RS256')
+  const now = Math.floor(Date.now() / 1000)
+  const assertion = await new SignJWT({
+    scope: 'https://www.googleapis.com/auth/cloud-platform',
+  })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .setIssuer(account.client_email)
+    .setSubject(account.client_email)
+    .setAudience('https://oauth2.googleapis.com/token')
+    .setIssuedAt(now)
+    .setExpirationTime(now + 3_600)
+    .sign(key)
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  })
+  const body = await response.json() as { access_token?: string; error_description?: string }
+  if (!response.ok || !body.access_token) throw new Error(body.error_description || 'Firebase recusou a credencial administrativa.')
+  return body.access_token
+}
+
+const updateFirebaseTemporaryPassword = async (env: Env, email: string, password: string) => {
+  const accessToken = await firebaseAdminAccessToken(env)
+  const baseUrl = `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}`
+  const lookup = await fetch(`${baseUrl}/accounts:lookup`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: [email] }),
+  })
+  const lookupBody = await lookup.json() as { users?: Array<{ localId?: string }>; error?: { message?: string } }
+  const localId = lookupBody.users?.[0]?.localId
+  if (!lookup.ok || !localId) throw new Error(lookupBody.error?.message === 'USER_NOT_FOUND' ? 'Conta de login não encontrada.' : 'Não foi possível localizar a conta.')
+  const update = await fetch(`${baseUrl}/accounts:update`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ localId, password }),
+  })
+  const updateBody = await update.json() as { error?: { message?: string } }
+  if (!update.ok) throw new Error(updateBody.error?.message || 'O Firebase recusou a nova senha.')
 }
 
 const workspaceForUser = async (token: string, userId: string, projectId: string) => {
@@ -293,6 +360,26 @@ export default {
     const isPublicLeadDiscovery = request.method === 'POST' && url.pathname === '/lead-discovery'
     const authorization = request.headers.get('Authorization') || ''
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+    if (request.method === 'POST' && url.pathname === '/admin/temporary-password') {
+      const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
+      if (!identity) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+      if (identity.email !== 'herodronecwb@gmail.com') {
+        return json({ error: 'Apenas a conta administradora principal pode alterar senhas.' }, 403, origin)
+      }
+      const body = await request.json().catch(() => null) as { email?: string; password?: string } | null
+      const email = clean(body?.email, 160).toLowerCase()
+      const password = String(body?.password || '')
+      if (!email || !/^\d{6,12}$/.test(password)) {
+        return json({ error: 'Use uma senha temporária de 6 a 12 números.' }, 400, origin)
+      }
+      if (email === identity.email) return json({ error: 'Altere sua própria senha em Minha conta.' }, 400, origin)
+      try {
+        await updateFirebaseTemporaryPassword(env, email, password)
+        return json({ updated: true }, 200, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Não foi possível alterar a senha.' }, 400, origin)
+      }
+    }
     const userId = token ? await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID) : null
     if (!userId && !isPublicLeadDiscovery) {
       return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
