@@ -4864,17 +4864,25 @@ Hero Drone`,
       })
       latestState.current = nextState
       saveAppState(nextState)
-      if (isFirebaseConfigured && authSession) await saveFirebaseAppState(nextState)
-      else if (isSupabaseConfigured && authSession) await saveCloudAppState(nextState)
       setState(nextState)
       setModal(null)
       if (firebaseResult?.requiresPasswordReset) {
-        await requestFirebasePasswordReset(normalizedEmail)
-        setToast('Convite criado e recuperação de senha enviada. O acesso será ativado no primeiro login.')
+        setToast('Convite criado. Enviando o e-mail para definir a senha…')
+        void requestFirebasePasswordReset(normalizedEmail)
+          .then(() => setToast('Convite enviado. O acesso será ativado após a definição da senha.'))
+          .catch(() => setToast('Convite salvo. Use “Reenviar acesso” para enviar novamente o e-mail.'))
       } else {
         setToast(firebaseResult?.recovered
           ? 'Acesso incompleto recuperado. O usuário já pode entrar com a senha temporária.'
           : 'Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
+      }
+      if (isFirebaseConfigured && authSession) {
+        void Promise.race([
+          saveFirebaseAppState(nextState),
+          new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('Tempo limite.')), 10_000)),
+        ]).catch(() => undefined)
+      } else if (isSupabaseConfigured && authSession) {
+        void saveCloudAppState(nextState).catch(() => undefined)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível criar o usuário.'
@@ -13565,13 +13573,19 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
 
     setSaving(true)
     try {
-      await onSubmit({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        password,
-        role,
-        permissions,
-      })
+      await Promise.race([
+        onSubmit({
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+          role,
+          permissions,
+        }),
+        new Promise<never>((_, reject) => window.setTimeout(
+          () => reject(new Error('O Firebase demorou para responder. Verifique sua conexão e tente novamente.')),
+          15_000,
+        )),
+      ])
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Não foi possível criar o usuário.')
       setSaving(false)
@@ -13580,13 +13594,9 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
 
   return (
     <form className="user-create-form" onSubmit={submit}>
-      <div className="user-create-intro">
-        <span><UserPlus size={22} /></span>
-        <div><strong>Novo acesso para a equipe</strong><p>Defina a identidade, o perfil e exatamente quais áreas essa pessoa poderá acessar.</p></div>
-      </div>
       {error ? <div className="user-create-error"><AlertTriangle size={18} /><div><strong>Não foi possível concluir o cadastro</strong><p>{error}</p></div></div> : null}
       <section className="user-create-section">
-        <header><span>1</span><div><strong>Dados de acesso</strong><small>A senha é temporária e deverá ser alterada no primeiro login.</small></div></header>
+        <header><div><strong>Dados do usuário</strong><small>Informe os dados usados no primeiro acesso.</small></div></header>
         <div className="grid gap-4 md:grid-cols-2">
         <InputField label="Nome do usuário">
           <input autoFocus className="field-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome e sobrenome" />
@@ -13605,11 +13615,10 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
           </select>
         </InputField>
         </div>
-        <div className="user-password-hint"><ShieldCheck size={15} /><span>O usuário receberá acesso com segurança e será orientado a cadastrar uma nova senha pessoal.</span></div>
       </section>
 
       <section className="user-create-section">
-        <header><span>2</span><div><strong>Permissões do sistema</strong><small>O perfil selecionado sugere uma configuração; você pode personalizar abaixo.</small></div><em>{permissions.length}/{allPermissions.length} selecionadas</em></header>
+        <header><div><strong>Permissões</strong><small>Escolha as áreas que essa pessoa poderá acessar.</small></div><em>{permissions.length} selecionadas</em></header>
         <div className="user-permission-selector">
           {allPermissions.map((permission) => (
             <label key={permission} className={permissions.includes(permission) ? 'is-selected' : ''}>
@@ -13626,7 +13635,7 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
       </section>
 
       <div className="user-create-actions">
-        <div><ShieldCheck size={16} /><span>Permissões protegidas pelo Firebase</span></div>
+        <div />
         <div><Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button><Button disabled={saving} type="submit"><UserPlus size={16} /> {saving ? 'Criando acesso…' : 'Criar usuário'}</Button></div>
       </div>
     </form>

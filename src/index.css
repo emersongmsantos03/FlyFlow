@@ -5390,7 +5390,7 @@ html[data-theme='dark'] .dashboard-attention-list > button strong {
 .users-permission-grid strong,.users-permission-grid small{display:block}
 .users-permission-grid strong{color:#263027;font-size:.7rem}
 .users-permission-grid small{margin-top:.1rem;color:#818a82;font-size:.62rem}
-.modal-surface:has(.user-create-form){width:min(58rem,calc(100vw - 2rem))!important;max-width:58rem!important;background:#f5f7f5}
+.modal-surface:has(.user-create-form){width:min(48rem,calc(100vw - 2rem))!important;max-width:48rem!important;background:#f7f8f7}
 .modal-surface:has(.user-create-form)>div:last-child{padding:0!important}
 .user-create-form{display:grid;gap:.75rem;padding:1rem}
 .user-create-intro{display:flex;align-items:center;gap:.85rem;padding:1rem;border-radius:.9rem;background:linear-gradient(120deg,#172019,#303a32);color:#fff;box-shadow:0 10px 24px rgb(20 29 22/.16)}
@@ -5401,23 +5401,23 @@ html[data-theme='dark'] .dashboard-attention-list > button strong {
 .user-create-error>svg{margin-top:.1rem;flex:0 0 auto}
 .user-create-error strong{display:block;font-size:.75rem}
 .user-create-error p{margin-top:.15rem;font-size:.68rem;line-height:1.45}
-.user-create-section{overflow:hidden;border:1px solid #dfe4df;border-radius:.9rem;background:#fff}
-.user-create-section>header{display:flex;align-items:center;gap:.65rem;padding:.7rem .9rem;border-bottom:1px solid #edf0ed;background:#fafbfa}
+.user-create-section{overflow:hidden;border:1px solid #e2e6e2;border-radius:.8rem;background:#fff}
+.user-create-section>header{display:flex;align-items:center;gap:.65rem;padding:.75rem .9rem;border-bottom:1px solid #edf0ed;background:#fff}
 .user-create-section>header>span{display:grid;width:1.7rem;height:1.7rem;flex:0 0 auto;place-items:center;border-radius:.5rem;background:#232b24;color:#f1cf5b;font-size:.66rem;font-weight:900}
 .user-create-section>header strong,.user-create-section>header small{display:block}
-.user-create-section>header strong{color:#202821;font-size:.76rem}
+.user-create-section>header strong{color:#202821;font-size:.78rem}
 .user-create-section>header small{margin-top:.1rem;color:#7e867f;font-size:.63rem}
-.user-create-section>header em{margin-left:auto;padding:.28rem .5rem;border-radius:999px;background:#fff2c7;color:#8a6700;font-size:.6rem;font-style:normal;font-weight:850}
+.user-create-section>header em{margin-left:auto;color:#8a6b09;font-size:.62rem;font-style:normal;font-weight:800}
 .user-create-section>.grid{padding:.9rem}
 .user-password-hint{display:flex;align-items:center;gap:.45rem;margin:0 .9rem .9rem;padding:.6rem .7rem;border-radius:.65rem;background:#f3f7f3;color:#687269;font-size:.64rem;font-weight:650}
 .user-password-hint svg{color:#278449}
 .user-permission-selector{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;padding:.8rem}
-.user-permission-selector label{display:flex;align-items:center;gap:.55rem;min-height:2.75rem;padding:.55rem .65rem;cursor:pointer;border:1px solid #e1e5e1;border-radius:.68rem;background:#f8faf8;color:#566057;transition:.15s ease}
+.user-permission-selector label{display:flex;align-items:center;gap:.55rem;min-height:2.6rem;padding:.5rem .65rem;cursor:pointer;border:1px solid #e5e8e5;border-radius:.6rem;background:#fff;color:#566057;transition:.15s ease}
 .user-permission-selector label:hover{border-color:#c8b56e;background:#fffdf5}
-.user-permission-selector label.is-selected{border-color:#dfc45e;background:#fff9df;color:#2b332c;box-shadow:inset 3px 0 #d5a900}
+.user-permission-selector label.is-selected{border-color:#d9bd54;background:#fffaf0;color:#2b332c}
 .user-permission-selector input{position:absolute;opacity:0;pointer-events:none}
-.user-permission-selector label>span{display:grid;width:1.55rem;height:1.55rem;flex:0 0 auto;place-items:center;border-radius:.45rem;background:#e9ede9;color:#a1a8a2}
-.user-permission-selector label.is-selected>span{background:#d5a900;color:#fff}
+.user-permission-selector label>span{display:grid;width:1.35rem;height:1.35rem;flex:0 0 auto;place-items:center;border-radius:.38rem;background:#eef1ee;color:#a1a8a2}
+.user-permission-selector label.is-selected>span{background:#d7ac00;color:#fff}
 .user-permission-selector strong{font-size:.68rem}
 .user-create-actions{position:sticky;bottom:-1px;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin:0 -1rem -1rem;padding:.8rem 1rem;border-top:1px solid #dfe4df;background:rgb(255 255 255/.95);box-shadow:0 -8px 22px rgb(20 29 22/.06);backdrop-filter:blur(14px)}
 .user-create-actions>div{display:flex;align-items:center;gap:.5rem}
