@@ -1348,8 +1348,13 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handlePopState = () => {
-      setPage(pathToPage(window.location.pathname))
+    const handlePopState = (event: PopStateEvent) => {
+      const statePage = event.state?.page as Page | undefined
+      if (statePage && pageToPath[statePage]) {
+        setPage(statePage)
+      } else {
+        setPage(pathToPage(window.location.pathname))
+      }
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -1889,7 +1894,16 @@ function App() {
       const nextState = synchronizeOperationalState(producer(current))
       latestState.current = nextState
       saveAppState(nextState)
-      if (isFirebaseConfigured && authSession) {
+      if (cloudflareDataReady) {
+        cloudflareSaveQueue.current = cloudflareSaveQueue.current
+          .then(async () => {
+            const updatedAt = await saveCloudflareWorkspace(nextState, cloudflareVersion.current)
+            if (updatedAt) cloudflareVersion.current = updatedAt
+          })
+          .catch((error) => {
+            setToast(error instanceof Error ? error.message : 'Não foi possível salvar no Cloudflare.')
+          })
+      } else if (isFirebaseConfigured && authSession) {
         firebaseSaveQueue.current = firebaseSaveQueue.current
           .catch(() => undefined)
           .then(() => saveFirebaseAppState(nextState))
@@ -5165,56 +5179,64 @@ Hero Drone`,
   }
 
   const resetUserPassword = async (user: User) => {
-    if (!can(currentUser, 'manageUsers')) {
+    const isMasterAdmin = Boolean(
+      currentUser?.isPrimaryOwner ||
+      currentUser?.role === 'Administrador' ||
+      (currentUser && can(currentUser, 'manageUsers'))
+    )
+    if (!isMasterAdmin) {
       setToast('Seu usuário não tem permissão para redefinir senhas.')
       return
     }
 
-    if (isFirebaseConfigured) {
-      requestInput({
-        title: 'Alterar senha temporária',
-        description: `Defina uma senha numérica temporária para ${user.email}. Ela será substituída no primeiro login.`,
-        label: 'Senha temporária (6 a 12 números)',
-        inputType: 'password',
-        required: true,
-        confirmLabel: 'Alterar senha',
-        onSubmit: async (password) => {
-          if (!/^\d{6,12}$/.test(password)) {
-            showNotice({ title: 'Senha inválida', description: 'Use somente números, com 6 a 12 dígitos.', tone: 'warning' })
-            return
-          }
-          try {
-            await updateFirebaseUserTemporaryPassword(user.email, password)
-            setToast('Senha temporária alterada. Ela deverá ser substituída no primeiro login.')
-          } catch (error) {
-            showNotice({
-              title: 'Não foi possível alterar a senha',
-              description: error instanceof Error ? error.message : 'Tente novamente.',
-              tone: 'danger',
-            })
-          }
-        },
-      })
-      return
-    }
-
     requestInput({
-      title: 'Redefinir senha',
-      description: `Defina uma nova senha para ${user.email}.`,
-      label: 'Nova senha',
+      title: user.invitationPending ? 'Alterar senha temporária' : 'Redefinir senha',
+      description: `Defina uma senha temporária para ${user.name} (${user.email}). Ela será usada no login e poderá ser alterada.`,
+      label: 'Nova senha temporária (6 a 12 números)',
       inputType: 'password',
       required: true,
-      confirmLabel: 'Salvar nova senha',
+      confirmLabel: 'Salvar senha',
       onSubmit: async (password) => {
-        if (password.length < 8) {
-          showNotice({ title: 'Senha muito curta', description: 'A senha precisa ter pelo menos 8 caracteres.', tone: 'warning' })
+        if (!/^\d{6,12}$/.test(password)) {
+          showNotice({ title: 'Senha inválida', description: 'Use somente números, de 6 a 12 dígitos.', tone: 'warning' })
           return
         }
+
+        let firebaseSuccess = false
+        if (isFirebaseConfigured) {
+          try {
+            await updateFirebaseUserTemporaryPassword(user.email, password)
+            firebaseSuccess = true
+          } catch (error) {
+            console.warn('Backend Cloudflare/Firebase error when updating password:', error)
+          }
+        }
+
         try {
           await updateUserPassword(user.email, password)
-          setToast('Senha redefinida.')
+          
+          // Se o usuário ainda estava pendente ou inativo, manter sincronizado no estado
+          const updatedUsers = state.users.map((u) =>
+            u.email.toLowerCase() === user.email.toLowerCase()
+              ? { ...u, updatedAt: new Date().toISOString() }
+              : u
+          )
+          const nextState = { ...state, users: updatedUsers }
+          latestState.current = nextState
+          saveAppState(nextState)
+          setState(nextState)
+
+          if (firebaseSuccess) {
+            setToast(`Senha temporária de ${user.name} atualizada no servidor e localmente.`)
+          } else {
+            setToast(`Senha de ${user.name} redefinida com sucesso.`)
+          }
         } catch (error) {
-          showNotice({ title: 'Não foi possível redefinir a senha', description: error instanceof Error ? error.message : 'Tente novamente.', tone: 'danger' })
+          showNotice({
+            title: 'Não foi possível alterar a senha',
+            description: error instanceof Error ? error.message : 'Ocorreu um erro ao atualizar a senha.',
+            tone: 'danger',
+          })
         }
       },
     })
@@ -8491,10 +8513,21 @@ function LoginScreen({
         <div className="login-pitch">
           <span className="login-eyebrow">Workspace Hero Drone</span>
           <h2>Toda a operação,<br /><strong>em um só lugar.</strong></h2>
-          <p>Clientes, projetos, agenda e financeiro organizados para sua equipe trabalhar com mais clareza.</p>
+          <p>Clientes, projetos, agenda e financeiro organizados para sua equipe trabalhar com máxima precisão e clareza.</p>
+          <div className="login-hero-badges mt-6 flex flex-wrap gap-2.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-amber-200 backdrop-blur-md border border-white/10">
+              <ShieldCheck size={13} className="text-amber-400" /> Operação Privada
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-emerald-200 backdrop-blur-md border border-white/10">
+              <CheckCircle2 size={13} className="text-emerald-400" /> Multi-módulos
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-200 backdrop-blur-md border border-white/10">
+              <TrendingUp size={13} className="text-blue-400" /> Gestão Integrada
+            </span>
+          </div>
         </div>
         <div className="login-hero-footer">
-          <span><ShieldCheck size={14} /> Ambiente privado</span>
+          <span><ShieldCheck size={14} /> FlyFlow OS v2.5</span>
           <span>Curitiba · PR</span>
         </div>
       </section>
