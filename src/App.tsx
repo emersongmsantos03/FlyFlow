@@ -2818,10 +2818,24 @@ Hero Drone`,
       } catch (error) {
         void signOutFromFirebase().catch(() => undefined)
         clearActiveFirebaseWorkspace()
+
+        // Testar se existe conta local válida criada pelo admin master
+        const localAccount = await authenticateUser(values.email, values.password).catch(() => null)
+        if (localAccount) {
+          const internalUser = state.users.find((u) => u.email.toLowerCase() === values.email.trim().toLowerCase())
+          if (internalUser && internalUser.active) {
+            saveAuthSession({ userId: internalUser.id, email: internalUser.email }, values.remember)
+            setAuthSession(getAuthSession())
+            setPage(canOpenPage(internalUser, 'dashboard') ? 'dashboard' : navigation.find((item) => canOpenPage(internalUser, item.page))?.page ?? 'dashboard')
+            setToast('Login efetuado com a senha definida pelo administrador.')
+            return
+          }
+        }
+
         const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
         setToast(
           code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')
-            ? 'E-mail ou senha inválidos.'
+            ? 'E-mail ou senha inválidos no Firebase.'
             : error instanceof Error
               ? error.message
               : 'Não foi possível entrar com o Firebase.',
