@@ -77,6 +77,26 @@ export const updateCurrentFirebasePassword = async (password: string) => {
   await updatePassword(firebaseAuth.currentUser, password)
 }
 
+export const updateFirebaseUserTemporaryPassword = async (email: string, password: string) => {
+  if (!firebaseAuth?.currentUser || !firebaseConfig.projectId) {
+    throw new Error('Entre novamente antes de alterar a senha.')
+  }
+  const token = await firebaseAuth.currentUser.getIdToken()
+  const response = await fetch(
+    `https://southamerica-east1-${firebaseConfig.projectId}.cloudfunctions.net/userAdminApi/temporary-password`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+    },
+  )
+  const body = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(body.error || 'Não foi possível alterar a senha temporária.')
+}
+
 export const observeFirebaseAuth = (listener: (user: FirebaseUser | null) => void) => {
   if (!firebaseAuth) return () => undefined
   return onAuthStateChanged(firebaseAuth, listener)

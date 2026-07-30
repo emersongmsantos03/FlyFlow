@@ -207,6 +207,54 @@ const authenticateWorkspace = async (request) => {
   return { user, workspaceId: data.workspaceId }
 }
 
+export const userAdminApi = onRequest(
+  { region: 'southamerica-east1', timeoutSeconds: 30, memory: '256MiB', maxInstances: 5 },
+  async (request, response) => {
+    setCors(request, response)
+    if (request.method === 'OPTIONS') return response.status(204).send('')
+    if (request.method !== 'POST' || request.path !== '/temporary-password') {
+      return response.status(404).json({ error: 'Rota não encontrada.' })
+    }
+
+    try {
+      const { user, workspaceId } = await authenticateWorkspace(request)
+      const requesterSnapshot = await getFirestore()
+        .doc(`workspaces/${workspaceId}/collections/users/items/${user.uid}`)
+        .get()
+      const requester = requesterSnapshot.data()?.value
+      const isOwner = user.email?.toLowerCase() === 'herodronecwb@gmail.com'
+      const canManageUsers = requester?.active && Array.isArray(requester.permissions) && requester.permissions.includes('manageUsers')
+      if (!isOwner && !canManageUsers) {
+        return response.status(403).json({ error: 'Você não tem permissão para alterar senhas.' })
+      }
+
+      const email = clean(request.body?.email, 160).toLowerCase()
+      const password = String(request.body?.password || '')
+      if (!email || !/^\d{6,12}$/.test(password)) {
+        return response.status(400).json({ error: 'Use uma senha temporária de 6 a 12 números.' })
+      }
+      if (email === user.email?.toLowerCase()) {
+        return response.status(400).json({ error: 'Altere sua própria senha em Minha conta.' })
+      }
+
+      const target = await getAuth().getUserByEmail(email)
+      await getAuth().updateUser(target.uid, { password })
+      await getFirestore().doc(`memberships/${target.uid}`).set({
+        mustChangePassword: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true })
+
+      return response.json({ updated: true })
+    } catch (error) {
+      console.error('temporary-password failed', error)
+      if (error?.code === 'auth/user-not-found') {
+        return response.status(404).json({ error: 'Conta de login não encontrada para este e-mail.' })
+      }
+      return response.status(error?.status || 500).json({ error: error?.message || 'Não foi possível alterar a senha.' })
+    }
+  },
+)
+
 const exchangeGoogleToken = async (parameters) => {
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',

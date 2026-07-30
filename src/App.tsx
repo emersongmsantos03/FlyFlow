@@ -198,6 +198,7 @@ import {
   signInWithFirebase,
   signOutFromFirebase,
   updateCurrentFirebasePassword,
+  updateFirebaseUserTemporaryPassword,
 } from './services/firebase'
 import {
   clearActiveFirebaseWorkspace,
@@ -4994,12 +4995,30 @@ Hero Drone`,
     }
 
     if (isFirebaseConfigured) {
-      try {
-        await requestFirebasePasswordReset(user.email)
-        setToast(`E-mail de redefinição enviado para ${user.email}.`)
-      } catch {
-        setToast('Não foi possível enviar o e-mail de redefinição.')
-      }
+      requestInput({
+        title: 'Alterar senha temporária',
+        description: `Defina uma senha numérica temporária para ${user.email}. Ela será substituída no primeiro login.`,
+        label: 'Senha temporária (6 a 12 números)',
+        inputType: 'password',
+        required: true,
+        confirmLabel: 'Alterar senha',
+        onSubmit: async (password) => {
+          if (!/^\d{6,12}$/.test(password)) {
+            showNotice({ title: 'Senha inválida', description: 'Use somente números, com 6 a 12 dígitos.', tone: 'warning' })
+            return
+          }
+          try {
+            await updateFirebaseUserTemporaryPassword(user.email, password)
+            setToast('Senha temporária alterada. Ela deverá ser substituída no primeiro login.')
+          } catch (error) {
+            showNotice({
+              title: 'Não foi possível alterar a senha',
+              description: error instanceof Error ? error.message : 'Tente novamente.',
+              tone: 'danger',
+            })
+          }
+        },
+      })
       return
     }
 
@@ -10804,7 +10823,7 @@ function UsersPage({
                     <td data-label="Ações">
                       <div className="flex flex-wrap gap-2">
                         <Button disabled={!canManageUsers} variant="secondary" type="button" onClick={() => onResetPassword(user)}>
-                          {user.invitationPending ? 'Enviar link de senha' : 'Redefinir senha'}
+                          {user.invitationPending ? 'Alterar senha temporária' : 'Redefinir senha'}
                         </Button>
                         {user.invitationPending
                           ? <span className="users-awaiting-login">Ativa no primeiro login</span>
@@ -13637,12 +13656,12 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
       setError('Informe um e-mail válido.')
       return
     }
-    if (password.length < 8) {
-      setError('A senha precisa ter pelo menos 8 caracteres.')
+    if (password.length < 6) {
+      setError('A senha precisa ter pelo menos 6 números.')
       return
     }
-    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-      setError('A senha temporária precisa conter pelo menos uma letra e um número.')
+    if (!/^\d{6,12}$/.test(password)) {
+      setError('Use somente números, com 6 a 12 dígitos.')
       return
     }
     if (permissions.length === 0) {
@@ -13684,7 +13703,7 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
           <input autoComplete="off" className="field-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="pessoa@empresa.com" />
         </InputField>
         <InputField label="Senha inicial">
-          <input autoComplete="new-password" className="field-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo 8 caracteres, letra e número" />
+          <input autoComplete="new-password" className="field-input" inputMode="numeric" pattern="[0-9]*" type="password" value={password} onChange={(event) => setPassword(event.target.value.replace(/\D/g, '').slice(0, 12))} placeholder="6 a 12 números" />
         </InputField>
         <InputField label="Perfil de acesso">
           <select className="field-input" value={role} onChange={(event) => changeRole(event.target.value as UserRole)}>

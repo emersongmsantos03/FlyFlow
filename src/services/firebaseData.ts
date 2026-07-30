@@ -299,8 +299,7 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
           ...(user.photoURL ? { avatarUrl: user.photoURL } : {}),
           role: invitation.profile.role,
           permissions: invitation.profile.permissions,
-          mustChangePassword: false,
-          passwordChangedAt: now,
+          mustChangePassword: true,
           active: true,
           createdAt: now,
           updatedAt: now,
@@ -310,8 +309,7 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
           workspaceId: invitation.workspaceId,
           email: normalizedEmail,
           active: true,
-          mustChangePassword: false,
-          passwordChangedAt: now,
+          mustChangePassword: true,
           createdAt: now,
           updatedAt: serverTimestamp(),
         })
@@ -327,7 +325,7 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
         }, { merge: true })
         await batch.commit()
         activeWorkspaceId = invitation.workspaceId
-        activeMembershipRequiresPasswordChange = false
+        activeMembershipRequiresPasswordChange = true
         return activeWorkspaceId
       }
     }
