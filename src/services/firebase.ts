@@ -148,23 +148,25 @@ export const loadCloudflareWorkspace = async () => {
   const body = await response.json().catch(() => ({})) as {
     state?: AppState
     mustChangePassword?: boolean
+    updatedAt?: string
     error?: string
   }
   if (!response.ok || !body.state) throw new Error(body.error || 'Não foi possível carregar os dados do Cloudflare.')
-  return { state: body.state, mustChangePassword: Boolean(body.mustChangePassword) }
+  return { state: body.state, mustChangePassword: Boolean(body.mustChangePassword), updatedAt: body.updatedAt || '' }
 }
 
-export const saveCloudflareWorkspace = async (state: AppState) => {
+export const saveCloudflareWorkspace = async (state: AppState, expectedUpdatedAt: string) => {
   const response = await fetch(`${cloudflareWorkerBaseUrl()}/data/state`, {
     method: 'POST',
     headers: {
       Authorization: await cloudflareAuthorization(),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ state }),
+    body: JSON.stringify({ state, expectedUpdatedAt }),
   })
-  const body = await response.json().catch(() => ({})) as { error?: string }
+  const body = await response.json().catch(() => ({})) as { error?: string; updatedAt?: string }
   if (!response.ok) throw new Error(body.error || 'Não foi possível salvar os dados no Cloudflare.')
+  return body.updatedAt || ''
 }
 
 export const completeCloudflareFirstLogin = async () => {

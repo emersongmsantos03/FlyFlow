@@ -336,6 +336,34 @@ const businessRecordCount = (state: Record<string, unknown>) => [
   'internalProjects',
 ].reduce((total, key) => total + (Array.isArray(state[key]) ? state[key].length : 0), 0)
 
+const STATE_CHUNK_SIZE = 200_000
+
+const readWorkspaceState = async (env: Env, workspaceId: string, fallbackJson = '{}') => {
+  const chunks = await env.FLYFLOW_DB.prepare(
+    'SELECT chunk_text FROM workspace_state_chunks WHERE workspace_id = ? ORDER BY chunk_index',
+  ).bind(workspaceId).all<{ chunk_text: string }>()
+  const serialized = chunks.results.length
+    ? chunks.results.map((chunk) => chunk.chunk_text).join('')
+    : fallbackJson
+  return JSON.parse(serialized) as Record<string, unknown>
+}
+
+const writeWorkspaceState = async (env: Env, workspaceId: string, stateJson: string, updatedAt: string) => {
+  const chunks: string[] = []
+  for (let index = 0; index < stateJson.length; index += STATE_CHUNK_SIZE) {
+    chunks.push(stateJson.slice(index, index + STATE_CHUNK_SIZE))
+  }
+  await env.FLYFLOW_DB.batch([
+    env.FLYFLOW_DB.prepare('DELETE FROM workspace_state_chunks WHERE workspace_id = ?').bind(workspaceId),
+    ...chunks.map((chunk, index) => env.FLYFLOW_DB.prepare(
+      'INSERT INTO workspace_state_chunks (workspace_id, chunk_index, chunk_text) VALUES (?, ?, ?)',
+    ).bind(workspaceId, index, chunk)),
+    env.FLYFLOW_DB.prepare(
+      "UPDATE workspaces SET state_json = '{}', updated_at = ? WHERE workspace_id = ?",
+    ).bind(updatedAt, workspaceId),
+  ])
+}
+
 const bootstrapD1Workspace = async (
   env: Env,
   identity: { userId: string; email: string },
@@ -376,19 +404,23 @@ const bootstrapD1Workspace = async (
   const existingWorkspace = await env.FLYFLOW_DB.prepare(
     'SELECT state_json FROM workspaces WHERE workspace_id = ?',
   ).bind(workspaceId).first<{ state_json: string }>()
+  const existingState = existingWorkspace
+    ? await readWorkspaceState(env, workspaceId, existingWorkspace.state_json)
+    : null
   const shouldRepairEmptyWorkspace = identity.email === 'herodronecwb@gmail.com'
     && existingWorkspace
-    && businessRecordCount(JSON.parse(existingWorkspace.state_json) as Record<string, unknown>) === 0
+    && existingState
+    && businessRecordCount(existingState) === 0
     && businessRecordCount(state) > 0
   const workspaceStatement = shouldRepairEmptyWorkspace
     ? env.FLYFLOW_DB.prepare(
       'UPDATE workspaces SET owner_uid = ?, state_json = ?, updated_at = ? WHERE workspace_id = ?',
-    ).bind(ownerUserId, stateJson, now, workspaceId)
+    ).bind(ownerUserId, '{}', now, workspaceId)
     : env.FLYFLOW_DB.prepare(`
       INSERT INTO workspaces (workspace_id, owner_uid, state_json, updated_at)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(workspace_id) DO NOTHING
-    `).bind(workspaceId, ownerUserId, stateJson, now)
+    `).bind(workspaceId, ownerUserId, '{}', now)
   const statements = [
     workspaceStatement,
     env.FLYFLOW_DB.prepare(`
@@ -431,6 +463,9 @@ const bootstrapD1Workspace = async (
       ))
     })
   await env.FLYFLOW_DB.batch(statements)
+  if (!existingWorkspace || shouldRepairEmptyWorkspace) {
+    await writeWorkspaceState(env, workspaceId, stateJson, now)
+  }
   return workspaceId
 }
 
@@ -486,7 +521,7 @@ const loadD1Workspace = async (env: Env, identity: { userId: string; email: stri
     'SELECT state_json, updated_at FROM workspaces WHERE workspace_id = ?',
   ).bind(access.workspaceId).first<{ state_json: string; updated_at: string }>()
   if (!workspace) return null
-  const state = JSON.parse(workspace.state_json) as Record<string, unknown>
+  const state = await readWorkspaceState(env, access.workspaceId, workspace.state_json)
   const users = Array.isArray(state.users) ? state.users as D1UserProfile[] : []
   const membershipRows = await env.FLYFLOW_DB.prepare(
     'SELECT profile_json FROM memberships WHERE workspace_id = ? AND active = 1',
@@ -745,18 +780,28 @@ export default {
     if (request.method === 'POST' && url.pathname === '/data/state') {
       const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
       if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
-      const body = await request.json().catch(() => null) as { state?: Record<string, unknown> } | null
+      const body = await request.json().catch(() => null) as {
+        state?: Record<string, unknown>
+        expectedUpdatedAt?: string
+      } | null
       if (!body?.state) return json({ error: 'Estado do sistema não informado.' }, 400, origin)
       try {
         const access = await claimD1Invitation(env, identity)
         if (!access) return json({ error: 'Usuário sem workspace no Cloudflare.' }, 403, origin)
+        const currentWorkspace = await env.FLYFLOW_DB.prepare(
+          'SELECT updated_at FROM workspaces WHERE workspace_id = ?',
+        ).bind(access.workspaceId).first<{ updated_at: string }>()
+        if (!body.expectedUpdatedAt || body.expectedUpdatedAt !== currentWorkspace?.updated_at) {
+          return json({
+            error: 'Os dados foram atualizados em outra sessão. Recarregue a página antes de salvar.',
+          }, 409, origin)
+        }
         const stateJson = JSON.stringify(body.state)
         if (new TextEncoder().encode(stateJson).byteLength > 20_000_000) {
           return json({ error: 'Os dados excedem o limite seguro de sincronização.' }, 413, origin)
         }
-        await env.FLYFLOW_DB.prepare(
-          'UPDATE workspaces SET state_json = ?, updated_at = ? WHERE workspace_id = ?',
-        ).bind(stateJson, new Date().toISOString(), access.workspaceId).run()
+        const updatedAt = new Date().toISOString()
+        await writeWorkspaceState(env, access.workspaceId, stateJson, updatedAt)
         const users = Array.isArray(body.state.users) ? body.state.users as D1UserProfile[] : []
         const now = new Date().toISOString()
         const profileStatements = users
@@ -781,7 +826,7 @@ export default {
             `).bind(JSON.stringify(user), user.active === false ? 0 : 1, now, access.workspaceId, email)
           })
         if (profileStatements.length) await env.FLYFLOW_DB.batch(profileStatements)
-        return json({ saved: true }, 200, origin)
+        return json({ saved: true, updatedAt }, 200, origin)
       } catch (error) {
         return json({ error: error instanceof Error ? error.message : 'Não foi possível salvar no Cloudflare.' }, 400, origin)
       }

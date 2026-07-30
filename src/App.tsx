@@ -1354,6 +1354,8 @@ function App() {
   const googleRestoreAttempted = useRef('')
   const latestState = useRef(state)
   const firebaseSaveQueue = useRef<Promise<void>>(Promise.resolve())
+  const cloudflareSaveQueue = useRef<Promise<void>>(Promise.resolve())
+  const cloudflareVersion = useRef('')
 
   useEffect(() => {
     latestState.current = state
@@ -1472,6 +1474,7 @@ function App() {
             saveAppState(resolvedState)
             setState(resolvedState)
             setCloudflareDataReady(true)
+            cloudflareVersion.current = cloudflareWorkspace.updatedAt
             setFirstLoginUserId(cloudflareWorkspace.mustChangePassword ? internalUser.id : '')
             saveAuthSession({ userId: internalUser.id, email: internalUser.email }, true)
             setAuthSession(getAuthSession())
@@ -1602,9 +1605,14 @@ function App() {
 
     if (isFirebaseConfigured && cloudflareDataReady) {
       const timeout = window.setTimeout(() => {
-        void saveCloudflareWorkspace(state).catch((error) => {
-          setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar com o Cloudflare.')
-        })
+        cloudflareSaveQueue.current = cloudflareSaveQueue.current
+          .then(async () => {
+            const updatedAt = await saveCloudflareWorkspace(state, cloudflareVersion.current)
+            cloudflareVersion.current = updatedAt
+          })
+          .catch((error) => {
+            setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar com o Cloudflare.')
+          })
       }, 900)
       return () => {
         window.clearTimeout(localTimeout)
@@ -2643,6 +2651,7 @@ Hero Drone`,
           saveAppState(resolvedState)
           setState(resolvedState)
           setCloudflareDataReady(true)
+          cloudflareVersion.current = cloudflareWorkspace.updatedAt
           saveAuthSession({ userId: internalUser.id, email: internalUser.email }, values.remember)
           setAuthSession(getAuthSession())
           setFirstLoginUserId(cloudflareWorkspace.mustChangePassword ? internalUser.id : '')
