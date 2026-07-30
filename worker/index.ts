@@ -312,11 +312,22 @@ const bootstrapD1Workspace = async (
   identity: { userId: string; email: string },
   state: Record<string, unknown>,
 ) => {
-  if (identity.email !== 'herodronecwb@gmail.com') throw new Error('A migração inicial exige a conta master.')
   const users = Array.isArray(state.users) ? state.users as D1UserProfile[] : []
-  const owner = users.find((user) => String(user.email || '').toLowerCase() === identity.email)
+  const owner = users.find((user) => String(user.email || '').toLowerCase() === 'herodronecwb@gmail.com')
   if (!owner) throw new Error('A cópia local não contém a conta proprietária.')
-  const workspaceId = identity.userId
+  if (identity.email !== 'herodronecwb@gmail.com') {
+    const existingWorkspace = await env.FLYFLOW_DB.prepare('SELECT workspace_id FROM workspaces LIMIT 1').first()
+    const invitedUser = users.find((user) => (
+      String(user.email || '').trim().toLowerCase() === identity.email
+      && user.active !== false
+      && user.invitationPending
+    ))
+    if (existingWorkspace || !invitedUser) {
+      throw new Error('A migração inicial exige a conta master ou um convite local válido.')
+    }
+  }
+  const workspaceId = String(owner.id || identity.userId)
+  const ownerUserId = identity.email === 'herodronecwb@gmail.com' ? identity.userId : workspaceId
   const now = new Date().toISOString()
   const stateJson = JSON.stringify(state)
   if (new TextEncoder().encode(stateJson).byteLength > 20_000_000) {
@@ -327,12 +338,12 @@ const bootstrapD1Workspace = async (
       INSERT INTO workspaces (workspace_id, owner_uid, state_json, updated_at)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(workspace_id) DO NOTHING
-    `).bind(workspaceId, identity.userId, stateJson, now),
+    `).bind(workspaceId, ownerUserId, stateJson, now),
     env.FLYFLOW_DB.prepare(`
       INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
       VALUES (?, ?, ?, ?, 1, 0, ?)
       ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json, active = 1, updated_at = excluded.updated_at
-    `).bind(identity.userId, workspaceId, identity.email, JSON.stringify({ ...owner, id: identity.userId, active: true }), now),
+    `).bind(ownerUserId, workspaceId, 'herodronecwb@gmail.com', JSON.stringify({ ...owner, id: ownerUserId, active: true }), now),
   ]
   users
     .filter((user) => user.invitationPending && user.email)

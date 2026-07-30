@@ -198,7 +198,6 @@ import {
   isFirebaseConfigured,
   observeFirebaseAuth,
   requestFirebasePasswordReset,
-  claimFirebaseWorkspaceInvitation,
   completeCloudflareFirstLogin,
   signInWithFirebase,
   signOutFromFirebase,
@@ -1456,7 +1455,7 @@ function App() {
         try {
           const localState = loadAppState()
           let cloudflareWorkspace = await loadCloudflareWorkspace()
-          if (!cloudflareWorkspace && firebaseUser.email?.toLowerCase() === 'herodronecwb@gmail.com') {
+          if (!cloudflareWorkspace) {
             await bootstrapCloudflareWorkspace(localState)
             cloudflareWorkspace = await loadCloudflareWorkspace()
           }
@@ -2625,25 +2624,9 @@ Hero Drone`,
             15_000,
           )),
         ])
-        if (!cloudflareWorkspace && credential.user.email?.toLowerCase() === 'herodronecwb@gmail.com') {
+        if (!cloudflareWorkspace) {
           await bootstrapCloudflareWorkspace(loadAppState())
           cloudflareWorkspace = await loadCloudflareWorkspace()
-        }
-        if (!cloudflareWorkspace) {
-          await Promise.race([
-            claimFirebaseWorkspaceInvitation(),
-            new Promise<never>((_, reject) => window.setTimeout(
-              () => reject(new Error('Não foi possível ativar o convite. Tente novamente.')),
-              15_000,
-            )),
-          ])
-          cloudflareWorkspace = await Promise.race([
-            loadCloudflareWorkspace(),
-            new Promise<never>((_, reject) => window.setTimeout(
-              () => reject(new Error('O Cloudflare demorou para carregar os dados. Tente novamente.')),
-              15_000,
-            )),
-          ])
         }
         if (cloudflareWorkspace) {
           const resolvedState = normalizeAppState(cloudflareWorkspace.state)
