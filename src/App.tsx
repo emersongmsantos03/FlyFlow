@@ -20,12 +20,14 @@ import {
   DollarSign,
   Download,
   Eye,
+  EyeOff,
   FileText,
   Handshake,
   ImagePlus,
   Italic,
   LayoutDashboard,
   Landmark,
+  KeyRound,
   Link2,
   List,
   LogOut,
@@ -194,11 +196,14 @@ import {
   requestFirebasePasswordReset,
   signInWithFirebase,
   signOutFromFirebase,
+  updateCurrentFirebasePassword,
 } from './services/firebase'
 import {
   clearActiveFirebaseWorkspace,
+  completeFirebaseFirstLogin,
   createFirebaseWorkspaceUser,
   ensureFirebaseWorkspace,
+  firebasePasswordChangeRequired,
   loadFirebaseAppState,
   observeFirebaseWorkspace,
   removeFirebaseEmailSignature,
@@ -215,10 +220,12 @@ import {
   getGoogleWorkspaceConnection,
   getStoredGoogleOAuthClientId,
   listGoogleWorkspaceEmails,
+  removeGoogleWorkspaceEmailSignature,
   restoreGoogleWorkspaceConnection,
   repairTextEncoding,
   sendGoogleWorkspaceEmail,
   setGoogleWorkspaceEmailSignature,
+  uploadGoogleWorkspaceEmailSignature,
   type GoogleMailboxMessage,
 } from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
@@ -284,6 +291,7 @@ type Page =
   | 'equipment'
   | 'reports'
   | 'settings'
+  | 'profile'
   | 'users'
 
 type FinanceTab = 'dashboard' | 'receitas' | 'despesas' | 'receber' | 'fluxo' | 'contas' | 'arquivados'
@@ -310,6 +318,7 @@ type ModalType =
   | 'proposalCancel'
   | 'proposalDelete'
   | 'user'
+  | 'profile'
   | 'equipment'
   | null
 
@@ -1148,24 +1157,53 @@ const readFileAsDataUrl = (file: File) =>
   })
 
 const prepareEmailSignatureImage = async (file: File) => {
+  const allowedTypes = ['image/png', 'image/jpeg', 'image/webp']
+  if (!allowedTypes.includes(file.type)) throw new Error('Escolha uma assinatura PNG, JPG ou WEBP.')
   if (file.size > 5_000_000) throw new Error('A assinatura deve ter no máximo 5 MB.')
   const source = await readFileAsDataUrl(file)
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const element = new Image()
-    element.onload = () => resolve(element)
+    element.onload = () => resolve()
     element.onerror = () => reject(new Error('Não foi possível abrir a imagem da assinatura.'))
     element.src = source
   })
-  const scale = Math.min(1, 800 / image.naturalWidth, 220 / image.naturalHeight)
+  return source
+}
+
+const prepareAvatarImage = async (file: File) => {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  const isHeic = ['heic', 'heif'].includes(extension || '') || ['image/heic', 'image/heif'].includes(file.type.toLowerCase())
+  const isSupportedImage = file.type.startsWith('image/') || isHeic
+  if (!isSupportedImage) throw new Error('Escolha uma foto JPG, PNG, WEBP, HEIC ou HEIF.')
+  if (file.size > 20_000_000) throw new Error('A foto deve ter no máximo 20 MB.')
+
+  let imageSource: Blob = file
+  if (isHeic) {
+    try {
+      const { default: heic2any } = await import('heic2any')
+      const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
+      imageSource = Array.isArray(converted) ? converted[0] : converted
+    } catch {
+      throw new Error('Não foi possível converter esta foto HEIC. Tente exportá-la novamente ou escolha outra imagem.')
+    }
+  }
+
+  const source = await readFileAsDataUrl(new File([imageSource], 'avatar', { type: imageSource.type || 'image/jpeg' }))
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image()
+    element.onload = () => resolve(element)
+    element.onerror = () => reject(new Error('Não foi possível abrir essa foto.'))
+    element.src = source
+  })
+  const side = Math.min(image.naturalWidth, image.naturalHeight)
   const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+  canvas.width = 320
+  canvas.height = 320
   const context = canvas.getContext('2d')
-  if (!context) throw new Error('Não foi possível preparar a assinatura.')
-  context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  let optimized = canvas.toDataURL('image/webp', 0.86)
-  if (optimized.length > 700_000) optimized = canvas.toDataURL('image/webp', 0.68)
-  if (optimized.length > 850_000) throw new Error('A assinatura ficou muito grande. Escolha uma imagem mais simples.')
+  if (!context) throw new Error('Não foi possível preparar a foto.')
+  context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, 320, 320)
+  const optimized = canvas.toDataURL('image/webp', .76)
+  if (optimized.length > 300_000) throw new Error('Não foi possível reduzir a foto para armazenamento. Escolha outra imagem.')
   return optimized
 }
 
@@ -1243,6 +1281,7 @@ function App() {
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [authSession, setAuthSession] = useState(() => getAuthSession())
   const [firebaseAuthReady, setFirebaseAuthReady] = useState(!isFirebaseConfigured)
+  const [firstLoginUserId, setFirstLoginUserId] = useState('')
   const firebaseLoginInProgress = useRef(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light'
@@ -1260,7 +1299,7 @@ function App() {
     return stored === 'table' || stored === 'tasks' || stored === 'lost' ? stored : 'kanban'
   })
   const [financeTab, setFinanceTab] = useState<FinanceTab>('dashboard')
-  const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>('diaria')
+  const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>('semanal')
   const [quickActionsOpen, setQuickActionsOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   useEffect(() => {
@@ -1302,6 +1341,7 @@ function App() {
   const [toast, setToast] = useState('')
   const [unreadEmailCount, setUnreadEmailCount] = useState(0)
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [googleConnectionRevision, setGoogleConnectionRevision] = useState(0)
   const observedInboxIds = useRef<Set<string> | null>(null)
   const googleRestoreAttempted = useRef('')
@@ -1430,6 +1470,7 @@ function App() {
           if (cancelled) return
 
           setState(resolvedState)
+          setFirstLoginUserId(firebasePasswordChangeRequired() ? internalUser.id : '')
           const existingSession = getAuthSession()
           if (!existingSession || existingSession.email.toLowerCase() !== internalUser.email.toLowerCase()) {
             saveAuthSession({ userId: internalUser.id, email: internalUser.email }, true)
@@ -2557,6 +2598,7 @@ Hero Drone`,
 
         saveAuthSession({ userId: internalUser.id, email: internalUser.email }, values.remember)
         setAuthSession(getAuthSession())
+        setFirstLoginUserId(firebasePasswordChangeRequired() ? internalUser.id : '')
         setPage(
           canOpenPage(internalUser, 'dashboard')
             ? 'dashboard'
@@ -2596,7 +2638,12 @@ Hero Drone`,
       setAuthSession(getAuthSession())
       try {
         const cloudState = await loadCloudAppState()
-        if (cloudState) setState(normalizeAppState(cloudState))
+        if (cloudState) {
+          const normalizedState = normalizeAppState(cloudState)
+          setState(normalizedState)
+          const cloudUser = normalizedState.users.find((item) => item.email.toLowerCase() === internalUser.email.toLowerCase())
+          setFirstLoginUserId(cloudUser?.mustChangePassword ? cloudUser.id : '')
+        }
         else await saveCloudAppState(state)
       } catch {
         setToast('Login realizado, mas não foi possível carregar o banco remoto.')
@@ -2620,6 +2667,7 @@ Hero Drone`,
 
     saveAuthSession(account, values.remember)
     setAuthSession(getAuthSession())
+    setFirstLoginUserId(account.mustChangePassword || user.mustChangePassword ? user.id : '')
     const userNavigation = navigation.filter((item) => canOpenPage(user, item.page))
     setPage(canOpenPage(user, 'dashboard') ? 'dashboard' : userNavigation[0]?.page ?? 'dashboard')
     setToast('Login realizado.')
@@ -2632,6 +2680,7 @@ Hero Drone`,
     } else if (isSupabaseConfigured && supabase) void supabase.auth.signOut()
     clearAuthSession()
     setAuthSession(null)
+    setFirstLoginUserId('')
   }
 
   const handlePasswordReset = async (email: string) => {
@@ -4794,17 +4843,24 @@ Hero Drone`,
         email: normalizedEmail,
         role: values.role,
         permissions: values.permissions,
+        mustChangePassword: true,
         active: true,
         createdAt: now,
         updatedAt: now,
       }
 
-      setState((current) => ({
-        ...current,
-        users: [user, ...current.users],
-      }))
+      const nextState = synchronizeOperationalState({
+        ...latestState.current,
+        users: [user, ...latestState.current.users],
+        updatedAt: now,
+      })
+      latestState.current = nextState
+      saveAppState(nextState)
+      if (isFirebaseConfigured && authSession) await saveFirebaseAppState(nextState)
+      else if (isSupabaseConfigured && authSession) await saveCloudAppState(nextState)
+      setState(nextState)
       setModal(null)
-      setToast('Usuário criado com acesso interno.')
+      setToast('Usuário criado. No primeiro acesso, ele deverá cadastrar uma nova senha.')
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Não foi possível criar o usuário.')
     }
@@ -6050,7 +6106,43 @@ Hero Drone`,
     return <LoginScreen onSubmit={handleLogin} onPasswordReset={handlePasswordReset} />
   }
 
-  const currentNavigation = navigation.find((item) => item.page === page)
+  if (firstLoginUserId === currentUser.id) {
+    return (
+      <FirstLoginPasswordScreen
+        user={currentUser}
+        onLogout={handleLogout}
+        onSubmit={async (password) => {
+          if (isFirebaseConfigured) {
+            await updateCurrentFirebasePassword(password)
+            await completeFirebaseFirstLogin()
+          } else if (isSupabaseConfigured && supabase) {
+            const { error } = await supabase.auth.updateUser({ password })
+            if (error) throw error
+          } else {
+            await updateUserPassword(currentUser.email, password)
+          }
+          const now = new Date().toISOString()
+          const nextState = synchronizeOperationalState({
+            ...latestState.current,
+            users: latestState.current.users.map((user) => user.id === currentUser.id
+              ? { ...user, mustChangePassword: false, passwordChangedAt: now, updatedAt: now }
+              : user),
+            updatedAt: now,
+          })
+          latestState.current = nextState
+          saveAppState(nextState)
+          if (!isFirebaseConfigured && isSupabaseConfigured && authSession) await saveCloudAppState(nextState)
+          setState(nextState)
+          setFirstLoginUserId('')
+          setToast('Nova senha cadastrada com sucesso.')
+        }}
+      />
+    )
+  }
+
+  const currentNavigation = page === 'profile'
+    ? { page: 'profile' as const, label: 'Meu perfil', icon: UserCog, group: 'Gestão' as const }
+    : navigation.find((item) => item.page === page)
   const CurrentPageIcon = currentNavigation?.icon ?? LayoutDashboard
   const openSystemNotification = (notification: AppState['notifications'][number]) => {
     updateState((current) => ({
@@ -6118,11 +6210,6 @@ Hero Drone`,
             })}
           </nav>
           <div className="app-sidebar-footer space-y-2 border-t border-white/10 p-3 text-[0.7rem] text-white/50">
-            <div className="app-user-summary rounded-lg border border-white/10 bg-white/5 p-2.5">
-              <p className="font-bold text-white">{currentUser.name}</p>
-              <p className="mt-1 truncate">{currentUser.email}</p>
-              <p className="mt-1">{permissionSummary(currentUser)}</p>
-            </div>
             <p className="app-sync-status"><span aria-hidden="true" />{isFirebaseConfigured ? 'Firebase sincronizado' : isSupabaseConfigured ? 'Supabase configurado' : 'Dados locais neste navegador'}</p>
             <details className="app-admin-menu">
               <summary>Administração</summary>
@@ -6132,7 +6219,7 @@ Hero Drone`,
         </div>
       </aside>
 
-      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">{navigationGroups.map((group) => { const items = availableNavigation.filter((item) => item.group === group); if (!items.length) return null; return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><Icon size={17} />{item.label}</button> })}</div></div> })}</nav><div className="mobile-drawer-footer space-y-3 border-t border-white/10 p-4">{['dashboard', 'finance', 'reports'].includes(page) ? <div className="grid grid-cols-2 gap-2"><label className="text-xs text-white/60">Período<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={period} onChange={(event) => setPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option className="text-black" key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="text-xs text-white/60">Regime<select className="mt-1 w-full rounded-lg border border-white/15 bg-white/10 px-2 py-2 text-sm text-white" value={regime} onChange={(event) => setRegime(event.target.value as AccountingRegime)}><option className="text-black" value="cash">Caixa</option><option className="text-black" value="accrual">Competência</option></select></label></div> : null}<div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs"><strong className="block text-white">{currentUser.name}</strong><span className="mt-1 block truncate text-white/60">{currentUser.email}</span></div><Button className="w-full border border-white/15 bg-white/10 text-white" type="button" onClick={handleLogout}><LogOut size={16} /> Sair</Button></div></aside></div> : null}
+      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">{navigationGroups.map((group) => { const items = availableNavigation.filter((item) => item.group === group); if (!items.length) return null; return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><Icon size={17} />{item.label}</button> })}</div></div> })}</nav></aside></div> : null}
 
       <main className="min-w-0">
         <header className="app-header sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
@@ -6156,6 +6243,13 @@ Hero Drone`,
               <GlobalSearchResults query={query} state={state} onNavigate={setPage} />
             </div>
             <div className="app-header-controls order-2 ml-auto flex shrink-0 items-center gap-2 lg:order-3">
+              <div className="app-header-date hidden xl:flex">
+                <CalendarDays size={16} />
+                <span>
+                  <strong>{new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</strong>
+                  <small>{new Date().toLocaleDateString('pt-BR', { weekday: 'long' })}</small>
+                </span>
+              </div>
               <div className={`w-28 shrink-0 ${['dashboard', 'finance', 'reports'].includes(page) ? 'hidden sm:block' : 'hidden'}`}>
                 <select className="field-input min-h-9 py-1.5 text-sm" aria-label="Período" value={period} onChange={(event) => setPeriod(event.target.value as PeriodPreset)}>
                   {periodOptions.map((option) => (
@@ -6220,14 +6314,23 @@ Hero Drone`,
                   </div>
                 ) : null}
               </div>
-              <button
-                className="app-header-icon focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
-                type="button"
-                onClick={handleLogout}
-                aria-label="Sair"
-              >
-                <LogOut size={17} />
-              </button>
+              <div className="app-account-menu relative">
+                <button className="app-account-trigger" type="button" onClick={() => { setUserMenuOpen((open) => !open); setNotificationCenterOpen(false) }} aria-expanded={userMenuOpen} aria-label="Abrir menu da conta">
+                  {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt="" /> : <span>{currentUser.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span>}
+                  <div className="hidden 2xl:block"><strong>{currentUser.name}</strong><small>{currentUser.role}</small></div>
+                  <ChevronDown className="hidden 2xl:block" size={14} />
+                </button>
+                {userMenuOpen ? (
+                  <div className="app-account-popover">
+                    <header>
+                      {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt="" /> : <span>{currentUser.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span>}
+                      <div><strong>{currentUser.name}</strong><small>{currentUser.email}</small></div>
+                    </header>
+                    <button type="button" onClick={() => { setPage('profile'); setUserMenuOpen(false) }}><UserCog size={16} /><span><strong>Meu perfil</strong><small>Foto, dados e segurança</small></span><ChevronRight size={15} /></button>
+                    <button className="is-logout" type="button" onClick={() => { setUserMenuOpen(false); handleLogout() }}><LogOut size={16} /><span><strong>Sair do FlyFlow</strong><small>Encerrar esta sessão</small></span></button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </header>
@@ -6312,6 +6415,14 @@ Hero Drone`,
                 const now = new Date().toISOString()
                 const activeCities = (state.leadHunterCities || []).filter((item) => item.active && (!item.blockedUntil || item.blockedUntil <= now))
                 const activeCategories = (state.leadHunterCategories || []).filter((item) => item.active)
+                const recentSearches = (state.leadHunterSearches || []).slice(0, 12)
+                const recentCityUsage = new Map<string, number>()
+                const recentCategoryUsage = new Map<string, number>()
+                recentSearches.forEach((search, index) => {
+                  const weight = recentSearches.length - index
+                  search.cityIds.forEach((id) => recentCityUsage.set(id, (recentCityUsage.get(id) || 0) + weight))
+                  search.categoryIds.forEach((id) => recentCategoryUsage.set(id, (recentCategoryUsage.get(id) || 0) + weight))
+                })
                 const searchLearningProfile = buildLeadLearningProfile(state.leadHunterProspects || [])
                 const publicSearchCategories = activeCategories.filter((item) => isEligibleLeadSegment(item.name))
                 const categoryCoveragePriority = (name: string) => {
@@ -6340,14 +6451,16 @@ Hero Drone`,
                     const nearby = [...activeCities]
                       .filter((item) => item.distanceFromBaseKm <= 70)
                       .sort((a, b) =>
-                        greenBeltPriority(b) - greenBeltPriority(a)
+                        (recentCityUsage.get(a.id) || 0) - (recentCityUsage.get(b.id) || 0)
+                        || greenBeltPriority(b) - greenBeltPriority(a)
                         || a.searchCount - b.searchCount
                         || a.distanceFromBaseKm - b.distanceFromBaseKm,
                       )
                       .slice(0, 6)
                     const underSearched = [...activeCities]
                       .sort((a, b) =>
-                        greenBeltPriority(b) - greenBeltPriority(a)
+                        (recentCityUsage.get(a.id) || 0) - (recentCityUsage.get(b.id) || 0)
+                        || greenBeltPriority(b) - greenBeltPriority(a)
                         || a.searchCount - b.searchCount
                         || a.distanceFromBaseKm - b.distanceFromBaseKm,
                       )
@@ -6367,7 +6480,11 @@ Hero Drone`,
                         selectedGroups.has(item.group) &&
                         isEligibleLeadSegment(item.name),
                       )
-                      .sort((a, b) => b.weight - a.weight || a.searchCount - b.searchCount)
+                      .sort((a, b) =>
+                        (recentCategoryUsage.get(a.id) || 0) - (recentCategoryUsage.get(b.id) || 0)
+                        || b.weight - a.weight
+                        || a.searchCount - b.searchCount,
+                      )
                     return [...explicitlySelected, ...related].slice(0, 4)
                   })()
                   : (() => {
@@ -6375,18 +6492,21 @@ Hero Drone`,
                     const maximumPriority = eligible.filter((category) => leadSegmentPriorityPoints(category.name) === 30)
                     const ranked = [...(maximumPriority.length ? maximumPriority : eligible)]
                       .sort((a, b) =>
-                        (categoryCoveragePriority(b.name) + b.weight * 2 - b.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(b.name)] || 0)) -
+                        (recentCategoryUsage.get(a.id) || 0) - (recentCategoryUsage.get(b.id) || 0)
+                        || (categoryCoveragePriority(b.name) + b.weight * 2 - b.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(b.name)] || 0)) -
                         (categoryCoveragePriority(a.name) + a.weight * 2 - a.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(a.name)] || 0)),
                       )
-                    return ranked.slice(0, 4)
+                    // Lotes menores criam mais combinações cidade × segmento e
+                    // evitam repetir uma consulta ampla que já foi esgotada.
+                    return ranked.slice(0, 2)
                   })()
                 if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
                 const searchId = createId('lh-search')
                 try {
                   const provider = new OpenStreetMapLeadProvider()
-                  const resultsPerSearch = Math.max(5, Math.min(state.leadHunterSettings?.maxResultsPerSearch || 10, 25))
+                  const resultsPerSearch = Math.max(10, Math.min(state.leadHunterSettings?.maxResultsPerSearch || 10, 25))
                   const candidateTarget = resultsPerSearch * 2
-                  const searchCities = citiesWithinRadius.slice(0, filters.cityIds.length ? 4 : 3)
+                  const searchCities = citiesWithinRadius.slice(0, 5)
                   const providerLimit = Math.max(20, Math.min(50, Math.ceil(candidateTarget / Math.max(searchCities.length, 1)) + 12))
                   const knownProspects = state.leadHunterProspects || []
                   const isAlreadyKnown = (raw: { id?: string; name: string; city: string; phone?: string; whatsapp?: string; website?: string; externalIds?: Record<string, string> }) => {
@@ -6413,6 +6533,16 @@ Hero Drone`,
                   const searchWarnings: string[] = []
                   const addCandidate = (lead: (typeof result.leads)[number]) => {
                     if (!isEligibleLeadSegment(lead.categoryName, lead.name)) return
+                    const hasDirectContact = Boolean(
+                      lead.whatsapp?.trim() ||
+                      lead.phone?.trim() ||
+                      lead.email?.trim() ||
+                      lead.instagram?.trim(),
+                    )
+                    // Um endereço no mapa, sozinho, não é uma oportunidade
+                    // comercial. Toda empresa que entra no lote precisa ter ao
+                    // menos um canal público de contato.
+                    if (!hasDirectContact) return
                     // Uma empresa que já apareceu em qualquer rodada permanece no
                     // histórico e nunca deve voltar a consumir uma vaga de uma
                     // nova pesquisa.
@@ -6484,8 +6614,9 @@ Hero Drone`,
                     }).then((searchResult) => ({ searchCity: primaryCity, searchResult, source: 'Google Places' })),
                   ])
                   primaryResults.forEach(collectPublicResult)
-                  // Só consulta outras cidades quando a primeira não formou um
-                  // lote útil. Isso evita rate limit sem voltar ao fluxo lento.
+                  // Continua pela região até completar dez oportunidades
+                  // contatáveis. Google Places acompanha cada cidade para manter
+                  // o vínculo oficial e o telefone do estabelecimento.
                   for (const fallbackCity of searchCities.slice(1)) {
                     if (combinedLeads.size >= resultsPerSearch) break
                     const fallbackResult = await Promise.allSettled([
@@ -6493,6 +6624,11 @@ Hero Drone`,
                         { cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
                         AbortSignal.timeout(20_000),
                       ).then((searchResult) => ({ searchCity: fallbackCity, searchResult, source: 'Mapa público' })),
+                      searchGooglePlacesLeads({
+                        city: fallbackCity.name,
+                        categories: selectedCategories.map((item) => item.name),
+                        limit: 16,
+                      }).then((searchResult) => ({ searchCity: fallbackCity, searchResult, source: 'Google Places' })),
                     ])
                     fallbackResult.forEach(collectPublicResult)
                   }
@@ -6681,11 +6817,21 @@ Hero Drone`,
                     }).filter((lead) => {
                       const hasLocation = Boolean(lead.address.trim() || (lead.latitude != null && lead.longitude != null))
                       const hasPublicEvidence = lead.sourceUrls.some((url) => /^https?:\/\//i.test(url))
-                      // Fontes cartográficas normalmente entregam nome, endereço
-                      // e mapa antes de telefone/WhatsApp. O contato pode ser
-                      // enriquecido ou editado depois e não deve eliminar um lead
-                      // válido da busca.
-                      return hasLocation && hasPublicEvidence && isEligibleLeadSegment(lead.categoryName, lead.name)
+                      const hasDirectContact = Boolean(
+                        lead.whatsapp.trim() ||
+                        lead.phone.trim() ||
+                        lead.email.trim() ||
+                        lead.instagram.trim(),
+                      )
+                      const hasOfficialGoogleProfile = Boolean(
+                        (lead.externalIds.googlePlaces || lead.externalIds.googleBusiness) &&
+                        /^https?:\/\/(www\.)?(google\.[^/]+\/maps|maps\.google\.)/i.test(lead.googleMapsUrl),
+                      )
+                      return hasLocation &&
+                        hasPublicEvidence &&
+                        hasDirectContact &&
+                        (hasOfficialGoogleProfile || lead.sourceUrls.length > 0) &&
+                        isEligibleLeadSegment(lead.categoryName, lead.name)
                     })
                     incoming = incoming
                       .filter((lead) => lead.visualAssessment?.worthCommercialTime !== false)
@@ -7006,6 +7152,7 @@ Hero Drone`,
                 ...defaults,
               })}
               onOpenAppointment={openExistingAppointment}
+              onOpenTask={openTaskEditor}
               onResizeAppointment={resizeAppointment}
               onMoveAppointment={moveAppointment}
             />
@@ -7081,6 +7228,29 @@ Hero Drone`,
             />
           ) : null}
           {page === 'settings' ? <SettingsPage state={state} onSubmit={updateSettings} /> : null}
+          {page === 'profile' ? (
+            <ProfilePage
+              user={currentUser}
+              onSave={async (values) => {
+                if (values.password) {
+                  if (isFirebaseConfigured) await updateCurrentFirebasePassword(values.password)
+                  else await updateUserPassword(currentUser.email, values.password)
+                }
+                const nextState = synchronizeOperationalState({
+                  ...latestState.current,
+                  users: latestState.current.users.map((user) => user.id === currentUser.id
+                    ? { ...user, ...values.profile, avatarUrl: values.profile.avatarUrl || undefined, updatedAt: new Date().toISOString() }
+                    : user),
+                })
+                latestState.current = nextState
+                saveAppState(nextState)
+                if (isFirebaseConfigured && authSession) await saveFirebaseAppState(nextState)
+                else if (isSupabaseConfigured && authSession) await saveCloudAppState(nextState)
+                setState(nextState)
+                setToast('Perfil atualizado com sucesso.')
+              }}
+            />
+          ) : null}
           {page === 'users' ? (
             <UsersPage
               currentUser={currentUser}
@@ -7281,7 +7451,7 @@ Hero Drone`,
       {modal === 'appointment' ? (
         <Modal
           title={selectedAppointment ? 'Editar agendamento' : 'Novo agendamento'}
-          size={selectedAppointment ? 'md' : 'lg'}
+          size="md"
           onClose={() => {
             setModal(null)
             setAppointmentDefaults({})
@@ -7468,6 +7638,27 @@ Hero Drone`,
       {modal === 'user' ? (
         <Modal title="Novo usuário interno" onClose={() => setModal(null)}>
           <UserForm onCancel={() => setModal(null)} onSubmit={addUser} />
+        </Modal>
+      ) : null}
+      {modal === 'profile' ? (
+        <Modal title="Minha conta" size="md" onClose={() => setModal(null)}>
+          <ProfileForm
+            user={currentUser}
+            onCancel={() => setModal(null)}
+            onSubmit={async ({ name, avatarUrl, password }) => {
+              if (password) {
+                if (isFirebaseConfigured) await updateCurrentFirebasePassword(password)
+                else await updateUserPassword(currentUser.email, password)
+              }
+              updateState((current) => ({
+                ...current,
+                users: current.users.map((user) => user.id === currentUser.id
+                  ? { ...user, name, avatarUrl: avatarUrl || undefined, updatedAt: new Date().toISOString() }
+                  : user),
+              }), 'Sua conta foi atualizada.')
+              setModal(null)
+            }}
+          />
         </Modal>
       ) : null}
       {modal === 'equipment' ? (
@@ -7962,6 +8153,7 @@ function LoginScreen({
   onSubmit: (values: LoginFormValues) => void | Promise<void>
   onPasswordReset: (email: string) => void | Promise<void>
 }) {
+  const [showPassword, setShowPassword] = useState(false)
   const {
     register,
     handleSubmit,
@@ -7979,6 +8171,16 @@ function LoginScreen({
   return (
     <main className="login-screen grid min-h-screen bg-[#171717] lg:grid-cols-[1.15fr_0.85fr]">
       <section className="login-hero flex min-h-[42vh] flex-col justify-between overflow-hidden bg-[#171717] p-6 text-white lg:min-h-screen lg:p-10">
+        <div className="login-airspace" aria-hidden="true">
+          <span className="login-radar"><i /><i /><i /></span>
+          <span className="login-flight-path" />
+          <span className="login-drone">
+            <i className="rotor rotor-a" /><i className="rotor rotor-b" />
+            <b><Camera size={14} /></b>
+            <i className="rotor rotor-c" /><i className="rotor rotor-d" />
+          </span>
+          <span className="login-scan-line" />
+        </div>
         <div className="flex items-center gap-3">
           <img className="h-16 w-16 shrink-0 object-contain" src={heroLogoSrc} alt="FlyFlow by Hero Drone" />
           <div>
@@ -7988,15 +8190,14 @@ function LoginScreen({
           </div>
         </div>
         <div className="login-pitch max-w-3xl py-12">
-          <p className="text-sm font-bold uppercase text-[#d8a500]">Operação de drones</p>
+          <p className="text-sm font-bold uppercase text-[#d8a500]">Gestão para operações aéreas</p>
           <h2 className="mt-3 max-w-2xl text-4xl font-black leading-tight text-white sm:text-5xl">
-            Controle contatos, propostas, captações, entregas e financeiro em uma rotina simples.
+            Sua operação sob controle, do briefing à entrega.
           </h2>
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            {['Funil visual', 'Projetos com checklist', 'Lucro por período'].map((item) => (
-              <div key={item} className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm font-bold">
-                {item}
-              </div>
+          <p className="mt-5 max-w-xl text-base leading-7 text-white/60">Um workspace simples para organizar clientes, propostas, agenda, captações, entregas e financeiro.</p>
+          <div className="login-workflow" aria-label="Fluxo de trabalho do FlyFlow">
+            {['Contato', 'Planejamento', 'Voo', 'Entrega'].map((item, index) => (
+              <span key={item}><i>{String(index + 1).padStart(2, '0')}</i>{item}</span>
             ))}
           </div>
         </div>
@@ -8004,14 +8205,15 @@ function LoginScreen({
       </section>
       <section className="login-form-section flex items-center justify-center bg-white p-4 sm:p-8">
         <form className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 shadow-xl" onSubmit={handleSubmit(onSubmit)}>
-          <h2 className="text-2xl font-black text-gray-950">Entrar</h2>
-          <p className="mt-1 text-sm text-gray-500">Digite seu e-mail e sua senha para acessar o FlyFlow.</p>
+          <div className="login-form-status"><span /> AMBIENTE SEGURO</div>
+          <h2 className="text-2xl font-black text-gray-950">Bem-vindo de volta</h2>
+          <p className="mt-1 text-sm text-gray-500">Entre para continuar sua operação.</p>
           <div className="mt-6 space-y-4">
             <InputField label="E-mail" error={getError(errors.email?.message)}>
               <input autoComplete="username" autoFocus className="field-input" placeholder="seu@email.com" type="email" {...register('email')} />
             </InputField>
             <InputField label="Senha" error={getError(errors.password?.message)}>
-              <input autoComplete="current-password" className="field-input" placeholder="Digite sua senha" type="password" {...register('password')} />
+              <span className="login-password-field"><input autoComplete="current-password" className="field-input" placeholder="Digite sua senha" type={showPassword ? 'text' : 'password'} {...register('password')} /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span>
             </InputField>
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <label className="inline-flex items-center gap-2 font-bold text-gray-700">
@@ -8025,10 +8227,223 @@ function LoginScreen({
             <Button className="w-full" disabled={isSubmitting} type="submit">
               {isSubmitting ? 'Entrando…' : 'Entrar no sistema'}
             </Button>
+            <p className="login-access-note">Acesso restrito à equipe Hero Drone.</p>
           </div>
         </form>
       </section>
     </main>
+  )
+}
+
+function FirstLoginPasswordScreen({
+  user,
+  onSubmit,
+  onLogout,
+}: {
+  user: User
+  onSubmit: (password: string) => Promise<void>
+  onLogout: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setError('')
+    if (password.length < 8) {
+      setError('A nova senha precisa ter pelo menos 8 caracteres.')
+      return
+    }
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setError('Use pelo menos uma letra e um número na nova senha.')
+      return
+    }
+    if (password !== confirmation) {
+      setError('A confirmação não corresponde à nova senha.')
+      return
+    }
+    setSaving(true)
+    try {
+      await onSubmit(password)
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Não foi possível alterar a senha.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#171717] p-4 sm:p-8">
+      <form className="w-full max-w-lg rounded-2xl border border-white/10 bg-white p-6 shadow-2xl sm:p-8" onSubmit={submit}>
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-800"><KeyRound size={23} /></div>
+        <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-[#9a7600]">Primeiro acesso</p>
+        <h1 className="mt-2 text-2xl font-black text-gray-950">Crie sua nova senha</h1>
+        <p className="mt-2 text-sm leading-6 text-gray-600">Olá, {user.name}. A senha informada pelo administrador é temporária. Para continuar no FlyFlow, cadastre uma senha pessoal.</p>
+        {error ? <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div> : null}
+        <div className="mt-6 space-y-4">
+          <InputField label="Nova senha">
+            <span className="login-password-field">
+              <input autoFocus autoComplete="new-password" className="field-input" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo de 8 caracteres" />
+              <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+            </span>
+          </InputField>
+          <InputField label="Confirmar nova senha">
+            <input autoComplete="new-password" className="field-input" type={showPassword ? 'text' : 'password'} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="Digite novamente" />
+          </InputField>
+          <div className="rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-600"><strong className="text-gray-900">Requisitos:</strong> pelo menos 8 caracteres, uma letra e um número.</div>
+          <Button className="w-full" disabled={saving} type="submit"><ShieldCheck size={16} /> {saving ? 'Salvando nova senha…' : 'Salvar senha e continuar'}</Button>
+          <button className="w-full text-center text-sm font-bold text-gray-500 hover:text-gray-900" type="button" onClick={onLogout}>Sair e voltar ao login</button>
+        </div>
+      </form>
+    </main>
+  )
+}
+
+function ProfileForm({ user, onSubmit, onCancel }: {
+  user: User
+  onSubmit: (values: { name: string; avatarUrl: string; password: string }) => Promise<void>
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(user.name)
+  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || '')
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  return (
+    <form className="profile-form space-y-5" onSubmit={async (event) => {
+      event.preventDefault()
+      setError('')
+      if (!name.trim()) return setError('Informe seu nome.')
+      if (password && password.length < 6) return setError('A nova senha deve ter pelo menos 6 caracteres.')
+      if (password !== confirmation) return setError('A confirmação da senha não confere.')
+      setSaving(true)
+      try {
+        await onSubmit({ name: name.trim(), avatarUrl, password })
+      } catch (submitError) {
+        setError(submitError instanceof Error ? submitError.message : 'Não foi possível atualizar sua conta.')
+        setSaving(false)
+      }
+    }}>
+      <section className="profile-photo-card">
+        {avatarUrl ? <img src={avatarUrl} alt="Foto do perfil" /> : <span>{name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span>}
+        <div><strong>Foto do perfil</strong><p>Será salva junto à sua conta e exibida no sistema.</p><label><Camera size={15} /> Escolher foto<input type="file" accept="image/*" onChange={async (event) => {
+          const file = event.target.files?.[0]
+          if (!file) return
+          try { setAvatarUrl(await prepareAvatarImage(file)) } catch (imageError) { setError(imageError instanceof Error ? imageError.message : 'Foto inválida.') }
+        }} /></label>{avatarUrl ? <button type="button" onClick={() => setAvatarUrl('')}>Remover foto</button> : null}</div>
+      </section>
+      <InputField label="Nome"><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} /></InputField>
+      <InputField label="E-mail"><input className="field-input" value={user.email} disabled /></InputField>
+      <div className="profile-password-grid">
+        <InputField label="Nova senha"><input className="field-input" type="password" autoComplete="new-password" placeholder="Deixe vazio para manter" value={password} onChange={(event) => setPassword(event.target.value)} /></InputField>
+        <InputField label="Confirmar senha"><input className="field-input" type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></InputField>
+      </div>
+      {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+      <FormActions onCancel={onCancel} submitLabel={saving ? 'Salvando…' : 'Salvar minha conta'} />
+    </form>
+  )
+}
+
+function ProfilePage({ user, onSave }: {
+  user: User
+  onSave: (values: {
+    profile: Pick<User, 'name' | 'avatarUrl' | 'jobTitle' | 'phone' | 'whatsapp' | 'city' | 'bio'>
+    password: string
+  }) => Promise<void>
+}) {
+  const [profile, setProfile] = useState({
+    name: user.name,
+    avatarUrl: user.avatarUrl || '',
+    jobTitle: user.jobTitle || user.role,
+    phone: user.phone || '',
+    whatsapp: user.whatsapp || '',
+    city: user.city || 'Curitiba - PR',
+    bio: user.bio || '',
+  })
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [preparingPhoto, setPreparingPhoto] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const initials = profile.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+  const patch = (values: Partial<typeof profile>) => setProfile((current) => ({ ...current, ...values }))
+  const selectPhoto = async (file?: File) => {
+    if (!file) return
+    setError('')
+    setMessage('')
+    setPreparingPhoto(true)
+    try {
+      patch({ avatarUrl: await prepareAvatarImage(file) })
+      setMessage('Foto preparada. Clique em “Salvar alterações” para armazená-la.')
+    } catch (imageError) {
+      setError(imageError instanceof Error ? imageError.message : 'Foto inválida.')
+    } finally {
+      setPreparingPhoto(false)
+    }
+  }
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setMessage('')
+    setError('')
+    if (!profile.name.trim()) return setError('Informe seu nome.')
+    if (password && password.length < 6) return setError('A nova senha deve ter pelo menos 6 caracteres.')
+    if (password !== confirmation) return setError('A confirmação da senha não confere.')
+    setSaving(true)
+    try {
+      await onSave({ profile: { ...profile, name: profile.name.trim() }, password })
+      setPassword('')
+      setConfirmation('')
+      setMessage('Suas informações foram salvas.')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível atualizar seu perfil.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="profile-page module-page space-y-4" onSubmit={submit}>
+      <PageToolbar title="Meu perfil" description="Gerencie sua identidade profissional, informações de contato e segurança da conta." action={<Button disabled={saving || preparingPhoto} type="submit">{saving ? 'Salvando…' : preparingPhoto ? 'Preparando foto…' : 'Salvar alterações'}</Button>} />
+      <section className="profile-hero">
+        <div className="profile-avatar">
+          {profile.avatarUrl ? <img src={profile.avatarUrl} alt="Foto do perfil" /> : <span>{initials}</span>}
+          <label title="Alterar foto"><Camera size={17} /><input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" disabled={preparingPhoto} onChange={(event) => void selectPhoto(event.target.files?.[0])} /></label>
+        </div>
+        <div className="profile-identity"><span>PERFIL PROFISSIONAL</span><h2>{profile.name || 'Seu nome'}</h2><p>{profile.jobTitle || user.role} · {profile.city || 'Local não informado'}</p><div><strong>{user.role}</strong><small>{permissionSummary(user)}</small></div></div>
+        <div className="profile-hero-actions"><label className={preparingPhoto ? 'is-disabled' : ''}><ImagePlus size={15} /> {preparingPhoto ? 'Convertendo foto…' : 'Trocar foto'}<input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" disabled={preparingPhoto} onChange={(event) => void selectPhoto(event.target.files?.[0])} /></label>{profile.avatarUrl ? <button type="button" disabled={preparingPhoto} onClick={() => patch({ avatarUrl: '' })}>Remover</button> : null}</div>
+      </section>
+      <div className="profile-layout">
+        <section className="profile-panel">
+          <header><div><h2>Informações pessoais</h2><p>Dados exibidos na sua conta e nos registros internos.</p></div><ContactRound size={20} /></header>
+          <div className="profile-fields">
+            <InputField label="Nome completo"><input className="field-input" value={profile.name} onChange={(event) => patch({ name: event.target.value })} /></InputField>
+            <InputField label="Cargo ou função"><input className="field-input" value={profile.jobTitle} onChange={(event) => patch({ jobTitle: event.target.value })} placeholder="Ex.: Piloto e diretor criativo" /></InputField>
+            <InputField label="Telefone"><input className="field-input" value={profile.phone} onChange={(event) => patch({ phone: event.target.value })} placeholder="(41) 99999-9999" /></InputField>
+            <InputField label="WhatsApp"><input className="field-input" value={profile.whatsapp} onChange={(event) => patch({ whatsapp: event.target.value })} placeholder="(41) 99999-9999" /></InputField>
+            <InputField label="Cidade / região"><input className="field-input" value={profile.city} onChange={(event) => patch({ city: event.target.value })} /></InputField>
+            <InputField label="E-mail de acesso"><input className="field-input" value={user.email} disabled /></InputField>
+            <div className="profile-field-full"><InputField label="Sobre você"><textarea className="field-input min-h-28" maxLength={320} value={profile.bio} onChange={(event) => patch({ bio: event.target.value })} placeholder="Conte brevemente sua função e experiência na operação." /></InputField><small>{profile.bio.length}/320</small></div>
+          </div>
+        </section>
+        <aside className="profile-security">
+          <header><div><h2>Segurança</h2><p>Atualize sua credencial de acesso.</p></div><ShieldCheck size={20} /></header>
+          <div>
+            <InputField label="Nova senha"><input className="field-input" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo de 6 caracteres" /></InputField>
+            <InputField label="Confirmar nova senha"><input className="field-input" type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></InputField>
+            <div className="profile-security-note"><ShieldCheck size={16} /><p><strong>Conta protegida</strong><span>A senha é atualizada diretamente no serviço de autenticação.</span></p></div>
+          </div>
+        </aside>
+      </div>
+      {error ? <p className="profile-feedback is-error">{error}</p> : null}
+      {message ? <p className="profile-feedback is-success"><CheckCircle2 size={16} /> {message}</p> : null}
+      <div className="profile-mobile-save"><Button className="w-full" disabled={saving || preparingPhoto} type="submit">{saving ? 'Salvando…' : preparingPhoto ? 'Preparando foto…' : 'Salvar alterações'}</Button></div>
+    </form>
   )
 }
 
@@ -8415,7 +8830,7 @@ function ClientsPage({
   onDeleteContact: (client: Client) => void
 }) {
   return (
-    <div className="space-y-4">
+    <div className="contacts-page module-page space-y-4">
       <PageToolbar
         title="Contatos"
         description="Base central conectada ao comercial, propostas, projetos e financeiro."
@@ -8613,42 +9028,43 @@ function ProjectsPage({
     const captureAppointment = state.appointments
       .filter((appointment) => appointment.projectId === project.id && appointment.appointmentType === 'Captação' && appointment.status !== 'Cancelado')
       .sort((a, b) => a.startAt.localeCompare(b.startAt))[0]
+    const owner = state.users.find((user) => user.id === project.responsibleUserId)
+    const ownerInitials = owner?.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
 
     return (
-      <article key={project.id} className={`rounded-xl border bg-white p-3 shadow-sm ${deadline.level === 'danger' ? deadline.cardClass : 'border-gray-200'}`}>
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(13rem,0.75fr)_minmax(11rem,0.55fr)_auto] lg:items-center">
-          <button className="min-w-0 text-left" type="button" onClick={() => setOpenedProjectId(project.id)}>
-            <div className="flex flex-wrap items-center gap-2"><span className="text-[0.68rem] font-black uppercase tracking-wide text-gray-400">{project.projectCode}</span><StatusBadge>{project.projectStatus}</StatusBadge>{deadline.level === 'danger' ? <AlertTriangle className="text-red-600" size={15} /> : null}</div>
-            <h3 className="mt-1 truncate text-base font-black text-gray-950">{projectContactLabel(state, project)}</h3>
-            <p className="mt-0.5 truncate text-xs text-gray-500">{project.serviceName} · {project.name}</p>
-          </button>
-
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-            <div className="flex items-center justify-between gap-3"><p className="text-[0.68rem] font-black uppercase text-gray-400">Captação</p><StatusBadge>{captureAppointment?.status || 'Sem agendamento'}</StatusBadge></div>
-            <p className="mt-1 text-sm font-black text-gray-900">{captureAppointment ? formatDateTime(captureAppointment.startAt) : project.captureDate ? `${formatDate(project.captureDate)} · horário pendente` : 'Data ainda não definida'}</p>
-            <button className="mt-1 inline-flex items-center gap-1 text-xs font-black text-blue-600 hover:underline" type="button" onClick={() => onScheduleCapture(project)}><CalendarDays size={14} /> {captureAppointment ? 'Editar agendamento' : 'Agendar agora'}</button>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between text-xs"><span className="font-bold text-gray-400">Financeiro</span><StatusBadge>{project.financialStatus}</StatusBadge></div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${paidPercentage}%` }} /></div>
-            <div className="mt-1 flex justify-between text-[0.68rem] font-bold text-gray-500"><span>{formatCurrency(profit.paid)} recebido</span><span>{paidPercentage}%</span></div>
-            <p className="mt-1 text-[0.68rem] font-bold text-gray-400">Etapas {completedStages}/{checklistCategories.length} · {stageProgress}% · entrega {project.deliveryDeadline ? formatDate(project.deliveryDeadline) : 'definida ao agendar'}</p>
-          </div>
-
-          <div className="flex items-center gap-1.5 lg:justify-end">
-            <Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => setOpenedProjectId(project.id)}>Abrir</Button>
-            {receiptTarget ? <IconActionButton label="Comprovantes" icon={<Paperclip size={15} />} onClick={() => onOpenReceipt(receiptTarget)} /> : <IconActionButton label="Criar pagamento e anexar comprovante" icon={<Paperclip size={15} />} onClick={() => onRegisterFinalPayment(project)} />}
-            <IconActionButton label="Editar projeto" icon={<Pencil size={15} />} onClick={() => onEditProject(project)} />
-            {isCompletedProject(project) ? <Button className="min-h-9 px-3 py-1 text-xs" variant="danger" type="button" onClick={() => onDeleteProject(project)}><Trash2 size={14} /> Excluir</Button> : null}
-          </div>
+      <article key={project.id} className={`customer-project-row grid grid-cols-[minmax(18rem,1.7fr)_8rem_11rem_10rem_10rem_10rem_8rem] ${deadline.level === 'danger' ? 'is-late' : ''}`}>
+        <button className="customer-project-name min-w-0 text-left" type="button" onClick={() => setOpenedProjectId(project.id)}>
+          <span className="customer-project-color" />
+          <span className="min-w-0">
+            <span className="flex items-center gap-2"><strong className="truncate">{projectContactLabel(state, project)}</strong>{deadline.level === 'danger' ? <AlertTriangle className="shrink-0 text-red-600" size={14} /> : null}</span>
+            <small className="block truncate">{project.projectCode} · {project.serviceName}</small>
+          </span>
+        </button>
+        <div className="customer-project-cell owner-cell" title={owner?.name || 'Não atribuído'}>
+          <span className="owner-avatar">{owner?.avatarUrl ? <img src={owner.avatarUrl} alt="" /> : ownerInitials || <UserCog size={14} />}</span>
+          <small>{owner?.name?.split(' ')[0] || 'Sem dono'}</small>
+        </div>
+        <button className="customer-project-cell timeline-cell" type="button" onClick={() => onScheduleCapture(project)}>
+          <CalendarDays size={13} />
+          <span>{captureAppointment ? formatDate(captureAppointment.startAt.slice(0, 10)) : project.captureDate ? formatDate(project.captureDate) : 'Agendar'}</span>
+        </button>
+        <div className="customer-project-cell"><span className="monday-status production-status">{project.projectStatus}</span></div>
+        <div className="customer-project-cell"><span className={`monday-status finance-status is-${paidPercentage === 100 ? 'done' : paidPercentage > 0 ? 'working' : 'pending'}`}>{project.financialStatus}</span></div>
+        <div className="customer-project-cell progress-cell">
+          <div><span style={{ width: `${stageProgress}%` }} /></div><small>{completedStages}/{checklistCategories.length} · {stageProgress}%</small>
+        </div>
+        <div className="customer-project-cell customer-project-actions">
+          <button type="button" onClick={() => setOpenedProjectId(project.id)}>Abrir</button>
+          {receiptTarget ? <IconActionButton label="Comprovantes" icon={<Paperclip size={14} />} onClick={() => onOpenReceipt(receiptTarget)} /> : null}
+          <IconActionButton label="Editar projeto" icon={<Pencil size={14} />} onClick={() => onEditProject(project)} />
+          {isCompletedProject(project) ? <IconActionButton label="Excluir projeto" icon={<Trash2 size={14} />} onClick={() => onDeleteProject(project)} /> : null}
         </div>
       </article>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="projects-page module-page space-y-4">
       <PageToolbar title="Projetos" description="Acompanhe execução, agenda e situação financeira em um só fluxo." action={<Button type="button" onClick={onCreateProject}><Plus size={15} /> Novo projeto</Button>} />
       <section className="list-control-bar">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -8668,7 +9084,21 @@ function ProjectsPage({
           {!projects.length ? <Button className="mt-4 bg-emerald-600 text-white hover:bg-emerald-700" type="button" onClick={onCreateProject}><Plus size={16} /> Criar projeto</Button> : null}
         </div>
       ) : (
-        <div className="space-y-2">{shownProjects.map(renderProjectRow)}</div>
+        <section className={`customer-project-board ${scope === 'completed' ? 'is-completed' : ''}`}>
+          <div className="customer-project-group-title">
+            <span />
+            <div><h2>{scope === 'active' ? 'Projetos ativos' : 'Projetos finalizados'}</h2><small>{shownProjects.length} projeto(s)</small></div>
+          </div>
+          <div className="overflow-x-auto">
+            <div className="min-w-[1120px]">
+              <div className="customer-project-header grid grid-cols-[minmax(18rem,1.7fr)_8rem_11rem_10rem_10rem_10rem_8rem]">
+                <span>Projeto / cliente</span><span>Responsável</span><span>Captação</span><span>Produção</span><span>Financeiro</span><span>Etapas</span><span>Ações</span>
+              </div>
+              {shownProjects.map(renderProjectRow)}
+              <button className="customer-project-add" type="button" onClick={onCreateProject}><Plus size={14} /> Adicionar projeto</button>
+            </div>
+          </div>
+        </section>
       )}
 
       {openedProject ? <ProjectWorkspace
@@ -8804,6 +9234,7 @@ function AgendaPage({
   onCreateTask,
   onCreateEvent,
   onOpenAppointment,
+  onOpenTask,
   onResizeAppointment,
   onMoveAppointment,
 }: {
@@ -8813,6 +9244,7 @@ function AgendaPage({
   onCreateTask: (defaults?: TaskFormDefaults) => void
   onCreateEvent: (defaults?: AppointmentFormDefaults) => void
   onOpenAppointment: (appointment: Appointment) => void
+  onOpenTask: (task: TaskItem) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
   onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
 }) {
@@ -8828,13 +9260,41 @@ function AgendaPage({
     ...state.appointments.filter((appointment) => !appointment.projectId || visibleProjectIds.has(appointment.projectId)),
     ...deliveryAppointments,
   ].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-  const conflicts = findAppointmentConflicts(sortedAppointments)
   const [calendarDate, setCalendarDate] = useState(() => new Date())
-  const createAtSlot = (startAt: string, endAt: string) => {
-    onCreateEvent({
-      startAt,
-      endAt,
-    })
+  const [responsibleFilter, setResponsibleFilter] = useState('')
+  const [contactFilter, setContactFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [createChoice, setCreateChoice] = useState<{ startAt?: string; endAt?: string } | null>(null)
+  const taskByAppointmentId = new Map(state.tasks.filter((task) => task.appointmentId).map((task) => [task.appointmentId!, task]))
+  const appointmentResponsibleId = (appointment: Appointment) => {
+    const task = taskByAppointmentId.get(appointment.id)
+    if (task?.responsibleUserId) return task.responsibleUserId
+    if (appointment.projectId) return state.projects.find((project) => project.id === appointment.projectId)?.responsibleUserId || ''
+    return ''
+  }
+  const visibleAppointments = sortedAppointments.filter((appointment) => {
+    const matchesResponsible = !responsibleFilter || appointmentResponsibleId(appointment) === responsibleFilter
+    const matchesType = !typeFilter || appointment.appointmentType === typeFilter
+    const matchesContact = !contactFilter ||
+      (contactFilter.startsWith('client:') && appointment.clientId === contactFilter.slice(7)) ||
+      (contactFilter.startsWith('lead:') && appointment.leadId === contactFilter.slice(5))
+    return matchesResponsible && matchesType && matchesContact
+  })
+  const conflicts = findAppointmentConflicts(visibleAppointments)
+  const openCalendarItem = (appointment: Appointment) => {
+    const task = taskByAppointmentId.get(appointment.id)
+    if (task) onOpenTask(task)
+    else onOpenAppointment(appointment)
+  }
+  const requestCreateAtSlot = (startAt: string, endAt: string) => setCreateChoice({ startAt, endAt })
+  const createSelectedKind = (kind: 'event' | 'task') => {
+    const choice = createChoice || {}
+    setCreateChoice(null)
+    if (kind === 'task') {
+      onCreateTask({ dueAt: choice.startAt })
+      return
+    }
+    onCreateEvent({ startAt: choice.startAt, endAt: choice.endAt })
   }
   const moveCalendar = (direction: -1 | 1) => {
     setCalendarDate((current) => {
@@ -8850,36 +9310,35 @@ function AgendaPage({
     : calendarView === 'semanal'
       ? `Semana de ${getWeekStart(calendarDate).toLocaleDateString('pt-BR')}`
       : calendarDate.toLocaleDateString('pt-BR')
-  const selectedDateKey = dateInputFromDate(calendarDate)
-  const selectedDayAppointments = sortedAppointments.filter((appointment) =>
-    appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === selectedDateKey,
-  )
   const todayKey = dateInput()
-  const todayAppointments = sortedAppointments.filter((appointment) =>
+  const todayAppointments = visibleAppointments.filter((appointment) =>
     appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === todayKey,
   )
   const nextSevenDays = addCalendarDays(todayKey, 7)
-  const upcomingAppointments = sortedAppointments.filter((appointment) => {
+  const upcomingAppointments = visibleAppointments.filter((appointment) => {
     const key = dateInputFromDate(new Date(appointment.startAt))
     return appointment.status !== 'Cancelado' && key >= todayKey && key <= nextSevenDays
   })
+  const pendingConfirmations = upcomingAppointments.filter((appointment) =>
+    appointment.appointmentType === 'Captação' &&
+    appointment.confirmationStatus !== 'Confirmado' &&
+    appointment.status !== 'Concluído',
+  )
 
   return (
     <div className="agenda-page space-y-4">
       <PageToolbar
         title="Agenda"
         description="Planeje compromissos, captações e retornos sem perder conflitos de horário."
-        action={<div className="flex flex-wrap gap-2">
-          <Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button>
-          <Button type="button" onClick={() => onCreateEvent()}><CalendarDays size={16} /> Novo evento</Button>
-        </div>}
+        action={<Button type="button" onClick={() => setCreateChoice({})}><Plus size={16} /> Criar item</Button>}
       />
 
       <section className="agenda-summary-strip">
-        <div><span>Hoje</span><strong>{todayAppointments.length}</strong><small>compromissos</small></div>
-        <div><span>Próximos 7 dias</span><strong>{upcomingAppointments.length}</strong><small>itens planejados</small></div>
-        <div><span>Captações</span><strong>{upcomingAppointments.filter((item) => item.appointmentType === 'Captação').length}</strong><small>na próxima semana</small></div>
-        <div className={conflicts.length ? 'is-warning' : ''}><span>Conflitos</span><strong>{conflicts.length}</strong><small>{conflicts.length ? 'precisam de ajuste' : 'agenda organizada'}</small></div>
+        <div><i className="agenda-metric-icon"><Clock size={18} /></i><span>Hoje</span><strong>{todayAppointments.length}</strong><small>compromissos</small></div>
+        <div><i className="agenda-metric-icon"><CalendarDays size={18} /></i><span>Próximos 7 dias</span><strong>{upcomingAppointments.length}</strong><small>itens planejados</small></div>
+        <div><i className="agenda-metric-icon"><Camera size={18} /></i><span>Captações</span><strong>{upcomingAppointments.filter((item) => item.appointmentType === 'Captação').length}</strong><small>na próxima semana</small></div>
+        <div className={pendingConfirmations.length ? 'is-attention' : ''}><i className="agenda-metric-icon"><MessageCircle size={18} /></i><span>Confirmações</span><strong>{pendingConfirmations.length}</strong><small>{pendingConfirmations.length ? 'aguardando cliente' : 'tudo confirmado'}</small></div>
+        <div className={conflicts.length ? 'is-warning' : ''}><i className="agenda-metric-icon"><AlertTriangle size={18} /></i><span>Conflitos</span><strong>{conflicts.length}</strong><small>{conflicts.length ? 'precisam de ajuste' : 'agenda organizada'}</small></div>
       </section>
 
       <section className="agenda-control-bar">
@@ -8896,22 +9355,11 @@ function AgendaPage({
         </div>
       </section>
 
-      <section className="agenda-date-context grid overflow-hidden rounded-xl border border-gray-200 bg-white lg:grid-cols-[270px_1fr]">
-        <MiniAgendaCalendar
-          appointments={sortedAppointments}
-          selectedDate={calendarDate}
-          onSelectDate={setCalendarDate}
-        />
-        <div className="border-t border-gray-100 p-4 lg:border-l lg:border-t-0">
-          <div>
-            <p className="text-[0.65rem] font-black uppercase tracking-[0.12em] text-gray-400">Dia selecionado</p>
-            <h2 className="mt-1 text-base font-semibold capitalize text-gray-950">{calendarDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</h2>
-          </div>
-          <div className="agenda-day-preview mt-3">
-            {selectedDayAppointments.slice(0, 4).map((appointment) => <button key={appointment.id} type="button" onClick={() => onOpenAppointment(appointment)}><i style={{ backgroundColor: appointment.color }} /><span><strong>{appointment.title}</strong><small>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {appointment.appointmentType}</small></span></button>)}
-            {!selectedDayAppointments.length ? <p>Nenhum compromisso neste dia. Clique no calendário para criar um horário.</p> : null}
-          </div>
-        </div>
+      <section className="agenda-filter-bar" aria-label="Filtros da agenda">
+        <label><Users size={15} /><select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.currentTarget.value)}><option value="">Todos os responsáveis</option>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+        <label><ContactRound size={15} /><select value={contactFilter} onChange={(event) => setContactFilter(event.currentTarget.value)}><option value="">Todos os contatos</option>{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={`client:${client.id}`}>{contactDisplayName(client)}</option>)}{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={`lead:${lead.id}`}>{contactDisplayName(lead)}</option>)}</select></label>
+        <label><List size={15} /><select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)}><option value="">Todos os tipos</option>{appointmentTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+        {responsibleFilter || contactFilter || typeFilter ? <button type="button" onClick={() => { setResponsibleFilter(''); setContactFilter(''); setTypeFilter('') }}><X size={14} /> Limpar filtros</button> : <span>{visibleAppointments.length} item(ns) visível(is)</span>}
       </section>
 
       {conflicts.length ? (
@@ -8922,29 +9370,29 @@ function AgendaPage({
 
       {calendarView === 'mensal' ? (
         <MonthCalendar
-          appointments={sortedAppointments}
+          appointments={visibleAppointments}
           anchorDate={calendarDate}
-          onCreateAt={createAtSlot}
-          onOpenAppointment={onOpenAppointment}
+          onCreateAt={requestCreateAtSlot}
+          onOpenAppointment={openCalendarItem}
         />
       ) : null}
       {calendarView === 'semanal' || calendarView === 'diaria' ? (
         <TimeGridCalendar
           anchorDate={calendarDate}
-          appointments={sortedAppointments}
+          appointments={visibleAppointments}
           state={state}
           view={calendarView}
-          onCreateAt={createAtSlot}
-          onOpenAppointment={onOpenAppointment}
+          onCreateAt={requestCreateAtSlot}
+          onOpenAppointment={openCalendarItem}
           onResizeAppointment={onResizeAppointment}
           onMoveAppointment={onMoveAppointment}
         />
       ) : null}
 
       {calendarView === 'lista' ? (
-      <Panel title="Lista de eventos">
+      <Panel title="Lista da agenda">
         <div className="space-y-3">
-          {sortedAppointments.map((appointment) => {
+          {visibleAppointments.map((appointment) => {
             const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
             const project = appointment.projectId ? state.projects.find((item) => item.id === appointment.projectId) : undefined
             const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
@@ -8956,9 +9404,9 @@ function AgendaPage({
                 className="agenda-list-row cursor-pointer rounded-lg border border-gray-200 p-3 transition"
                 role="button"
                 tabIndex={0}
-                onClick={() => onOpenAppointment(appointment)}
+                onClick={() => openCalendarItem(appointment)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') onOpenAppointment(appointment)
+                  if (event.key === 'Enter' || event.key === ' ') openCalendarItem(appointment)
                 }}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -8991,6 +9439,15 @@ function AgendaPage({
           })}
         </div>
       </Panel>
+      ) : null}
+
+      {createChoice ? (
+        <Modal title="Adicionar à agenda" size="sm" onClose={() => setCreateChoice(null)}>
+          <div className="agenda-create-choice">
+            <button type="button" onClick={() => createSelectedKind('event')}><span><CalendarDays size={20} /></span><strong>Novo evento</strong><small>Captação, reunião, prazo ou compromisso com início e fim.</small></button>
+            <button type="button" onClick={() => createSelectedKind('task')}><span><CheckCircle2 size={20} /></span><strong>Nova tarefa</strong><small>Ligação, WhatsApp, follow-up ou atividade com responsável e prioridade.</small></button>
+          </div>
+        </Modal>
       ) : null}
     </div>
   )
@@ -9046,7 +9503,7 @@ function QuotesPage({
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 
   return (
-    <div className="space-y-4">
+    <div className="quotes-page module-page space-y-4">
       <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -9309,7 +9766,7 @@ function FinancePage({
   const receiptShortcut = pendingReceiptPayments[0]
     ?? state.payments.find((payment) => !payment.deletedAt && !payment.archivedAt)
   return (
-    <div className="space-y-4">
+    <div className="finance-page module-page space-y-4">
       <PageToolbar
         title="Financeiro"
         description="Receitas, despesas, contas a receber, fluxo de caixa e pagamentos parciais."
@@ -9939,7 +10396,7 @@ function ProposalGenerator({
   }
 
   return (
-    <form className="proposal-form space-y-4" onSubmit={submit}>
+    <form className="proposal-form proposal-workspace module-page space-y-4" onSubmit={submit}>
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div> : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -10136,7 +10593,7 @@ function EquipmentForm({
   const purchaseValue = Number(watch('purchaseValue') || 0)
 
   return (
-    <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
+    <form className="appointment-form grid gap-3 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Nome do equipamento" error={getError(errors.name?.message)}>
         <input className="field-input" placeholder="DJI Mini 4 Pro" {...register('name')} />
       </InputField>
@@ -10622,49 +11079,77 @@ function InboxPage({
   const selected = filtered.find((message) => message.id === selectedId) || filtered[0]
   const selectedLead = selected ? findLead(selected) : undefined
   const unreadCount = messages.filter((message) => message.unread).length
+  const linkedCount = messages.filter((message) => findLead(message)).length
+  const senderLabel = (value: string) => {
+    const named = value.match(/^"?([^"<]+)"?\s*</)?.[1]?.trim()
+    return named || extractEmail(value) || value
+  }
+  const senderInitials = (value: string) => senderLabel(value).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 
   if (!connection.connected) {
-    return <div className="space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta Google</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → Google Workspace, conecte novamente o Gmail e autorize a leitura da caixa de entrada.</p></div></div>
+    return <div className="inbox-page module-page space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="inbox-connect-state rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta Google</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → Google Workspace, conecte novamente o Gmail e autorize a leitura da caixa de entrada.</p></div></div>
   }
 
   return (
-    <div className="space-y-4">
+    <div className="inbox-page module-page space-y-4">
       <PageToolbar
         title="Inbox"
         description="Acompanhe conversas comerciais sem sair do FlyFlow."
         action={<div className="flex gap-2"><Button variant="secondary" type="button" disabled={loading} onClick={() => void loadMessages()}>{loading ? 'Sincronizando...' : 'Atualizar'}</Button><Button type="button" onClick={onComposeNew}><Plus size={16} /> Novo e-mail</Button></div>}
       />
       <section className="inbox-shell overflow-hidden rounded-xl border shadow-sm">
-        <div className="inbox-toolbar flex flex-col gap-3 border-b p-3 sm:flex-row sm:items-center">
-          <div className="flex rounded-lg bg-gray-100 p-1">
-            <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'inbox' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('inbox')}>Recebidos {box === 'inbox' && unreadCount ? `· ${unreadCount}` : ''}</button>
-            <button className={`rounded-md px-3 py-2 text-xs font-black ${box === 'sent' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setBox('sent')}>Enviados</button>
-          </div>
-              <label className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400" size={15} /><input className="field-input inbox-search-input min-h-9 py-1.5 text-sm" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar remetente, assunto ou conteúdo…" /></label>
-          <span className="text-xs font-bold text-gray-400">{connection.email}</span>
-        </div>
         {error ? <p className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-        <div className="grid min-h-[620px] lg:grid-cols-[420px_1fr]">
-          <div className="inbox-list max-h-[72vh] overflow-y-auto border-r">
+        <div className="inbox-workspace grid min-h-[650px] lg:grid-cols-[13rem_23rem_minmax(0,1fr)]">
+          <aside className="inbox-sidebar">
+            <button className="inbox-compose-button" type="button" onClick={onComposeNew}><Plus size={17} /> Escrever e-mail</button>
+            <nav>
+              <button className={box === 'inbox' ? 'is-active' : ''} type="button" onClick={() => setBox('inbox')}><Mail size={17} /><span>Recebidos</span>{unreadCount ? <strong>{unreadCount}</strong> : null}</button>
+              <button className={box === 'sent' ? 'is-active' : ''} type="button" onClick={() => setBox('sent')}><ArrowRight size={17} /><span>Enviados</span></button>
+            </nav>
+            <div className="inbox-account-card">
+              <span>{senderInitials(connection.email)}</span>
+              <div><small>CONTA CONECTADA</small><strong>{connection.email}</strong></div>
+            </div>
+            <div className="inbox-mini-stats"><div><strong>{messages.length}</strong><span>mensagens</span></div><div><strong>{linkedCount}</strong><span>no CRM</span></div></div>
+          </aside>
+          <div className="inbox-list-column">
+            <header>
+              <div><h2>{box === 'inbox' ? 'Recebidos' : 'Enviados'}</h2><span>{filtered.length} mensagem(ns)</span></div>
+              <button title="Atualizar mensagens" type="button" disabled={loading} onClick={() => void loadMessages()}><Clock className={loading ? 'animate-spin' : ''} size={16} /></button>
+            </header>
+            <label className="inbox-local-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar nesta caixa…" /></label>
+            <div className="inbox-list overflow-y-auto">
+            {loading && !filtered.length ? <div className="inbox-loading-state"><span /><span /><span /></div> : null}
             {filtered.map((message) => {
               const lead = findLead(message)
               const active = selected?.id === message.id
-              return <button key={message.id} className={`inbox-message-row relative block w-full border-b px-4 py-3 text-left transition ${active ? 'is-active' : ''}`} type="button" onClick={() => setSelectedId(message.id)}>
-                <div className="flex items-center gap-2"><span className={`min-w-0 flex-1 truncate text-sm ${message.unread ? 'font-black text-gray-950' : 'font-bold text-gray-700'}`}>{message.sent ? message.to : message.from}</span><span className="shrink-0 text-[0.65rem] text-gray-400">{message.date ? new Date(message.date).toLocaleDateString('pt-BR') : ''}</span></div>
-                <p className={`mt-1 truncate text-sm ${message.unread ? 'font-black text-gray-900' : 'font-medium text-gray-600'}`}>{message.subject}</p>
-                <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-400">{message.snippet}</p>
-                <div className="mt-2 flex items-center gap-2">{message.unread ? <span className="h-2 w-2 rounded-full bg-blue-600" title="Não lido" /> : null}{lead ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.62rem] font-black text-emerald-700">Contato CRM</span> : null}{message.hasAttachments ? <span className="inline-flex items-center gap-1 text-[0.65rem] text-gray-400"><Paperclip size={12} /> Anexo</span> : null}</div>
+              const counterpart = message.sent ? message.to : message.from
+              return <button key={message.id} className={`inbox-message-row ${active ? 'is-active' : ''} ${message.unread ? 'is-unread' : ''}`} type="button" onClick={() => setSelectedId(message.id)}>
+                <span className="inbox-sender-avatar">{senderInitials(counterpart)}</span>
+                <span className="inbox-message-copy">
+                  <span className="inbox-message-meta"><strong>{senderLabel(counterpart)}</strong><time>{message.date ? new Date(message.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : ''}</time></span>
+                  <b>{message.subject || 'Sem assunto'}</b>
+                  <small>{message.snippet || 'Mensagem sem prévia disponível.'}</small>
+                  <span className="inbox-message-badges">{message.unread ? <i>Nova</i> : null}{lead ? <em>CRM</em> : null}{message.hasAttachments ? <span><Paperclip size={11} /> Anexo</span> : null}</span>
+                </span>
               </button>
             })}
             {!loading && !filtered.length ? <p className="p-8 text-center text-sm text-gray-400">Nenhum e-mail encontrado.</p> : null}
+            </div>
           </div>
-          <div className="inbox-reader min-w-0 p-5 sm:p-7">
+          <div className="inbox-reader min-w-0">
             {selected ? <>
-              <div className="flex flex-col gap-4 border-b border-gray-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0"><p className="text-xs font-bold text-gray-400">{selected.sent ? `Para: ${selected.to}` : `De: ${selected.from}`}</p><h2 className="mt-1 text-xl font-black text-gray-950">{selected.subject}</h2><p className="mt-1 text-xs text-gray-400">{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</p></div>
-                <div className="flex shrink-0 gap-2">{selectedLead ? <><Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}>Abrir contato</Button><Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onComposeLead(selectedLead)}>Responder</Button></> : <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-500">Contato não vinculado</span>}</div>
+              <div className="inbox-reader-header">
+                <div className="inbox-reader-subject"><span>{selected.sent ? 'E-MAIL ENVIADO' : 'CONVERSA RECEBIDA'}</span><h2>{selected.subject || 'Sem assunto'}</h2></div>
+                <div className="inbox-reader-actions">{selectedLead ? <><Button variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}><Users size={15} /> Ver contato</Button><Button type="button" onClick={() => onComposeLead(selectedLead)}><ArrowRight size={15} /> Responder</Button></> : <span>Contato não vinculado</span>}</div>
               </div>
-              <article className="mx-auto max-w-3xl whitespace-pre-wrap py-7 text-[0.94rem] leading-7 text-gray-700">{selected.body || selected.snippet || 'Mensagem sem conteúdo textual disponível.'}</article>
+              <div className="inbox-correspondent">
+                <span className="inbox-sender-avatar is-large">{senderInitials(selected.sent ? selected.to : selected.from)}</span>
+                <div><strong>{senderLabel(selected.sent ? selected.to : selected.from)}</strong><small>{selected.sent ? `Para: ${selected.to}` : `De: ${selected.from}`}</small></div>
+                <time>{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</time>
+              </div>
+              <article className="inbox-message-body">{selected.body || selected.snippet || 'Mensagem sem conteúdo textual disponível.'}</article>
+              {selected.hasAttachments ? <div className="inbox-attachment-note"><Paperclip size={15} /><span>Esta mensagem possui anexos. Abra no Gmail para visualizar os arquivos originais.</span></div> : null}
             </> : <div className="grid h-full place-items-center text-center"><div><Mail className="mx-auto text-gray-200" size={42} /><p className="mt-3 text-sm font-bold text-gray-400">Selecione uma mensagem para ler.</p></div></div>}
           </div>
         </div>
@@ -10703,6 +11188,8 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
   const [connectingGoogle, setConnectingGoogle] = useState(false)
   const [settingsSaveMessage, setSettingsSaveMessage] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
+  const [savingSignature, setSavingSignature] = useState(false)
+  const [signaturePreview, setSignaturePreview] = useState('')
 
   useEffect(() => {
     if (CONFIGURED_GOOGLE_OAUTH_CLIENT_ID) {
@@ -10830,9 +11317,9 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
             <div className="space-y-3">
               <p className="text-sm leading-6 text-gray-500">Adicione uma imagem horizontal com sua marca, contatos e redes sociais. Ela será incluída automaticamente nos e-mails enviados pelo FlyFlow.</p>
               <input type="hidden" {...register('emailSignatureImageUrl')} />
-              {emailSignatureImageUrl ? (
+              {signaturePreview || emailSignatureImageUrl ? (
                 <div className="overflow-hidden rounded-xl border border-gray-200 bg-white p-3">
-                  <img className="max-h-32 max-w-full object-contain object-left" src={emailSignatureImageUrl} alt="Prévia da assinatura de e-mail" />
+                  <img className="max-h-32 max-w-full object-contain object-left" src={signaturePreview || emailSignatureImageUrl} alt="Prévia da assinatura de e-mail" />
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-400">Nenhuma assinatura configurada.</div>
@@ -10844,6 +11331,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                     className="hidden"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
+                    disabled={savingSignature}
                     onChange={async (event) => {
                       const input = event.currentTarget
                       const file = input.files?.[0]
@@ -10853,41 +11341,69 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                         return
                       }
                       try {
-                        setSettingsSaveMessage('Salvando assinatura...')
+                        setSavingSignature(true)
+                        setGoogleConnectionError('')
+                        setSettingsSaveMessage('Enviando imagem original em alta qualidade...')
                         const originalSignature = await prepareEmailSignatureImage(file)
-                        setValue('emailSignatureImageUrl', originalSignature, { shouldDirty: true })
-                        setGoogleWorkspaceEmailSignature(originalSignature)
-                        await handleSubmit(onSubmit)()
+                        setSignaturePreview(originalSignature)
+                        const upload = uploadGoogleWorkspaceEmailSignature(originalSignature)
+                        const uploadedUrl = (await Promise.race([
+                          upload,
+                          new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('O envio demorou demais. Tente novamente.')), 15_000)),
+                        ])).url
+                        setValue('emailSignatureImageUrl', uploadedUrl, { shouldDirty: true })
+                        setGoogleWorkspaceEmailSignature(uploadedUrl)
+                        await handleSubmit(async (values) => {
+                          await onSubmit({ ...values, emailSignatureImageUrl: uploadedUrl })
+                        })()
                         if (isFirebaseConfigured) {
                           try {
-                            await saveFirebaseEmailSignature(originalSignature)
-                            setSettingsSaveMessage('Assinatura salva e sincronizada no workspace.')
+                            await saveFirebaseEmailSignature(uploadedUrl)
+                            setSettingsSaveMessage('Assinatura original salva em alta qualidade.')
                           } catch (error) {
-                            setSettingsSaveMessage(error instanceof Error ? error.message : 'Assinatura salva localmente; a sincronização será tentada novamente.')
+                            setSettingsSaveMessage(error instanceof Error ? error.message : 'Assinatura salva; a sincronização será tentada novamente.')
                           }
                         } else {
-                          setSettingsSaveMessage('Assinatura salva no workspace.')
+                          setSettingsSaveMessage('Assinatura original salva em alta qualidade.')
                         }
                       } catch (error) {
                         setSettingsSaveMessage(error instanceof Error ? error.message : 'Não foi possível salvar a assinatura.')
+                        setSignaturePreview('')
                       } finally {
+                        setSavingSignature(false)
                         input.value = ''
                       }
                     }}
                   />
                 </label>
-                {emailSignatureImageUrl ? <Button variant="secondary" type="button" onClick={async () => {
+                {emailSignatureImageUrl || signaturePreview ? <Button disabled={savingSignature} variant="secondary" type="button" onClick={async () => {
                   try {
-                    if (isFirebaseConfigured) await removeFirebaseEmailSignature()
+                    setSavingSignature(true)
+                    setSettingsSaveMessage('Removendo assinatura...')
                     setValue('emailSignatureImageUrl', '', { shouldDirty: true })
+                    setSignaturePreview('')
                     setGoogleWorkspaceEmailSignature('')
-                    setSettingsSaveMessage('Assinatura removida do workspace.')
+                    await handleSubmit(async (values) => {
+                      await onSubmit({ ...values, emailSignatureImageUrl: '' })
+                    })()
+                    const cleanup = Promise.allSettled([
+                      removeGoogleWorkspaceEmailSignature(),
+                      ...(isFirebaseConfigured ? [removeFirebaseEmailSignature()] : []),
+                    ])
+                    await Promise.race([
+                      cleanup,
+                      new Promise<void>((resolve) => window.setTimeout(resolve, 4_000)),
+                    ])
+                    setSettingsSaveMessage('Assinatura removida. Você já pode escolher uma nova imagem.')
                   } catch (error) {
                     setSettingsSaveMessage(error instanceof Error ? error.message : 'Não foi possível remover a assinatura.')
+                  } finally {
+                    setSavingSignature(false)
                   }
-                }}>Remover</Button> : null}
+                }}>{savingSignature ? 'Aguarde…' : 'Remover'}</Button> : null}
               </div>
-              <p className="text-xs text-gray-400">Recomendação: PNG ou JPG, até 800 × 220 px.</p>
+              {settingsSaveMessage ? <p className={`signature-upload-status ${/não|erro|falh/i.test(settingsSaveMessage) ? 'is-error' : savingSignature ? 'is-loading' : 'is-success'}`}>{savingSignature ? <Clock className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}{settingsSaveMessage}</p> : null}
+              <p className="text-xs text-gray-400">A imagem é preservada na resolução original. Recomendação: PNG ou JPG nítido, horizontal, com até 5 MB.</p>
             </div>
           </Panel>
 
@@ -11314,10 +11830,8 @@ function TimeGridCalendar({
     day.setHours(0, 0, 0, 0)
     return day
   })
-  const hours = view === 'diaria'
-    ? Array.from({ length: 24 }, (_, index) => index)
-    : Array.from({ length: 14 }, (_, index) => 7 + index)
-  const hourHeight = view === 'diaria' ? 64 : 72
+  const hours = Array.from({ length: 24 }, (_, index) => index)
+  const hourHeight = view === 'diaria' ? 64 : 56
   const totalHeight = hours.length * hourHeight
   const rangeStartHour = hours[0] ?? 0
   const rangeEndHour = (hours[hours.length - 1] ?? 23) + 1
@@ -11517,8 +12031,8 @@ function TimeGridCalendar({
                     return (
                       <div
                         key={appointment.id}
-                        className={`group absolute left-2 right-2 z-10 touch-none overflow-hidden rounded-lg border-l-4 bg-gray-50 px-2 py-1.5 pb-3 text-left shadow-sm transition hover:bg-white hover:shadow-md ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
-                        style={{ borderLeftColor: appointment.color || '#d8a500', ...block }}
+                        className={`calendar-event-block group absolute left-1.5 right-1.5 z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
+                        style={{ '--calendar-item-color': appointment.color || '#d8a500', ...block } as React.CSSProperties}
                         role="button"
                         tabIndex={0}
                         onClick={(event) => {
@@ -11534,9 +12048,9 @@ function TimeGridCalendar({
                           }
                         }}
                       >
-                        <p className="truncate text-xs font-black text-gray-950">{appointment.title}</p>
-                        <p className="truncate text-[0.68rem] font-bold text-gray-500">{appointmentTime(effectiveAppointment)}</p>
-                        <p className="truncate text-[0.68rem] text-gray-500">{appointmentClient(appointment)}</p>
+                        <p className="calendar-event-title truncate">{appointment.title}</p>
+                        <p className="calendar-event-meta truncate">{appointmentTime(effectiveAppointment)} · {appointment.appointmentType}</p>
+                        <p className="calendar-event-meta truncate">{appointmentClient(appointment)}</p>
                         {canResize ? <div
                           data-resize-handle
                           className="absolute inset-x-0 bottom-0 flex h-3 touch-none cursor-ns-resize items-center justify-center border-t border-transparent transition group-hover:border-gray-300 group-hover:bg-gray-100"
@@ -11557,104 +12071,6 @@ function TimeGridCalendar({
         </div>
       </div>
     </Panel>
-  )
-}
-
-function MiniAgendaCalendar({
-  appointments,
-  selectedDate,
-  onSelectDate,
-}: {
-  appointments: Appointment[]
-  selectedDate: Date
-  onSelectDate: (date: Date) => void
-}) {
-  const [visibleMonth, setVisibleMonth] = useState(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
-  const selectedKey = dateInputFromDate(selectedDate)
-  const todayKey = dateInputFromDate(new Date())
-  const appointmentCountByDate = useMemo(() => {
-    const counts = new Map<string, number>()
-    appointments
-      .filter((appointment) => appointment.status !== 'Cancelado')
-      .forEach((appointment) => {
-        const key = dateInputFromDate(new Date(appointment.startAt))
-        counts.set(key, (counts.get(key) ?? 0) + 1)
-      })
-    return counts
-  }, [appointments])
-
-  useEffect(() => {
-    setVisibleMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
-  }, [selectedDate])
-
-  const year = visibleMonth.getFullYear()
-  const month = visibleMonth.getMonth()
-  const firstDayOffset = (new Date(year, month, 1).getDay() + 6) % 7
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const cellCount = Math.ceil((firstDayOffset + daysInMonth) / 7) * 7
-  const cells = Array.from({ length: cellCount }, (_, index) => {
-    const day = index - firstDayOffset + 1
-    return new Date(year, month, day)
-  })
-  const changeMonth = (direction: -1 | 1) => {
-    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + direction, 1))
-  }
-
-  return (
-    <div className="mini-agenda-calendar p-3" aria-label="Calendário para escolher uma data">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div>
-          <p className="text-[0.6rem] font-black uppercase tracking-[0.14em] text-gray-400">Escolha uma data</p>
-          <h3 className="text-xs font-black capitalize text-gray-950">
-            {visibleMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-          </h3>
-        </div>
-        <div className="flex items-center gap-1">
-          <button className="grid h-7 w-7 place-items-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50" type="button" onClick={() => changeMonth(-1)} aria-label="Mês anterior">
-            <ChevronLeft size={14} />
-          </button>
-          <button className="grid h-7 w-7 place-items-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50" type="button" onClick={() => changeMonth(1)} aria-label="Próximo mês">
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-0.5 text-center">
-        {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((weekday) => (
-          <span key={weekday} className="py-0.5 text-[0.55rem] font-black uppercase text-gray-400">{weekday}</span>
-        ))}
-        {cells.map((date) => {
-          const key = dateInputFromDate(date)
-          const isCurrentMonth = date.getMonth() === month
-          const isSelected = key === selectedKey
-          const isToday = key === todayKey
-          const appointmentCount = appointmentCountByDate.get(key) ?? 0
-          return (
-            <button
-              key={key}
-              className={`relative flex h-7 flex-col items-center justify-center rounded-md text-[0.68rem] font-bold transition ${
-                isSelected
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : isToday
-                    ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-300'
-                    : isCurrentMonth
-                      ? 'text-gray-700 hover:bg-gray-100'
-                      : 'text-gray-300 hover:bg-gray-50'
-              }`}
-              type="button"
-              onClick={() => onSelectDate(new Date(date.getFullYear(), date.getMonth(), date.getDate()))}
-              aria-label={`${date.toLocaleDateString('pt-BR')}${appointmentCount ? `, ${appointmentCount} compromisso(s)` : ''}`}
-              aria-pressed={isSelected}
-            >
-              <span>{date.getDate()}</span>
-              {appointmentCount > 0 ? (
-                <span className={`absolute bottom-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-gray-900' : 'bg-[#c99b00]'}`} aria-hidden="true" />
-              ) : null}
-            </button>
-          )
-        })}
-      </div>
-    </div>
   )
 }
 

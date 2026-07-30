@@ -3,8 +3,11 @@ import {
   ArrowUpDown,
   CalendarDays,
   CheckCircle2,
+  CheckSquare2,
   Columns3,
+  GripVertical,
   LayoutList,
+  ListChecks,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -12,10 +15,18 @@ import {
   Sparkles,
   Trash2,
   UserRound,
+  X,
 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Button, InputField, Modal } from '../ui'
-import { internalProjectCategories, internalProjectStatuses, type InternalProject, type InternalProjectStatus, type User } from '../../types'
+import {
+  internalProjectCategories,
+  internalProjectStatuses,
+  type InternalProject,
+  type InternalProjectChecklistCategory,
+  type InternalProjectStatus,
+  type User,
+} from '../../types'
 
 type ViewMode = 'board' | 'list'
 type Scope = 'active' | 'archived'
@@ -64,6 +75,18 @@ const daysTo = (value?: string) => {
   return Math.ceil((new Date(`${value}T12:00:00`).getTime() - today.getTime()) / 86_400_000)
 }
 
+const makeInternalId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const checklistStats = (project: InternalProject) => {
+  const items = (project.checklist || []).flatMap((category) => category.items || [])
+  const completed = items.filter((item) => item.completed).length
+  return {
+    total: items.length,
+    completed,
+    progress: items.length ? Math.round((completed / items.length) * 100) : project.progress,
+  }
+}
+
 export function InternalProjectsPage({
   projects,
   users,
@@ -85,7 +108,7 @@ export function InternalProjectsPage({
     const priorityOrder = { Urgente: 0, Alta: 1, Média: 2, Baixa: 3 }
     return projects
       .filter((project) => scope === 'archived' ? Boolean(project.archivedAt) : !project.archivedAt)
-      .filter((project) => !term || `${project.name} ${project.description} ${project.category} ${project.tags.join(' ')}`.toLocaleLowerCase('pt-BR').includes(term))
+      .filter((project) => !term || `${project.name} ${project.description} ${project.category} ${project.tags.join(' ')} ${(project.checklist || []).map((category) => `${category.name} ${category.description} ${category.items.map((item) => `${item.title} ${item.details}`).join(' ')}`).join(' ')}`.toLocaleLowerCase('pt-BR').includes(term))
       .sort((a, b) => {
         if (sortBy === 'due') return (a.dueDate || '9999').localeCompare(b.dueDate || '9999')
         if (sortBy === 'priority') return priorityOrder[a.priority] - priorityOrder[b.priority]
@@ -107,11 +130,25 @@ export function InternalProjectsPage({
     const days = daysTo(project.dueDate)
     return days !== null && days < 0 && project.status !== 'Concluído'
   }).length
-  const averageProgress = active.length ? Math.round(active.reduce((sum, project) => sum + project.progress, 0) / active.length) : 0
+  const averageProgress = active.length ? Math.round(active.reduce((sum, project) => sum + checklistStats(project).progress, 0) / active.length) : 0
 
   const save = (project: InternalProject) => {
     const now = new Date().toISOString()
-    const normalized = { ...project, name: project.name.trim(), category: project.category.trim() || 'Geral', progress: Math.max(0, Math.min(100, Number(project.progress))), updatedAt: now }
+    const checklist = (project.checklist || [])
+      .map((category) => ({
+        ...category,
+        name: category.name.trim(),
+        description: category.description.trim(),
+        items: (category.items || [])
+          .map((item) => ({ ...item, title: item.title.trim(), details: item.details.trim() }))
+          .filter((item) => item.title),
+      }))
+      .filter((category) => category.name)
+    const checklistItems = checklist.flatMap((category) => category.items)
+    const progress = checklistItems.length
+      ? Math.round((checklistItems.filter((item) => item.completed).length / checklistItems.length) * 100)
+      : Math.max(0, Math.min(100, Number(project.progress)))
+    const normalized = { ...project, name: project.name.trim(), category: project.category.trim() || 'Geral', checklist, progress, updatedAt: now }
     if (!normalized.name) return
     if (project.id) {
       onChange(projects.map((item) => item.id === project.id ? normalized : item), 'Projeto interno atualizado.')
@@ -134,6 +171,7 @@ export function InternalProjectsPage({
     const owner = users.find((user) => user.id === project.responsibleUserId)
     const due = daysTo(project.dueDate)
     const late = due !== null && due < 0 && project.status !== 'Concluído'
+    const checklist = checklistStats(project)
     return (
       <article
         key={project.id}
@@ -161,8 +199,8 @@ export function InternalProjectsPage({
           {project.tags.slice(0, 2).map((tag) => <span key={tag} className="rounded-md bg-amber-50 px-2 py-1 text-[0.65rem] font-semibold text-amber-700">#{tag}</span>)}
         </div>
         <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between text-[0.68rem] font-semibold text-gray-500"><span>Progresso</span><span>{project.progress}%</span></div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#c9a227] transition-all" style={{ width: `${project.progress}%` }} /></div>
+          <div className="mb-1.5 flex items-center justify-between text-[0.68rem] font-semibold text-gray-500"><span>{checklist.total ? `${checklist.completed}/${checklist.total} tarefas` : 'Progresso'}</span><span>{checklist.progress}%</span></div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[#c9a227] transition-all" style={{ width: `${checklist.progress}%` }} /></div>
         </div>
         <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-[0.68rem] font-semibold">
           <span className={`inline-flex items-center gap-1.5 ${late ? 'text-red-600' : 'text-gray-500'}`}><CalendarDays size={13} /> {late ? `${Math.abs(due!)}d atrasado` : formatDate(project.dueDate)}</span>
@@ -173,7 +211,7 @@ export function InternalProjectsPage({
   }
 
   return (
-    <div className="internal-projects-page space-y-4">
+    <div className="internal-projects-page module-page space-y-4">
       <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-col gap-5 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -235,15 +273,15 @@ export function InternalProjectsPage({
             const groupColors = ['#579bfc', '#a25ddc', '#00c875', '#fdab3d', '#e2445c', '#66ccff']
             const color = groupColors[groupIndex % groupColors.length]
             return (
-              <div key={category} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3">
+              <div key={category} className="monday-board-group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="monday-group-heading flex items-center gap-2 border-b border-gray-200 px-4 py-3">
                   <span className="h-5 w-1 rounded-full" style={{ backgroundColor: color }} />
                   <h2 className="text-base font-semibold" style={{ color }}>{category}</h2>
                   <span className="text-xs font-semibold text-gray-400">{categoryProjects.length} item(ns)</span>
                 </div>
                 <div className="overflow-x-auto">
                   <div className="min-w-[1050px]">
-                    <div className="grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-200 bg-gray-50 text-[0.68rem] font-bold text-gray-500">
+                    <div className="monday-board-header grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-200 bg-gray-50 text-[0.68rem] font-bold text-gray-500">
                       <span className="border-r border-gray-200 px-4 py-2.5">Projeto</span>
                       <span className="border-r border-gray-200 px-3 py-2.5 text-center">Responsável</span>
                       <span className="border-r border-gray-200 px-3 py-2.5 text-center">Status</span>
@@ -254,8 +292,9 @@ export function InternalProjectsPage({
                     </div>
                     {categoryProjects.map((project) => {
                       const late = (daysTo(project.dueDate) ?? 0) < 0 && project.status !== 'Concluído'
+                      const checklist = checklistStats(project)
                       return (
-                        <div key={project.id} className="group grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-100 last:border-b-0 hover:bg-gray-50/70">
+                        <div key={project.id} className="monday-board-row group grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-100 last:border-b-0 hover:bg-gray-50/70">
                           <button className="flex min-w-0 items-center gap-3 border-r border-gray-200 px-4 py-2.5 text-left" type="button" onClick={() => setEditing({ ...project })}>
                             <span className="h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                             <span className="min-w-0"><strong className="block truncate text-sm font-semibold text-gray-950">{project.name}</strong><small className="mt-0.5 block truncate text-[0.68rem] text-gray-500">{project.description || 'Sem descrição'}</small></span>
@@ -279,8 +318,8 @@ export function InternalProjectsPage({
                             <CalendarDays size={14} /><span>{project.startDate ? formatDate(project.startDate) : 'Início'} — {formatDate(project.dueDate)}</span>
                           </button>
                           <div className="flex items-center gap-2 border-r border-gray-200 px-3">
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full" style={{ width: `${project.progress}%`, backgroundColor: color }} /></div>
-                            <span className="w-8 text-right text-[0.68rem] font-bold text-gray-600">{project.progress}%</span>
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full" style={{ width: `${checklist.progress}%`, backgroundColor: color }} /></div>
+                            <span className="w-8 text-right text-[0.68rem] font-bold text-gray-600">{checklist.progress}%</span>
                           </div>
                           <button className="flex items-center justify-center text-gray-400 hover:text-gray-800" type="button" onClick={() => setEditing({ ...project })} aria-label={`Editar ${project.name}`}><Pencil size={15} /></button>
                         </div>
@@ -301,19 +340,40 @@ export function InternalProjectsPage({
 }
 
 function ProjectEditor({ project, users, onClose, onSave }: { project: InternalProject; users: User[]; onClose: () => void; onSave: (project: InternalProject) => void }) {
-  const [draft, setDraft] = useState(project)
+  const [draft, setDraft] = useState<InternalProject>({ ...project, checklist: project.checklist || [] })
+  const [editorTab, setEditorTab] = useState<'details' | 'checklist'>('details')
+  const [newCategoryName, setNewCategoryName] = useState('')
   const categoryOptions = internalProjectCategories.includes(project.category as (typeof internalProjectCategories)[number])
     ? internalProjectCategories
     : [...internalProjectCategories, project.category]
   const set = <K extends keyof InternalProject>(key: K, value: InternalProject[K]) => setDraft((current) => ({ ...current, [key]: value }))
   const submit = (event: FormEvent) => { event.preventDefault(); onSave(draft) }
+  const categories = draft.checklist || []
+  const stats = checklistStats(draft)
+  const updateCategory = (categoryId: string, update: (category: InternalProjectChecklistCategory) => InternalProjectChecklistCategory) =>
+    set('checklist', categories.map((category) => category.id === categoryId ? update(category) : category))
+  const addCategory = () => {
+    const name = newCategoryName.trim()
+    if (!name) return
+    set('checklist', [...categories, { id: makeInternalId('check-category'), name, description: '', items: [], createdAt: new Date().toISOString() }])
+    setNewCategoryName('')
+  }
+  const addItem = (categoryId: string) => updateCategory(categoryId, (category) => ({
+    ...category,
+    items: [...category.items, { id: makeInternalId('check-item'), title: '', details: '', completed: false, createdAt: new Date().toISOString() }],
+  }))
   return (
-    <Modal title={project.id ? 'Editar projeto interno' : 'Novo projeto interno'} onClose={onClose} size="md">
-      <form className="space-y-5" onSubmit={submit}>
-        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs leading-5 text-amber-900"><strong>Uma boa iniciativa tem um resultado claro.</strong> Descreva o que estará diferente quando este projeto for concluído.</div>
-        <InputField label="Nome do projeto"><input autoFocus className="field-input" required value={draft.name} onChange={(event) => set('name', event.target.value)} placeholder="Ex.: Novo site da Hero Drone" /></InputField>
-        <InputField label="Objetivo / descrição"><textarea className="field-input min-h-24 resize-y" value={draft.description} onChange={(event) => set('description', event.target.value)} placeholder="Qual problema vamos resolver e qual resultado esperamos?" /></InputField>
-        <div className="grid gap-4 sm:grid-cols-2">
+    <Modal title={project.id ? 'Editar projeto interno' : 'Novo projeto interno'} onClose={onClose} size="lg">
+      <form onSubmit={submit}>
+        <div className="mb-5 grid grid-cols-2 rounded-xl bg-gray-100 p-1">
+          <button className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${editorTab === 'details' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setEditorTab('details')}><Pencil size={15} /> Detalhes</button>
+          <button className={`flex min-h-10 items-center justify-center gap-2 rounded-lg text-sm font-bold transition ${editorTab === 'checklist' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setEditorTab('checklist')}><ListChecks size={16} /> Checklist {stats.total ? `${stats.completed}/${stats.total}` : ''}</button>
+        </div>
+        {editorTab === 'details' ? <div className="space-y-5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs leading-5 text-amber-900"><strong>Uma boa iniciativa tem um resultado claro.</strong> Descreva o que estará diferente quando este projeto for concluído.</div>
+          <InputField label="Nome do projeto"><input autoFocus className="field-input" required value={draft.name} onChange={(event) => set('name', event.target.value)} placeholder="Ex.: Novo site da Hero Drone" /></InputField>
+          <InputField label="Objetivo / descrição"><textarea className="field-input min-h-24 resize-y" value={draft.description} onChange={(event) => set('description', event.target.value)} placeholder="Qual problema vamos resolver e qual resultado esperamos?" /></InputField>
+          <div className="grid gap-4 sm:grid-cols-2">
           <InputField label="Status"><select className="field-input" value={draft.status} onChange={(event) => set('status', event.target.value as InternalProjectStatus)}>{internalProjectStatuses.map((status) => <option key={status}>{status}</option>)}</select></InputField>
           <InputField label="Prioridade"><select className="field-input" value={draft.priority} onChange={(event) => set('priority', event.target.value as InternalProject['priority'])}><option>Baixa</option><option>Média</option><option>Alta</option><option>Urgente</option></select></InputField>
           <InputField label="Categoria">
@@ -324,11 +384,63 @@ function ProjectEditor({ project, users, onClose, onSave }: { project: InternalP
           <InputField label="Responsável"><select className="field-input" value={draft.responsibleUserId || ''} onChange={(event) => set('responsibleUserId', event.target.value || undefined)}><option value="">Não atribuído</option>{users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
           <InputField label="Data de início"><input className="field-input" type="date" value={draft.startDate || ''} onChange={(event) => set('startDate', event.target.value || undefined)} /></InputField>
           <InputField label="Prazo"><input className="field-input" type="date" value={draft.dueDate || ''} onChange={(event) => set('dueDate', event.target.value || undefined)} /></InputField>
+          </div>
+          {stats.total ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-900"><span>Progresso calculado pelo checklist</span><span>{stats.progress}%</span></div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-100"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${stats.progress}%` }} /></div>
+            </div>
+          ) : <InputField label={`Progresso — ${draft.progress}%`}><input className="w-full accent-[#c9a227]" type="range" min="0" max="100" step="5" value={draft.progress} onChange={(event) => set('progress', Number(event.target.value))} /></InputField>}
+          <InputField label="Tags (separadas por vírgula)"><input className="field-input" value={draft.tags.join(', ')} onChange={(event) => set('tags', event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean))} placeholder="site, crescimento, automação" /></InputField>
+          <InputField label="Notas gerais"><textarea className="field-input min-h-20 resize-y" value={draft.notes} onChange={(event) => set('notes', event.target.value)} placeholder="Links, decisões, próximos passos..." /></InputField>
+        </div> : (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+              <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-bold text-blue-950">Plano de execução</p><p className="mt-0.5 text-xs text-blue-700">Separe as tarefas por categoria e acrescente instruções em cada item.</p></div><strong className="shrink-0 text-lg text-blue-950">{stats.progress}%</strong></div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-100"><div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${stats.progress}%` }} /></div>
+            </div>
+            <div className="flex gap-2">
+              <input className="field-input min-w-0 flex-1" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCategory() } }} placeholder="Nova categoria, ex.: Planejamento" />
+              <Button type="button" onClick={addCategory}><Plus size={15} /> Categoria</Button>
+            </div>
+            <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+              {categories.map((category, categoryIndex) => {
+                const completed = category.items.filter((item) => item.completed).length
+                return (
+                  <section key={category.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <div className="flex items-start gap-2 border-b border-gray-100 bg-gray-50/80 p-3">
+                      <GripVertical className="mt-2 shrink-0 text-gray-300" size={16} />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <input aria-label={`Nome da categoria ${categoryIndex + 1}`} className="w-full bg-transparent text-sm font-bold text-gray-950 outline-none placeholder:text-gray-400" value={category.name} onChange={(event) => updateCategory(category.id, (current) => ({ ...current, name: event.target.value }))} placeholder="Nome da categoria" />
+                        <textarea aria-label={`Descrição da categoria ${category.name}`} className="w-full resize-none bg-transparent text-xs leading-5 text-gray-600 outline-none placeholder:text-gray-400" rows={2} value={category.description} onChange={(event) => updateCategory(category.id, (current) => ({ ...current, description: event.target.value }))} placeholder="Contexto, objetivo ou orientações desta categoria..." />
+                      </div>
+                      <span className="mt-1 shrink-0 rounded-full bg-white px-2 py-1 text-[0.65rem] font-bold text-gray-500">{completed}/{category.items.length}</span>
+                      <button className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600" type="button" onClick={() => set('checklist', categories.filter((item) => item.id !== category.id))} aria-label={`Excluir categoria ${category.name}`}><Trash2 size={14} /></button>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {category.items.map((item) => (
+                        <div key={item.id} className="flex items-start gap-3 p-3">
+                          <button className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${item.completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 bg-white text-transparent hover:border-emerald-400'}`} type="button" onClick={() => updateCategory(category.id, (current) => ({ ...current, items: current.items.map((currentItem) => currentItem.id === item.id ? { ...currentItem, completed: !currentItem.completed, completedAt: !currentItem.completed ? new Date().toISOString() : undefined } : currentItem) }))} aria-label={item.completed ? `Reabrir ${item.title}` : `Concluir ${item.title}`}><CheckCircle2 size={14} /></button>
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <input className={`w-full bg-transparent text-sm font-semibold outline-none placeholder:text-gray-400 ${item.completed ? 'text-gray-400 line-through' : 'text-gray-900'}`} value={item.title} onChange={(event) => updateCategory(category.id, (current) => ({ ...current, items: current.items.map((currentItem) => currentItem.id === item.id ? { ...currentItem, title: event.target.value } : currentItem) }))} placeholder="Digite a tarefa..." />
+                            <textarea className="w-full resize-y rounded-lg border border-transparent bg-gray-50 px-2.5 py-2 text-xs leading-5 text-gray-600 outline-none transition placeholder:text-gray-400 focus:border-gray-200 focus:bg-white" rows={2} value={item.details} onChange={(event) => updateCategory(category.id, (current) => ({ ...current, items: current.items.map((currentItem) => currentItem.id === item.id ? { ...currentItem, details: event.target.value } : currentItem) }))} placeholder="Adicione texto, instruções, links ou observações (opcional)..." />
+                          </div>
+                          <button className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-600" type="button" onClick={() => updateCategory(category.id, (current) => ({ ...current, items: current.items.filter((currentItem) => currentItem.id !== item.id) }))} aria-label={`Excluir ${item.title}`}><X size={15} /></button>
+                        </div>
+                      ))}
+                      <button className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-bold text-blue-700 hover:bg-blue-50" type="button" onClick={() => addItem(category.id)}><Plus size={14} /> Adicionar item</button>
+                    </div>
+                  </section>
+                )
+              })}
+              {!categories.length ? <div className="rounded-xl border border-dashed border-gray-300 px-6 py-10 text-center"><CheckSquare2 className="mx-auto text-gray-300" size={30} /><p className="mt-2 text-sm font-bold text-gray-800">Crie a primeira categoria</p><p className="mt-1 text-xs text-gray-500">Ex.: Planejamento, Conteúdo, Desenvolvimento ou Lançamento.</p></div> : null}
+            </div>
+          </div>
+        )}
+        <div className="mt-5 flex items-center justify-between gap-2 border-t border-gray-200 pt-4">
+          <button className="text-xs font-bold text-gray-500 hover:text-gray-900" type="button" onClick={() => setEditorTab(editorTab === 'details' ? 'checklist' : 'details')}>{editorTab === 'details' ? 'Montar checklist →' : '← Voltar aos detalhes'}</button>
+          <div className="flex gap-2"><Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button><Button type="submit"><CheckCircle2 size={15} /> {project.id ? 'Salvar alterações' : 'Criar projeto'}</Button></div>
         </div>
-        <InputField label={`Progresso — ${draft.progress}%`}><input className="w-full accent-[#c9a227]" type="range" min="0" max="100" step="5" value={draft.progress} onChange={(event) => set('progress', Number(event.target.value))} /></InputField>
-        <InputField label="Tags (separadas por vírgula)"><input className="field-input" value={draft.tags.join(', ')} onChange={(event) => set('tags', event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean))} placeholder="site, crescimento, automação" /></InputField>
-        <InputField label="Notas"><textarea className="field-input min-h-20 resize-y" value={draft.notes} onChange={(event) => set('notes', event.target.value)} placeholder="Links, decisões, próximos passos..." /></InputField>
-        <div className="flex justify-end gap-2 border-t border-gray-200 pt-4"><Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button><Button type="submit"><CheckCircle2 size={15} /> {project.id ? 'Salvar alterações' : 'Criar projeto'}</Button></div>
       </form>
     </Modal>
   )

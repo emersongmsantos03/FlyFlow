@@ -10,6 +10,7 @@ import {
   setPersistence,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
   type User as FirebaseUser,
 } from 'firebase/auth'
 import { getFirestore, initializeFirestore, type Firestore } from 'firebase/firestore'
@@ -69,6 +70,11 @@ export const signOutFromFirebase = async () => {
 export const requestFirebasePasswordReset = async (email: string) => {
   if (!firebaseAuth) throw new Error('Firebase não configurado.')
   await sendPasswordResetEmail(firebaseAuth, email.trim().toLowerCase())
+}
+
+export const updateCurrentFirebasePassword = async (password: string) => {
+  if (!firebaseAuth?.currentUser) throw new Error('Sua sessão não está disponível. Entre novamente para alterar a senha.')
+  await updatePassword(firebaseAuth.currentUser, password)
 }
 
 export const observeFirebaseAuth = (listener: (user: FirebaseUser | null) => void) => {

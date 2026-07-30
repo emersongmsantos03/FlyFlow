@@ -312,6 +312,13 @@ export interface User {
   permissions: UserPermission[]
   isPrimaryOwner?: boolean
   avatarUrl?: string
+  jobTitle?: string
+  phone?: string
+  whatsapp?: string
+  city?: string
+  bio?: string
+  mustChangePassword?: boolean
+  passwordChangedAt?: string
   active: boolean
   createdAt: string
   updatedAt: string
@@ -1008,9 +1015,27 @@ export interface InternalProject {
   progress: number
   tags: string[]
   notes: string
+  checklist?: InternalProjectChecklistCategory[]
   archivedAt?: string
   createdAt: string
   updatedAt: string
+}
+
+export interface InternalProjectChecklistCategory {
+  id: string
+  name: string
+  description: string
+  items: InternalProjectChecklistItem[]
+  createdAt: string
+}
+
+export interface InternalProjectChecklistItem {
+  id: string
+  title: string
+  details: string
+  completed: boolean
+  completedAt?: string
+  createdAt: string
 }
 
 export interface StatusHistoryItem {

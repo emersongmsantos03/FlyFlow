@@ -18,6 +18,8 @@ export interface AuthAccount {
   passwordHash: string
   salt: string
   resetRequestedAt?: string
+  mustChangePassword?: boolean
+  passwordChangedAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -128,7 +130,7 @@ export const clearAuthSession = () => {
   window.sessionStorage.removeItem(LEGACY_AUTH_KEY)
 }
 
-export const createUserAuthAccount = async (email: string, password: string, userId?: string) => {
+export const createUserAuthAccount = async (email: string, password: string, userId?: string, mustChangePassword = true) => {
   await ensurePrimaryAuthAccount()
   const normalizedEmail = email.trim().toLowerCase()
   const accounts = getAccounts()
@@ -144,6 +146,7 @@ export const createUserAuthAccount = async (email: string, password: string, use
     email: normalizedEmail,
     salt,
     passwordHash: await hashPassword(password, salt),
+    mustChangePassword,
     createdAt: now,
     updatedAt: now,
   }
@@ -163,6 +166,8 @@ export const updateUserPassword = async (email: string, password: string) => {
     ...accounts[index],
     salt,
     passwordHash: await hashPassword(password, salt),
+    mustChangePassword: false,
+    passwordChangedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
   saveAccounts(accounts)

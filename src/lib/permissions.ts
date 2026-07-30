@@ -41,6 +41,7 @@ export const can = (user: User | undefined, permission: UserPermission) =>
 
 export const canOpenPage = (user: User | undefined, page: string) => {
   if (!user?.active) return false
+  if (page === 'profile') return true
   if (user.isPrimaryOwner) return true
 
   const pagePermissions: Record<string, UserPermission> = {

@@ -21,8 +21,8 @@ const ENDPOINTS = [
   'https://lz4.overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
 ]
-const CACHE_TTL = 24 * 60 * 60 * 1000
-const CACHE_PREFIX = 'flyflow:osm-leads:v9:'
+const CACHE_TTL = 2 * 60 * 60 * 1000
+const CACHE_PREFIX = 'flyflow:osm-leads:v10:'
 const CITY_COORDINATES: Record<string, [number, number]> = {
   curitiba: [-25.4296, -49.2713], 'sao jose dos pinhais': [-25.5347, -49.2064], pinhais: [-25.4448, -49.1926], colombo: [-25.2925, -49.2262],
   'campo largo': [-25.4596, -49.5274], araucaria: [-25.5922, -49.4108], 'campo magro': [-25.3681, -49.4501], 'almirante tamandare': [-25.3247, -49.3103],
@@ -33,6 +33,11 @@ const CITY_COORDINATES: Record<string, [number, number]> = {
 const clean = (value = '', max = 240) => [...value].map((character) => character.charCodeAt(0) < 32 || character === '<' || character === '>' ? ' ' : character).join('').replace(/\s+/g, ' ').trim().slice(0, max)
 const normalize = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 const first = (tags: Record<string, string>, ...keys: string[]) => clean(keys.map((key) => tags[key]).find(Boolean) || '')
+
+export const canReuseLeadSearchCache = (
+  cached: { at: number; result: LeadSearchProviderResult },
+  currentTime = Date.now(),
+) => cached.result.leads.length > 0 && currentTime - cached.at < CACHE_TTL
 
 const lowFitName = (name: string) =>
   /refinaria|usina|termel[eé]trica|hidrel[eé]trica|f[aá]brica|ind[uú]stria|campus|sistema fiep|terminal|subesta[cç][aã]o|esta[cç][aã]o de tratamento|aterro|pedreira|mineradora/i.test(normalize(name))
@@ -285,11 +290,18 @@ export class OpenStreetMapLeadProvider implements LeadSearchProvider {
     const city = clean(request.cityNames[0] || '', 80)
     if (!city) throw new Error('Selecione uma cidade para realizar a busca.')
     const categories = request.categoryNames.length ? request.categoryNames : ['Hospedagem', 'Espaço para eventos']
-    const key = CACHE_PREFIX + normalize(`${city}|${categories.sort().join('|')}|${request.limit}`)
+    const key = CACHE_PREFIX + normalize(`${city}|${[...categories].sort().join('|')}|${request.limit}`)
     const cached = localStorage.getItem(key)
     if (cached) {
-      const parsed = JSON.parse(cached) as { at: number; result: LeadSearchProviderResult }
-      if (Date.now() - parsed.at < CACHE_TTL) return { ...parsed.result, warnings: [...parsed.result.warnings, 'Resultado reutilizado do cache de 24 horas.'] }
+      try {
+        const parsed = JSON.parse(cached) as { at: number; result: LeadSearchProviderResult }
+        if (canReuseLeadSearchCache(parsed)) {
+          return { ...parsed.result, warnings: [...parsed.result.warnings, 'Resultado recente reutilizado; a rotação seguirá para outras combinações.'] }
+        }
+        localStorage.removeItem(key)
+      } catch {
+        localStorage.removeItem(key)
+      }
     }
     let nominatimLeads: LeadSearchProviderResult['leads'] = []
     try {

@@ -66,6 +66,7 @@ type WriteOperation =
   | { kind: 'delete'; section: string; id: string }
 
 let activeWorkspaceId = ''
+let activeMembershipRequiresPasswordChange = false
 let cachedWorkspaceId = ''
 let cachedSchemaVersion = 0
 const recordCache = new Map<string, string>()
@@ -228,8 +229,10 @@ export const getActiveFirebaseWorkspaceId = () => activeWorkspaceId
 export const saveFirebaseEmailSignature = async (dataUrl: string) => {
   if (!activeWorkspaceId) throw new Error('Entre novamente antes de salvar a assinatura.')
   const serializedBytes = textEncoder.encode(dataUrl).byteLength
-  if (!dataUrl.startsWith('data:image/') || serializedBytes > 850_000) {
-    throw new Error('A assinatura não pôde ser otimizada para armazenamento.')
+  const isImageData = dataUrl.startsWith('data:image/') && serializedBytes <= 850_000
+  const isRemoteImage = /^https:\/\/[^\s]+$/i.test(dataUrl) && serializedBytes <= 8_000
+  if (!isImageData && !isRemoteImage) {
+    throw new Error('A assinatura não pôde ser sincronizada com o workspace.')
   }
   const save = setDoc(recordReference('workspaceAssets', 'emailSignature'), {
       value: { dataUrl },
@@ -251,6 +254,7 @@ export const removeFirebaseEmailSignature = async () => {
 
 export const clearActiveFirebaseWorkspace = () => {
   activeWorkspaceId = ''
+  activeMembershipRequiresPasswordChange = false
   cachedWorkspaceId = ''
   cachedSchemaVersion = 0
   recordCache.clear()
@@ -262,11 +266,12 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
   const membershipSnapshot = await getDoc(membershipRef)
 
   if (membershipSnapshot.exists()) {
-    const membership = membershipSnapshot.data() as { workspaceId?: string; active?: boolean }
+    const membership = membershipSnapshot.data() as { workspaceId?: string; active?: boolean; mustChangePassword?: boolean }
     if (!membership.active || !membership.workspaceId) {
       throw new Error('Usuário sem acesso ativo ao espaço de trabalho.')
     }
     activeWorkspaceId = membership.workspaceId
+    activeMembershipRequiresPasswordChange = Boolean(membership.mustChangePassword)
     return activeWorkspaceId
   }
 
@@ -288,7 +293,25 @@ export const ensureFirebaseWorkspace = async (user: FirebaseUser) => {
   })
   await batch.commit()
   activeWorkspaceId = workspaceId
+  activeMembershipRequiresPasswordChange = false
   return workspaceId
+}
+
+export const firebasePasswordChangeRequired = () => activeMembershipRequiresPasswordChange
+
+export const completeFirebaseFirstLogin = async () => {
+  const { db, auth } = ensureServices()
+  if (!auth.currentUser) throw new Error('Sua sessão expirou. Entre novamente para trocar a senha.')
+  await setDoc(
+    doc(db, 'memberships', auth.currentUser.uid),
+    {
+      mustChangePassword: false,
+      passwordChangedAt: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  )
+  activeMembershipRequiresPasswordChange = false
 }
 
 export const loadFirebaseAppState = async (fallback: AppState): Promise<AppState | null> => {
@@ -443,6 +466,7 @@ export const createFirebaseWorkspaceUser = async (email: string, password: strin
     workspaceId: activeWorkspaceId,
     email: provisioned.email,
     active: true,
+    mustChangePassword: true,
     createdAt: new Date().toISOString(),
     updatedAt: serverTimestamp(),
   })

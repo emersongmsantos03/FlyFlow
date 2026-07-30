@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { mapNominatimResult, mapOsmElement } from './OpenStreetMapProvider'
+import { canReuseLeadSearchCache, mapNominatimResult, mapOsmElement } from './OpenStreetMapProvider'
 
 describe('OpenStreetMapLeadProvider', () => {
+  it('nunca reutiliza cache vazio e expira resultados positivos em duas horas', () => {
+    const result = { leads: [], sources: [], warnings: [] }
+    expect(canReuseLeadSearchCache({ at: 1_000, result }, 2_000)).toBe(false)
+    expect(canReuseLeadSearchCache({
+      at: 1_000,
+      result: { ...result, leads: [{ name: 'Pousada Real', city: 'Lapa', categoryName: 'Pousada' }] },
+    }, 1_000 + 60 * 60 * 1000)).toBe(true)
+    expect(canReuseLeadSearchCache({
+      at: 1_000,
+      result: { ...result, leads: [{ name: 'Pousada Real', city: 'Lapa', categoryName: 'Pousada' }] },
+    }, 1_000 + 2 * 60 * 60 * 1000)).toBe(false)
+  })
+
   it('converte somente dados reais presentes no elemento', () => {
     const lead = mapOsmElement({ type: 'node', id: 42, lat: -25.4, lon: -49.2, tags: { name: 'Pousada Teste', tourism: 'guest_house', phone: '41999999999', website: 'https://exemplo.com', 'addr:street': 'Rua Um', 'addr:housenumber': '10' } }, 'Curitiba', ['Pousada'])
     expect(lead).toMatchObject({ id: 'osm-node-42', name: 'Pousada Teste', categoryName: 'Pousada', city: 'Curitiba', phone: '41999999999', email: '' })

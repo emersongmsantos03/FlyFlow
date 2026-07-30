@@ -258,7 +258,7 @@ export function CrmPage({
   const scrollBoard = (direction: -1 | 1) => boardRef.current?.scrollBy({ left: direction * 620, behavior: 'smooth' })
 
   return (
-    <div className="crm-page space-y-4">
+    <div className="crm-page commercial-page module-page space-y-4">
       <section className="crm-commercial-header rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
           <div className="min-w-0">

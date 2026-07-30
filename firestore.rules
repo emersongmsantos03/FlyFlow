@@ -33,7 +33,17 @@ service cloud.firestore {
           || isWorkspaceOwner(request.resource.data.workspaceId)
         );
 
-      allow update, delete: if isWorkspaceOwner(resource.data.workspaceId);
+      allow update: if isWorkspaceOwner(resource.data.workspaceId)
+        || (
+          signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['mustChangePassword', 'passwordChangedAt', 'updatedAt'])
+          && request.resource.data.workspaceId == resource.data.workspaceId
+          && request.resource.data.active == resource.data.active
+          && request.resource.data.mustChangePassword == false
+        );
+      allow delete: if isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /workspaces/{workspaceId} {

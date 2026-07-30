@@ -376,17 +376,20 @@ export default {
         .map((item) => clean(item, 160).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
         .filter(Boolean)
         .slice(0, 300))
-      const limit = Math.max(1, Math.min(Number(body?.limit) || 10, 20))
+      const limit = Math.max(10, Math.min(Number(body?.limit) || 10, 20))
+      const candidatePoolTarget = Math.min(40, Math.max(limit * 2, 20))
       if (!cities.length || !categories.length) return json({ error: 'Informe cidade e categoria.' }, 400, origin)
       const leads: Array<Record<string, unknown>> = []
       const discoveredKeys = new Set<string>()
       const categoryCounts = new Map<string, number>()
       const warnings: string[] = []
       if (userId && env.GOOGLE_PLACES_API_KEY) {
+        let googlePlacesQuotaBlocked = false
         for (const category of categories) {
           for (const city of cities) {
-            if (leads.length >= Math.min(limit, 10)) break
-            if ((categoryCounts.get(category) || 0) >= 4) break
+            if (googlePlacesQuotaBlocked) break
+            if (leads.length >= candidatePoolTarget) break
+            if ((categoryCounts.get(category) || 0) >= 12) break
             try {
               const placesResponse = await fetch('https://places.googleapis.com/v1/places:searchText', {
                 method: 'POST',
@@ -477,14 +480,20 @@ export default {
                   ],
                 })
                 categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1)
-                if (leads.length >= Math.min(limit, 10)) break
-                if ((categoryCounts.get(category) || 0) >= 4) break
+                if (leads.length >= candidatePoolTarget) break
+                if ((categoryCounts.get(category) || 0) >= 12) break
               }
             } catch (error) {
-              warnings.push(`Google Places (${category}, ${city}): ${error instanceof Error ? error.message : 'indisponível'}`)
+              const message = error instanceof Error ? error.message : 'indisponível'
+              warnings.push(`Google Places (${category}, ${city}): ${message}`)
+              // Não repita dezenas de chamadas quando o próprio provedor já
+              // informou que a cota do projeto acabou. A busca web e o Google
+              // Maps do navegador continuam como fontes alternativas.
+              if (/quota|429|resource_exhausted/i.test(message)) googlePlacesQuotaBlocked = true
             }
           }
-          if (leads.length >= Math.min(limit, 10)) break
+          if (googlePlacesQuotaBlocked) break
+          if (leads.length >= candidatePoolTarget) break
         }
         if (leads.length) {
           await Promise.all(leads.map(async (lead) => {
@@ -503,8 +512,31 @@ export default {
               lead.score = Math.min(100, Number(lead.score || 0) + 10)
             }
           }))
-          leads.sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
-          return json({ leads, sources: ['Google Places API (perfil oficial)'], warnings }, 200, origin)
+          const contactableLeads = leads
+            .filter((lead) => Boolean(
+              String(lead.whatsapp || '').trim() ||
+              String(lead.phone || '').trim() ||
+              String(lead.email || '').trim() ||
+              String(lead.instagram || '').trim(),
+            ))
+            .sort((a, b) =>
+              Number(Boolean(b.googleMapsUrl)) - Number(Boolean(a.googleMapsUrl)) ||
+              Number(Boolean(b.whatsapp)) - Number(Boolean(a.whatsapp)) ||
+              Number(b.score || 0) - Number(a.score || 0),
+            )
+            .slice(0, limit)
+          if (contactableLeads.length) {
+            return json({
+              leads: contactableLeads,
+              sources: ['Google Places API (perfil oficial)'],
+              warnings: [
+                ...warnings,
+                ...(contactableLeads.length < 10
+                  ? [`Somente ${contactableLeads.length} empresas com contato público verificável foram localizadas nesta rodada.`]
+                  : []),
+              ],
+            }, 200, origin)
+          }
         }
       }
       if (userId && env.OPENAI_API_KEY) {
