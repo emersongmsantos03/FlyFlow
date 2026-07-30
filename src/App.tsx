@@ -8738,7 +8738,7 @@ function DashboardPage({
   ].filter((item) => item.value > 0)
 
   return (
-    <div className="dashboard-page space-y-4">
+    <div className="dashboard-page overview-page space-y-4">
       <section className="dashboard-command-bar">
         <div>
           <p className="dashboard-eyebrow">Resumo do negócio</p>
@@ -9974,7 +9974,7 @@ function FinancePage({
   const receiptShortcut = pendingReceiptPayments[0]
     ?? state.payments.find((payment) => !payment.deletedAt && !payment.archivedAt)
   return (
-    <div className="finance-page module-page space-y-4">
+    <div className="finance-page module-page overview-page space-y-4">
       <PageToolbar
         title="Financeiro"
         description="Receitas, despesas, contas a receber, fluxo de caixa e pagamentos parciais."
@@ -11098,7 +11098,7 @@ function ReportsPage({
   const profitabilityByClient = profitabilityBy((project) => projectClient(state, project)?.companyName || 'Sem cliente')
 
   return (
-    <div className="reports-page space-y-4">
+    <div className="reports-page module-page overview-page space-y-4">
       <PageToolbar
         title="Relatórios"
         description="Visão completa do resultado financeiro, comercial e operacional."
