@@ -321,6 +321,21 @@ const allFlyFlowPermissions = [
   'manageUsers',
 ]
 
+const businessRecordCount = (state: Record<string, unknown>) => [
+  'leads',
+  'clients',
+  'projects',
+  'appointments',
+  'quotes',
+  'payments',
+  'expenses',
+  'recurringExpenses',
+  'bankAccounts',
+  'equipment',
+  'tasks',
+  'internalProjects',
+].reduce((total, key) => total + (Array.isArray(state[key]) ? state[key].length : 0), 0)
+
 const bootstrapD1Workspace = async (
   env: Env,
   identity: { userId: string; email: string },
@@ -358,12 +373,24 @@ const bootstrapD1Workspace = async (
   if (new TextEncoder().encode(stateJson).byteLength > 20_000_000) {
     throw new Error('O estado excede o limite seguro de migração.')
   }
-  const statements = [
-    env.FLYFLOW_DB.prepare(`
+  const existingWorkspace = await env.FLYFLOW_DB.prepare(
+    'SELECT state_json FROM workspaces WHERE workspace_id = ?',
+  ).bind(workspaceId).first<{ state_json: string }>()
+  const shouldRepairEmptyWorkspace = identity.email === 'herodronecwb@gmail.com'
+    && existingWorkspace
+    && businessRecordCount(JSON.parse(existingWorkspace.state_json) as Record<string, unknown>) === 0
+    && businessRecordCount(state) > 0
+  const workspaceStatement = shouldRepairEmptyWorkspace
+    ? env.FLYFLOW_DB.prepare(
+      'UPDATE workspaces SET owner_uid = ?, state_json = ?, updated_at = ? WHERE workspace_id = ?',
+    ).bind(ownerUserId, stateJson, now, workspaceId)
+    : env.FLYFLOW_DB.prepare(`
       INSERT INTO workspaces (workspace_id, owner_uid, state_json, updated_at)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(workspace_id) DO NOTHING
-    `).bind(workspaceId, ownerUserId, stateJson, now),
+    `).bind(workspaceId, ownerUserId, stateJson, now)
+  const statements = [
+    workspaceStatement,
     env.FLYFLOW_DB.prepare(`
       INSERT INTO memberships (user_id, workspace_id, email, profile_json, active, must_change_password, updated_at)
       VALUES (?, ?, ?, ?, 1, 0, ?)

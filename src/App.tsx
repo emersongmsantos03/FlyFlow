@@ -1454,6 +1454,8 @@ function App() {
 
         try {
           const localState = loadAppState()
+          const isMasterAccount = firebaseUser.email?.toLowerCase() === 'herodronecwb@gmail.com'
+          if (isMasterAccount) await bootstrapCloudflareWorkspace(localState)
           let cloudflareWorkspace = await loadCloudflareWorkspace()
           if (!cloudflareWorkspace) {
             await bootstrapCloudflareWorkspace(localState)
@@ -2617,6 +2619,9 @@ Hero Drone`,
             12_000,
           )),
         ])
+        if (credential.user.email?.toLowerCase() === 'herodronecwb@gmail.com') {
+          await bootstrapCloudflareWorkspace(loadAppState())
+        }
         let cloudflareWorkspace = await Promise.race([
           loadCloudflareWorkspace(),
           new Promise<never>((_, reject) => window.setTimeout(
