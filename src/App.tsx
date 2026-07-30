@@ -300,6 +300,44 @@ type Page =
   | 'profile'
   | 'users'
 
+const pageToPath: Record<Page, string> = {
+  dashboard: '/',
+  leads: '/comercial',
+  clients: '/clientes',
+  leadHunter: '/lead-hunter',
+  inbox: '/inbox',
+  projects: '/projetos',
+  internalProjects: '/projetos-internos',
+  agenda: '/agenda',
+  quotes: '/propostas',
+  finance: '/financeiro',
+  equipment: '/equipamentos',
+  reports: '/relatorios',
+  settings: '/configuracoes',
+  profile: '/perfil',
+  users: '/usuarios',
+}
+
+const pathToPage = (pathname: string): Page => {
+  const normalized = pathname.toLowerCase().replace(/\/+$/, '') || '/'
+  const entry = Object.entries(pageToPath).find(([_, path]) => path.toLowerCase() === normalized)
+  if (entry) return entry[0] as Page
+  if (normalized === '/dashboard') return 'dashboard'
+  if (normalized === '/relatorio' || normalized === '/relatorios') return 'reports'
+  if (normalized === '/financeiro' || normalized === '/finance') return 'finance'
+  if (normalized === '/projetos-internos' || normalized === '/internal-projects') return 'internalProjects'
+  if (normalized === '/propostas' || normalized === '/quotes') return 'quotes'
+  if (normalized === '/clientes' || normalized === '/clients') return 'clients'
+  if (normalized === '/leads' || normalized === '/comercial') return 'leads'
+  if (normalized === '/config' || normalized === '/configuracoes' || normalized === '/settings') return 'settings'
+  if (normalized === '/perfil' || normalized === '/profile') return 'profile'
+  if (normalized === '/usuarios' || normalized === '/users') return 'users'
+  if (normalized === '/equipamentos' || normalized === '/equipment') return 'equipment'
+  if (normalized === '/agenda') return 'agenda'
+  if (normalized === '/lead-hunter') return 'leadHunter'
+  return 'dashboard'
+}
+
 type FinanceTab = 'dashboard' | 'receitas' | 'despesas' | 'receber' | 'fluxo' | 'contas' | 'arquivados'
 
 type ModalType =
@@ -1296,7 +1334,26 @@ function App() {
     if (stored === 'light' || stored === 'dark') return stored
     return 'light'
   })
-  const [page, setPage] = useState<Page>('dashboard')
+  const [page, setPage] = useState<Page>(() =>
+    typeof window !== 'undefined' ? pathToPage(window.location.pathname) : 'dashboard'
+  )
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const targetPath = pageToPath[page] || '/'
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ page }, '', targetPath)
+    }
+  }, [page])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handlePopState = () => {
+      setPage(pathToPage(window.location.pathname))
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
   const [modal, setModal] = useState<ModalType>(null)
   const [query, setQuery] = useState('')
   const [period, setPeriod] = useState<PeriodPreset>('month')
@@ -7487,9 +7544,19 @@ Hero Drone`,
                 })
                 latestState.current = nextState
                 saveAppState(nextState)
-                if (isFirebaseConfigured && authSession) await saveFirebaseAppState(nextState)
-                else if (isSupabaseConfigured && authSession) await saveCloudAppState(nextState)
                 setState(nextState)
+                if (cloudflareDataReady) {
+                  try {
+                    const updatedAt = await saveCloudflareWorkspace(nextState, cloudflareVersion.current)
+                    if (updatedAt) cloudflareVersion.current = updatedAt
+                  } catch (err) {
+                    console.error('Cloudflare profile save error:', err)
+                  }
+                } else if (isFirebaseConfigured && authSession) {
+                  await saveFirebaseAppState(nextState)
+                } else if (isSupabaseConfigured && authSession) {
+                  await saveCloudAppState(nextState)
+                }
                 setToast('Perfil atualizado com sucesso.')
               }}
             />
