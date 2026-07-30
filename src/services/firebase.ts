@@ -35,6 +35,15 @@ export const isFirebaseConfigured = Boolean(
     firebaseConfig.appId,
 )
 
+const safeFetch = async (input: RequestInfo, init?: RequestInit) => {
+  try {
+    return await fetch(input, init)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`Falha de rede ao acessar ${String(input)}: ${msg}`)
+  }
+}
+
 const app = isFirebaseConfigured
   ? getApps().find((item) => item.name === '[DEFAULT]') ?? initializeApp(firebaseConfig)
   : null
@@ -85,7 +94,7 @@ export const updateFirebaseUserTemporaryPassword = async (email: string, passwor
   const token = await firebaseAuth.currentUser.getIdToken()
   const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
   if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
-  const response = await fetch(
+  const response = await safeFetch(
     `${workerBaseUrl}/admin/temporary-password`,
     {
       method: 'POST',
@@ -105,7 +114,7 @@ export const claimFirebaseWorkspaceInvitation = async () => {
   const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
   if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
   const token = await firebaseAuth.currentUser.getIdToken()
-  const response = await fetch(`${workerBaseUrl}/auth/claim-invitation`, {
+  const response = await safeFetch(`${workerBaseUrl}/auth/claim-invitation`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -128,7 +137,7 @@ const cloudflareAuthorization = async () => {
 }
 
 export const bootstrapCloudflareWorkspace = async (state: AppState) => {
-  const response = await fetch(`${cloudflareWorkerBaseUrl()}/data/bootstrap`, {
+  const response = await safeFetch(`${cloudflareWorkerBaseUrl()}/data/bootstrap`, {
     method: 'POST',
     headers: {
       Authorization: await cloudflareAuthorization(),
@@ -141,7 +150,7 @@ export const bootstrapCloudflareWorkspace = async (state: AppState) => {
 }
 
 export const loadCloudflareWorkspace = async () => {
-  const response = await fetch(`${cloudflareWorkerBaseUrl()}/data/state`, {
+  const response = await safeFetch(`${cloudflareWorkerBaseUrl()}/data/state`, {
     headers: { Authorization: await cloudflareAuthorization() },
   })
   if (response.status === 404) return null
@@ -156,7 +165,7 @@ export const loadCloudflareWorkspace = async () => {
 }
 
 export const saveCloudflareWorkspace = async (state: AppState, expectedUpdatedAt: string) => {
-  const response = await fetch(`${cloudflareWorkerBaseUrl()}/data/state`, {
+  const response = await safeFetch(`${cloudflareWorkerBaseUrl()}/data/state`, {
     method: 'POST',
     headers: {
       Authorization: await cloudflareAuthorization(),
@@ -170,7 +179,7 @@ export const saveCloudflareWorkspace = async (state: AppState, expectedUpdatedAt
 }
 
 export const completeCloudflareFirstLogin = async () => {
-  const response = await fetch(`${cloudflareWorkerBaseUrl()}/auth/complete-first-login`, {
+  const response = await safeFetch(`${cloudflareWorkerBaseUrl()}/auth/complete-first-login`, {
     method: 'POST',
     headers: {
       Authorization: await cloudflareAuthorization(),
