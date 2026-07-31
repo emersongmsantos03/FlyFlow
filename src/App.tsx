@@ -6905,11 +6905,17 @@ Hero Drone`,
                     ])
                     fallbackResult.forEach(collectPublicResult)
                   }
-                  if (!combinedLeads.size && searchWarnings.length >= searchCities.length) {
+                  if (!combinedLeads.size) {
                     const diagnostic = searchWarnings.slice(-2).join(' · ')
-                    throw new Error(diagnostic
+                    const message = diagnostic
                       ? `Nenhum lead novo foi localizado. ${diagnostic}`
-                      : 'Nenhum lead novo foi localizado nesta rodada.')
+                      : 'Nenhum lead novo foi localizado nesta rodada.'
+                    setToast(message)
+                    result = {
+                      leads: [],
+                      sources: [...combinedSources],
+                      warnings: searchWarnings,
+                    }
                   }
                   const allRankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
                   const newRankedLeads = allRankedLeads
