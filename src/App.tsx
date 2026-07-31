@@ -189,6 +189,7 @@ import {
   buildLeadOutreachEmail,
   leadOutreachIdempotencyKey,
 } from './services/leadHunter/LeadOutreachAutomation'
+import { resolveLeadHunterSearchScope } from './services/leadHunter/LeadSearchPlanning'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   firebaseAuth,
@@ -6760,83 +6761,19 @@ Hero Drone`,
                   search.categoryIds.forEach((id) => recentCategoryUsage.set(id, (recentCategoryUsage.get(id) || 0) + weight))
                 })
                 const searchLearningProfile = buildLeadLearningProfile(state.leadHunterProspects || [])
-                const publicSearchCategories = activeCategories.filter((item) => isEligibleLeadSegment(item.name))
-                const categoryCoveragePriority = (name: string) => {
-                  return leadSegmentPriorityPoints(name) * 4
+                const searchScope = resolveLeadHunterSearchScope({
+                  activeCities,
+                  activeCategories,
+                  filters,
+                  recentCityUsage,
+                  recentCategoryUsage,
+                  searchLearningProfile,
+                })
+                if (!searchScope) {
+                  setToast('Nenhuma cidade e categoria elegíveis no raio atual. Ajuste os filtros ou ative mais segmentos e cidades.')
+                  return
                 }
-                const candidateCities = filters.cityIds.length
-                  ? (() => {
-                    const selected = activeCities.find((item) => filters.cityIds.includes(item.id))
-                    if (!selected) return []
-                    const neighbors = activeCities
-                      .filter((item) => item.id !== selected.id)
-                      .sort((a, b) =>
-                        Math.abs(a.distanceFromBaseKm - selected.distanceFromBaseKm) - Math.abs(b.distanceFromBaseKm - selected.distanceFromBaseKm)
-                        || a.searchCount - b.searchCount,
-                      )
-                    return [selected, ...neighbors]
-                  })()
-                  : (() => {
-                    const greenBeltPriority = (item: (typeof activeCities)[number]) => {
-                      const name = normalizeLeadText(item.name)
-                      if (/campo magro|quatro barras|campina grande do sul|balsa nova|bocaiuva do sul|tijucas do sul|mandirituba|lapa/.test(name)) return 3
-                      if (/sao jose dos pinhais|campo largo|almirante tamandare|rio branco do sul|itaperucu|contenda/.test(name)) return 2
-                      if (/araucaria|fazenda rio grande|colombo/.test(name)) return 1
-                      return 0
-                    }
-                    const nearby = [...activeCities]
-                      .filter((item) => item.distanceFromBaseKm <= 70)
-                      .sort((a, b) =>
-                        (recentCityUsage.get(a.id) || 0) - (recentCityUsage.get(b.id) || 0)
-                        || greenBeltPriority(b) - greenBeltPriority(a)
-                        || a.searchCount - b.searchCount
-                        || a.distanceFromBaseKm - b.distanceFromBaseKm,
-                      )
-                      .slice(0, 6)
-                    const underSearched = [...activeCities]
-                      .sort((a, b) =>
-                        (recentCityUsage.get(a.id) || 0) - (recentCityUsage.get(b.id) || 0)
-                        || greenBeltPriority(b) - greenBeltPriority(a)
-                        || a.searchCount - b.searchCount
-                        || a.distanceFromBaseKm - b.distanceFromBaseKm,
-                      )
-                    return [...new Map([...nearby, ...underSearched].map((item) => [item.id, item])).values()]
-                  })()
-                const citiesWithinRadius = candidateCities.filter((item) =>
-                  item.distanceFromBaseKm <= Math.min(filters.radiusKm, 50),
-                )
-                let city = citiesWithinRadius[0]
-                const selectedCategories = filters.categoryIds.length
-                  ? (() => {
-                    const explicitlySelected = activeCategories.filter((item) => filters.categoryIds.includes(item.id) && isEligibleLeadSegment(item.name))
-                    const selectedGroups = new Set(explicitlySelected.map((item) => item.group))
-                    const related = activeCategories
-                      .filter((item) =>
-                        !explicitlySelected.some((selected) => selected.id === item.id) &&
-                        selectedGroups.has(item.group) &&
-                        isEligibleLeadSegment(item.name),
-                      )
-                      .sort((a, b) =>
-                        (recentCategoryUsage.get(a.id) || 0) - (recentCategoryUsage.get(b.id) || 0)
-                        || b.weight - a.weight
-                        || a.searchCount - b.searchCount,
-                      )
-                    return [...explicitlySelected, ...related].slice(0, 4)
-                  })()
-                  : (() => {
-                    const eligible = publicSearchCategories.length ? publicSearchCategories : activeCategories
-                    const maximumPriority = eligible.filter((category) => leadSegmentPriorityPoints(category.name) === 30)
-                    const ranked = [...(maximumPriority.length ? maximumPriority : eligible)]
-                      .sort((a, b) =>
-                        (recentCategoryUsage.get(a.id) || 0) - (recentCategoryUsage.get(b.id) || 0)
-                        || (categoryCoveragePriority(b.name) + b.weight * 2 - b.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(b.name)] || 0)) -
-                        (categoryCoveragePriority(a.name) + a.weight * 2 - a.searchCount * 4 + (searchLearningProfile.categoryAdjustments[normalizeLeadText(a.name)] || 0)),
-                      )
-                    // Lotes menores criam mais combinações cidade × segmento e
-                    // evitam repetir uma consulta ampla que já foi esgotada.
-                    return ranked.slice(0, 2)
-                  })()
-                if (!city || !selectedCategories.length) { setToast('Ative ao menos uma cidade e uma categoria nas configurações.'); return }
+                const { city, citiesWithinRadius, selectedCategories } = searchScope
                 const searchId = createId('lh-search')
                 try {
                   const provider = new OpenStreetMapLeadProvider()
