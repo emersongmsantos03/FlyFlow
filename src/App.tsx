@@ -1241,15 +1241,36 @@ const prepareAvatarImage = async (file: File) => {
     element.src = source
   })
   const side = Math.min(image.naturalWidth, image.naturalHeight)
-  const canvas = document.createElement('canvas')
-  canvas.width = 320
-  canvas.height = 320
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Não foi possível preparar a foto.')
-  context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, 320, 320)
-  const optimized = canvas.toDataURL('image/webp', .76)
-  if (optimized.length > 300_000) throw new Error('Não foi possível reduzir a foto para armazenamento. Escolha outra imagem.')
-  return optimized
+  const encode = async (size: number, type: 'image/webp' | 'image/jpeg', quality: number) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Não foi possível preparar a foto.')
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, size, size)
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality))
+    if (!blob || !blob.type.startsWith('image/')) return ''
+    return readFileAsDataUrl(new File([blob], 'avatar', { type: blob.type }))
+  }
+
+  const attempts: Array<[number, 'image/webp' | 'image/jpeg', number]> = [
+    [320, 'image/webp', .76],
+    [320, 'image/jpeg', .82],
+    [320, 'image/jpeg', .68],
+    [256, 'image/jpeg', .72],
+  ]
+  let smallest = ''
+  for (const [size, type, quality] of attempts) {
+    const candidate = await encode(size, type, quality)
+    if (!candidate) continue
+    if (!smallest || candidate.length < smallest.length) smallest = candidate
+    if (candidate.length <= 300_000) return candidate
+  }
+  if (smallest) return smallest
+  throw new Error('Não foi possível preparar essa foto. Tente usar uma imagem JPG ou PNG.')
 }
 
 const hasWorkspaceData = (candidate: AppState) =>
