@@ -7126,3 +7126,136 @@ html .app-header-date small{color:#909790!important}
     border-radius: 1rem !important;
   }
 }
+
+/* Finance contrast pass: this intentionally comes last to reconcile the
+   module and overview layers in both themes. */
+.finance-page .finance-overview {
+  border-color: #dfe5df !important;
+  background: #fff !important;
+}
+
+.finance-page .finance-overview > div:first-child {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.finance-page .finance-overview h2,
+.finance-page .finance-overview > div:first-child .text-gray-950 {
+  color: #182019 !important;
+}
+
+.finance-page .finance-overview > div:first-child p,
+.finance-page .finance-overview article p:first-child {
+  color: #748078 !important;
+}
+
+.finance-page .finance-overview article {
+  border-color: #e1e6e1 !important;
+  background: #f8faf8 !important;
+}
+
+.finance-page .finance-overview article p.text-gray-950 {
+  color: #172019 !important;
+}
+
+.finance-page .finance-overview article p.text-emerald-600 {
+  color: #087a4d !important;
+}
+
+.finance-page .finance-overview article p.text-amber-600 {
+  color: #a95c00 !important;
+}
+
+.finance-page .finance-overview .progressive-section {
+  border-color: #e1e6e1 !important;
+  background: #fbfcfb !important;
+  color: #3f4941 !important;
+}
+
+html[data-theme='dark'] .overview-page {
+  --overview-line: #30372f;
+  --overview-line-strong: #3a4239;
+  --overview-ink: #eef2ed;
+  --overview-muted: #9da79d;
+  --overview-soft: #1b201b;
+  --overview-gold: #dfb943;
+  --overview-gold-soft: #302817;
+}
+
+html[data-theme='dark'] .overview-page .page-toolbar-actions,
+html[data-theme='dark'] .dashboard-page .dashboard-command-actions,
+html[data-theme='dark'] .overview-page .metric-card,
+html[data-theme='dark'] .dashboard-page .metric-card,
+html[data-theme='dark'] .overview-page .panel-surface,
+html[data-theme='dark'] .dashboard-page .panel-surface,
+html[data-theme='dark'] .overview-page .dashboard-supporting-metrics,
+html[data-theme='dark'] .overview-page .report-context,
+html[data-theme='dark'] .overview-page .report-advanced,
+html[data-theme='dark'] .overview-page .report-insight-card {
+  border-color: var(--overview-line) !important;
+  background: #171b17 !important;
+  box-shadow: 0 10px 28px rgb(0 0 0 / .18) !important;
+}
+
+html[data-theme='dark'] .overview-page .panel-header,
+html[data-theme='dark'] .dashboard-page .panel-header,
+html[data-theme='dark'] .finance-page .finance-tabs,
+html[data-theme='dark'] .overview-page .progressive-section {
+  border-color: var(--overview-line) !important;
+  background: #1b201b !important;
+  color: #dce2db !important;
+}
+
+html[data-theme='dark'] .finance-page .finance-overview {
+  border-color: #343b33 !important;
+  background: #151915 !important;
+}
+
+html[data-theme='dark'] .finance-page .finance-overview h2,
+html[data-theme='dark'] .finance-page .finance-overview > div:first-child .text-gray-950 {
+  color: #eef2ed !important;
+}
+
+html[data-theme='dark'] .finance-page .finance-overview > div:first-child p,
+html[data-theme='dark'] .finance-page .finance-overview article p:first-child {
+  color: #9ca69c !important;
+}
+
+html[data-theme='dark'] .finance-page .finance-overview article {
+  border-color: #343b33 !important;
+  background: #1c211c !important;
+}
+
+html[data-theme='dark'] .finance-page .finance-overview article p.text-gray-950 {
+  color: #f1f4ef !important;
+}
+
+html[data-theme='dark'] .finance-page .finance-overview article p.text-emerald-600 {
+  color: #71d1a0 !important;
+}
+
+html[data-theme='dark'] .finance-page .finance-overview article p.text-amber-600 {
+  color: #efbb58 !important;
+}
+
+html[data-theme='dark'] .overview-page .metric-card .text-emerald-600 {
+  color: #6bd39f !important;
+}
+
+html[data-theme='dark'] .overview-page .metric-card .text-red-600 {
+  color: #ff8585 !important;
+}
+
+html[data-theme='dark'] .overview-page .metric-card .text-amber-600 {
+  color: #efbb58 !important;
+}
+
+html[data-theme='dark'] .overview-page .action-menu-popover {
+  border-color: #343b33 !important;
+  background: #1b201b !important;
+  color: #dce2db !important;
+}
+
+html[data-theme='dark'] .overview-page .action-menu-popover button:hover {
+  background: #252b25 !important;
+}
