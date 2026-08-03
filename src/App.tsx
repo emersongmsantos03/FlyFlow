@@ -7525,12 +7525,13 @@ Hero Drone`,
                 saveAppState(nextState)
                 setState(nextState)
                 if (cloudflareDataReady) {
-                  try {
+                  cloudflareSaveQueue.current = cloudflareSaveQueue.current
+                    .catch(() => undefined)
+                    .then(async () => {
                     const updatedAt = await saveCloudflareWorkspace(nextState, cloudflareVersion.current)
                     if (updatedAt) cloudflareVersion.current = updatedAt
-                  } catch (err) {
-                    console.error('Cloudflare profile save error:', err)
-                  }
+                    })
+                  await cloudflareSaveQueue.current
                 } else if (isFirebaseConfigured && authSession) {
                   await saveFirebaseAppState(nextState)
                 } else if (isSupabaseConfigured && authSession) {
@@ -10064,7 +10065,12 @@ function FinancePage({
         title="Financeiro"
         description="Receitas, despesas, contas a receber, fluxo de caixa e pagamentos parciais."
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="finance-current-balance" aria-label={`Saldo disponível hoje: ${formatCurrency(currentBalance)}`}>
+              <Wallet size={15} />
+              <span>Saldo hoje</span>
+              <strong>{formatCurrency(currentBalance)}</strong>
+            </div>
             <Button type="button" onClick={() => onOpenPayment()}><Plus size={16} /> Receita</Button>
             <details className="action-menu relative">
               <summary className="app-button app-button-secondary focus-ring inline-flex min-h-9 cursor-pointer list-none items-center rounded-lg border px-3 text-[0.82rem] font-semibold">Mais ações <ChevronDown size={14} /></summary>
