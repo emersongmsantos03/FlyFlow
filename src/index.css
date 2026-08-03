@@ -7259,3 +7259,13 @@ html[data-theme='dark'] .overview-page .action-menu-popover {
 html[data-theme='dark'] .overview-page .action-menu-popover button:hover {
   background: #252b25 !important;
 }
+
+.monday-board-row .internal-project-board-select {
+  min-height: 2.35rem;
+  padding: .35rem 1.55rem .35rem .4rem !important;
+  background-position: right .42rem center;
+  background-size: .72rem;
+  font-size: .68rem;
+  letter-spacing: 0;
+  line-height: 1.15;
+}

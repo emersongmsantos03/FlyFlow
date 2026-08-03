@@ -357,17 +357,17 @@ export function InternalProjectsPage({
                             <span className="min-w-0"><strong className="block truncate text-sm font-semibold text-gray-950">{project.name}</strong><small className="mt-0.5 block truncate text-[0.68rem] text-gray-500">{project.description || 'Sem descrição'}</small></span>
                           </button>
                           <label className="flex items-center justify-center border-r border-gray-200 px-2">
-                            <select aria-label={`Responsável por ${project.name}`} className="w-full cursor-pointer bg-transparent py-2 text-center text-xs font-semibold text-gray-700 outline-none" value={project.responsibleUserId || ''} onChange={(event) => patch(project.id, { responsibleUserId: event.target.value || undefined })}>
+                            <select aria-label={`Responsável por ${project.name}`} className="internal-project-board-select w-full cursor-pointer bg-transparent py-2 text-center font-semibold text-gray-700 outline-none" value={project.responsibleUserId || ''} onChange={(event) => patch(project.id, { responsibleUserId: event.target.value || undefined })}>
                               <option value="">Não atribuído</option>{users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
                             </select>
                           </label>
                           <label className="flex items-stretch border-r border-gray-200 p-1.5">
-                            <select aria-label={`Status de ${project.name}`} className={`w-full cursor-pointer rounded-md border-0 px-2 text-center text-xs font-bold outline-none ${statusStyle[project.status].soft}`} value={project.status} onChange={(event) => patch(project.id, { status: event.target.value as InternalProjectStatus, progress: event.target.value === 'Concluído' ? 100 : project.progress })}>
+                            <select aria-label={`Status de ${project.name}`} className={`internal-project-board-select w-full cursor-pointer rounded-md border-0 text-center font-bold outline-none ${statusStyle[project.status].soft}`} value={project.status} onChange={(event) => patch(project.id, { status: event.target.value as InternalProjectStatus, progress: event.target.value === 'Concluído' ? 100 : project.progress })}>
                               {internalProjectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
                             </select>
                           </label>
                           <label className="flex items-stretch border-r border-gray-200 p-1.5">
-                            <select aria-label={`Prioridade de ${project.name}`} className={`w-full cursor-pointer rounded-md border-0 px-2 text-center text-xs font-bold outline-none ${priorityStyle[project.priority]}`} value={project.priority} onChange={(event) => patch(project.id, { priority: event.target.value as InternalProject['priority'] })}>
+                            <select aria-label={`Prioridade de ${project.name}`} className={`internal-project-board-select w-full cursor-pointer rounded-md border-0 text-center font-bold outline-none ${priorityStyle[project.priority]}`} value={project.priority} onChange={(event) => patch(project.id, { priority: event.target.value as InternalProject['priority'] })}>
                               <option>Baixa</option><option>Média</option><option>Alta</option><option>Urgente</option>
                             </select>
                           </label>
