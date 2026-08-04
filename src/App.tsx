@@ -12099,7 +12099,7 @@ function MonthCalendar({
             >
               <p className="text-xs font-black text-gray-950">{day || ''}</p>
               <div className="mt-1 space-y-1">
-                {dayAppointments.slice(0, 2).map((appointment) => (
+                {dayAppointments.map((appointment) => (
                   <button
                     key={appointment.id}
                     className="block w-full truncate rounded bg-white px-2 py-1 text-left text-[0.68rem] font-bold text-gray-700 hover:bg-gray-100"
@@ -12182,6 +12182,39 @@ function TimeGridCalendar({
       top: `${(topMinutes / 60) * hourHeight + 4}px`,
       height: `${Math.max((visibleMinutes / 60) * hourHeight - 8, 24)}px`,
     }
+  }
+
+  const overlappingAppointmentColumns = (dayAppointments: Appointment[]) => {
+    const layouts = new Map<string, { column: number; columns: number }>()
+    const sorted = [...dayAppointments].sort((left, right) => {
+      const startDifference = new Date(left.startAt).getTime() - new Date(right.startAt).getTime()
+      return startDifference || new Date(left.endAt).getTime() - new Date(right.endAt).getTime()
+    })
+    let group: Array<{ appointment: Appointment; column: number }> = []
+    let groupEnd = Number.NEGATIVE_INFINITY
+
+    const finishGroup = () => {
+      const columns = Math.max(1, ...group.map((item) => item.column + 1))
+      group.forEach(({ appointment, column }) => layouts.set(appointment.id, { column, columns }))
+      group = []
+      groupEnd = Number.NEGATIVE_INFINITY
+    }
+
+    sorted.forEach((appointment) => {
+      const startAt = new Date(appointment.startAt).getTime()
+      const endAt = Math.max(new Date(appointment.endAt).getTime(), startAt + 1)
+      if (group.length && startAt >= groupEnd) finishGroup()
+      const columnEnds: number[] = []
+      group.forEach((item) => {
+        columnEnds[item.column] = Math.max(columnEnds[item.column] || Number.NEGATIVE_INFINITY, new Date(item.appointment.endAt).getTime())
+      })
+      let column = columnEnds.findIndex((columnEnd) => columnEnd <= startAt)
+      if (column < 0) column = columnEnds.length
+      group.push({ appointment, column })
+      groupEnd = Math.max(groupEnd, endAt)
+    })
+    if (group.length) finishGroup()
+    return layouts
   }
 
   const startAppointmentResize = (event: ReactPointerEvent<HTMLDivElement>, appointment: Appointment, day: Date) => {
@@ -12314,6 +12347,7 @@ function TimeGridCalendar({
                 const endMinutes = endDate.getHours() * 60 + endDate.getMinutes()
                 return dateInputFromDate(startDate) === dayKey && endMinutes > rangeStartMinutes && startMinutes < rangeEndMinutes
               })
+              const appointmentColumns = overlappingAppointmentColumns(dayAppointments)
 
               return (
                 <div key={dayKey} data-calendar-day={dayKey} className="relative border-l border-gray-200 bg-white" style={{ height: totalHeight }}>
@@ -12344,12 +12378,19 @@ function TimeGridCalendar({
                         ? { ...appointment, endAt: resizePreview.endAt }
                         : appointment
                     const block = appointmentBlockStyle(effectiveAppointment)
+                    const layout = appointmentColumns.get(appointment.id) || { column: 0, columns: 1 }
+                    const columnWidth = 100 / layout.columns
                     const canResize = state.appointments.some((item) => item.id === appointment.id)
                     return (
                       <div
                         key={appointment.id}
-                        className={`calendar-event-block group absolute left-1.5 right-1.5 z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
-                        style={{ '--calendar-item-color': appointment.color || '#d8a500', ...block } as React.CSSProperties}
+                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
+                        style={{
+                          '--calendar-item-color': appointment.color || '#d8a500',
+                          ...block,
+                          left: `calc(${layout.column * columnWidth}% + 4px)`,
+                          right: `calc(${(layout.columns - layout.column - 1) * columnWidth}% + 4px)`,
+                        } as React.CSSProperties}
                         role="button"
                         tabIndex={0}
                         onClick={(event) => {
