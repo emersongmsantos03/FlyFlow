@@ -9593,6 +9593,7 @@ function AgendaPage({
     return matchesResponsible && matchesType && matchesContact
   })
   const conflicts = findAppointmentConflicts(visibleAppointments)
+  const conflictIds = new Set(conflicts.map((appointment) => appointment.id))
   const openCalendarItem = (appointment: Appointment) => {
     const task = taskByAppointmentId.get(appointment.id)
     if (task) onOpenTask(task)
@@ -9636,6 +9637,18 @@ function AgendaPage({
     appointment.confirmationStatus !== 'Confirmado' &&
     appointment.status !== 'Concluído',
   )
+  const focusFirstConflict = () => {
+    const firstConflict = conflicts[0]
+    if (!firstConflict) return
+    setCalendarDate(new Date(firstConflict.startAt))
+    onCalendarViewChange('diaria')
+    window.setTimeout(() => {
+      const target = [...document.querySelectorAll<HTMLElement>('[data-appointment-id]')]
+        .find((element) => element.dataset.appointmentId === firstConflict.id)
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      target?.focus({ preventScroll: true })
+    }, 120)
+  }
 
   return (
     <div className="agenda-page space-y-4">
@@ -9650,7 +9663,18 @@ function AgendaPage({
         <div><i className="agenda-metric-icon"><CalendarDays size={18} /></i><span>Próximos 7 dias</span><strong>{upcomingAppointments.length}</strong><small>itens planejados</small></div>
         <div><i className="agenda-metric-icon"><Camera size={18} /></i><span>Captações</span><strong>{upcomingAppointments.filter((item) => item.appointmentType === 'Captação').length}</strong><small>na próxima semana</small></div>
         <div className={pendingConfirmations.length ? 'is-attention' : ''}><i className="agenda-metric-icon"><MessageCircle size={18} /></i><span>Confirmações</span><strong>{pendingConfirmations.length}</strong><small>{pendingConfirmations.length ? 'aguardando cliente' : 'tudo confirmado'}</small></div>
-        <div className={conflicts.length ? 'is-warning' : ''}><i className="agenda-metric-icon"><AlertTriangle size={18} /></i><span>Conflitos</span><strong>{conflicts.length}</strong><small>{conflicts.length ? 'precisam de ajuste' : 'agenda organizada'}</small></div>
+        <div
+          className={`${conflicts.length ? 'is-warning is-clickable' : ''}`}
+          role={conflicts.length ? 'button' : undefined}
+          tabIndex={conflicts.length ? 0 : undefined}
+          onClick={conflicts.length ? focusFirstConflict : undefined}
+          onKeyDown={conflicts.length ? (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              focusFirstConflict()
+            }
+          } : undefined}
+        ><i className="agenda-metric-icon"><AlertTriangle size={18} /></i><span>Conflitos</span><strong>{conflicts.length}</strong><small>{conflicts.length ? 'clique para revisar' : 'agenda organizada'}</small></div>
       </section>
 
       <section className="agenda-control-bar">
@@ -9675,9 +9699,11 @@ function AgendaPage({
       </section>
 
       {conflicts.length ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
-          {conflicts.length} conflito(s) de horário detectado(s). Ajuste os agendamentos sobrepostos.
-        </div>
+        <button className="agenda-conflict-alert" type="button" onClick={focusFirstConflict}>
+          <AlertTriangle size={18} />
+          <span><strong>{conflicts.length} conflito(s) de horário detectado(s).</strong> Clique para ir ao primeiro horário sobreposto e ajustar os agendamentos.</span>
+          <ChevronRight size={18} />
+        </button>
       ) : null}
 
       {calendarView === 'mensal' ? (
@@ -9698,6 +9724,7 @@ function AgendaPage({
           onOpenAppointment={openCalendarItem}
           onResizeAppointment={onResizeAppointment}
           onMoveAppointment={onMoveAppointment}
+          conflictIds={conflictIds}
         />
       ) : null}
 
@@ -12130,6 +12157,7 @@ function TimeGridCalendar({
   onOpenAppointment,
   onResizeAppointment,
   onMoveAppointment,
+  conflictIds,
 }: {
   anchorDate: Date
   appointments: Appointment[]
@@ -12139,6 +12167,7 @@ function TimeGridCalendar({
   onOpenAppointment: (appointment: Appointment) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
   onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
+  conflictIds: Set<string>
 }) {
   const start = view === 'semanal' ? getWeekStart(anchorDate) : new Date(anchorDate)
   const days = Array.from({ length: view === 'semanal' ? 7 : 1 }, (_, index) => {
@@ -12384,7 +12413,8 @@ function TimeGridCalendar({
                     return (
                       <div
                         key={appointment.id}
-                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
+                        data-appointment-id={appointment.id}
+                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${conflictIds.has(appointment.id) ? 'is-conflict' : ''} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
                         style={{
                           '--calendar-item-color': appointment.color || '#d8a500',
                           ...block,
