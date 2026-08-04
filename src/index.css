@@ -5821,7 +5821,8 @@ html[data-theme='dark'] .dashboard-attention-list > button strong {
 .appointment-form__actions {
   position: sticky;
   bottom: -1px;
-  z-index: 20;
+  z-index: 1000;
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -5832,12 +5833,20 @@ html[data-theme='dark'] .dashboard-attention-list > button strong {
   background: rgb(255 255 255 / 0.94);
   box-shadow: 0 -8px 24px rgb(20 29 22 / 0.06);
   backdrop-filter: blur(14px);
+  transform: translateZ(0);
 }
 
 .appointment-form__actions > div {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.appointment-form__delete {
+  position: relative;
+  z-index: 1001;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 /* Users and access management */

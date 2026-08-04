@@ -13421,7 +13421,18 @@ function AppointmentForm({
 
       <div className="appointment-form__actions">
         <div>
-          {appointment && onDelete ? <Button variant="danger" type="button" onClick={onDelete}><Trash2 size={16} /> Excluir agendamento</Button> : null}
+          {appointment && onDelete ? <Button
+            className="appointment-form__delete"
+            variant="danger"
+            type="button"
+            aria-label="Excluir este agendamento"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onDelete()
+            }}
+          ><Trash2 size={16} /> Excluir agendamento</Button> : null}
         </div>
         <div>
           <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>
