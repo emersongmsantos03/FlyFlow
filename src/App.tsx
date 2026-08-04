@@ -56,6 +56,7 @@ import {
   X,
 } from 'lucide-react'
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useForm } from 'react-hook-form'
 import {
   Bar,
@@ -8318,8 +8319,8 @@ function ConfirmDialog({
 }) {
   const isDanger = dialog.tone === 'danger'
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" role="alertdialog" aria-modal="true">
       <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl">
         <div className="flex items-start gap-4">
           <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border ${isDanger ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
@@ -8340,7 +8341,8 @@ function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
