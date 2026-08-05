@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AppState, Lead, TaskItem } from '../types'
+import type { AppState, Lead } from '../types'
 import { buildOperationalTasks } from './operations'
 
 const now = new Date('2026-08-05T12:00:00.000Z')
@@ -33,7 +33,7 @@ describe('buildOperationalTasks', () => {
   it('continua gerando uma tarefa automática que não foi excluída', () => {
     const tasks = buildOperationalTasks(stateWith(), now)
 
-    expect(tasks).toContainEqual(expect.objectContaining<TaskItem>({
+    expect(tasks).toContainEqual(expect.objectContaining({
       sourceKey: `lead-followup:${lead.id}`,
       title: 'Realizar retorno de Área 51 Airsoft',
     }))

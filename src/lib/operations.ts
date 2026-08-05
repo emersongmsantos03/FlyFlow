@@ -186,7 +186,7 @@ export const buildOperationalTasks = (state: AppState, nowDate = new Date()): Ta
   })
 
   const dismissedKeys = new Set(state.dismissedTaskSourceKeys ?? [])
-  const activeGenerated = generated.filter((task) => !dismissedKeys.has(task.sourceKey))
+  const activeGenerated = generated.filter((task) => !task.sourceKey || !dismissedKeys.has(task.sourceKey))
   const generatedKeys = new Set(activeGenerated.map((task) => task.sourceKey))
   const retained = (state.tasks ?? []).filter((task) => !task.sourceKey || (!generatedKeys.has(task.sourceKey) && task.status === 'Concluída'))
   const previousByKey = new Map((state.tasks ?? []).filter((task) => task.sourceKey).map((task) => [task.sourceKey, task]))
