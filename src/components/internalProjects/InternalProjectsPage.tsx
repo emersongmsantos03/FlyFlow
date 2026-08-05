@@ -329,59 +329,52 @@ export function InternalProjectsPage({
             const groupColors = ['#579bfc', '#a25ddc', '#00c875', '#fdab3d', '#e2445c', '#66ccff']
             const color = groupColors[groupIndex % groupColors.length]
             return (
-              <div key={category} className="monday-board-group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                <div className="monday-group-heading flex items-center gap-2 border-b border-gray-200 px-4 py-3">
-                  <span className="h-5 w-1 rounded-full" style={{ backgroundColor: color }} />
-                  <h2 className="text-base font-semibold" style={{ color }}>{category}</h2>
-                  <span className="text-xs font-semibold text-gray-400">{categoryProjects.length} item(ns)</span>
+              <div key={category} className="internal-project-table customer-project-board monday-board-group">
+                <div className="customer-project-group-title monday-group-heading">
+                  <span style={{ backgroundColor: color }} />
+                  <div><h2 style={{ color }}>{category}</h2><small>{categoryProjects.length} item(ns)</small></div>
                 </div>
-                <div className="overflow-x-auto">
-                  <div className="min-w-[1050px]">
-                    <div className="monday-board-header grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-200 bg-gray-50 text-[0.68rem] font-bold text-gray-500">
-                      <span className="border-r border-gray-200 px-4 py-2.5">Projeto</span>
-                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Responsável</span>
-                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Status</span>
-                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Prioridade</span>
-                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Cronograma</span>
-                      <span className="border-r border-gray-200 px-3 py-2.5 text-center">Progresso</span>
-                      <span />
+                <div className="customer-project-scroll overflow-x-auto">
+                  <div className="internal-project-table-content">
+                    <div className="internal-project-grid customer-project-header monday-board-header grid">
+                      <span>Projeto</span><span>Responsável</span><span>Status</span><span>Prioridade</span><span>Cronograma</span><span>Progresso</span><span>Ações</span>
                     </div>
                     {categoryProjects.map((project) => {
                       const late = (daysTo(project.dueDate) ?? 0) < 0 && project.status !== 'Concluído'
                       const checklist = checklistStats(project)
                       return (
-                        <div key={project.id} className="monday-board-row group grid grid-cols-[minmax(17rem,1.7fr)_10rem_10rem_9rem_13rem_10rem_3.5rem] border-b border-gray-100 last:border-b-0 hover:bg-gray-50/70">
-                          <button className="flex min-w-0 items-center gap-3 border-r border-gray-200 px-4 py-2.5 text-left" type="button" onClick={() => setEditing({ ...project })}>
-                            <span className="h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                        <div key={project.id} className={`internal-project-grid customer-project-row monday-board-row group grid ${late ? 'is-late' : ''}`}>
+                          <button className="customer-project-name min-w-0 text-left" type="button" onClick={() => setEditing({ ...project })}>
+                            <span className="customer-project-color" style={{ backgroundColor: color }} />
                             <span className="min-w-0"><strong className="block truncate text-sm font-semibold text-gray-950">{project.name}</strong><small className="mt-0.5 block truncate text-[0.68rem] text-gray-500">{project.description || 'Sem descrição'}</small></span>
                           </button>
-                          <label className="flex items-center justify-center border-r border-gray-200 px-2">
+                          <label className="customer-project-cell owner-cell">
                             <select aria-label={`Responsável por ${project.name}`} className="internal-project-board-select w-full cursor-pointer bg-transparent py-2 text-center font-semibold text-gray-700 outline-none" value={project.responsibleUserId || ''} onChange={(event) => patch(project.id, { responsibleUserId: event.target.value || undefined })}>
                               <option value="">Não atribuído</option>{users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
                             </select>
                           </label>
-                          <label className="flex items-stretch border-r border-gray-200 p-1.5">
+                          <label className="customer-project-cell internal-project-status-cell">
                             <select aria-label={`Status de ${project.name}`} className={`internal-project-board-select w-full cursor-pointer rounded-md border-0 text-center font-bold outline-none ${statusStyle[project.status].soft}`} value={project.status} onChange={(event) => patch(project.id, { status: event.target.value as InternalProjectStatus, progress: event.target.value === 'Concluído' ? 100 : project.progress })}>
                               {internalProjectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
                             </select>
                           </label>
-                          <label className="flex items-stretch border-r border-gray-200 p-1.5">
+                          <label className="customer-project-cell internal-project-status-cell">
                             <select aria-label={`Prioridade de ${project.name}`} className={`internal-project-board-select w-full cursor-pointer rounded-md border-0 text-center font-bold outline-none ${priorityStyle[project.priority]}`} value={project.priority} onChange={(event) => patch(project.id, { priority: event.target.value as InternalProject['priority'] })}>
                               <option>Baixa</option><option>Média</option><option>Alta</option><option>Urgente</option>
                             </select>
                           </label>
-                          <button className={`flex items-center justify-center gap-2 border-r border-gray-200 px-3 text-xs font-semibold ${late ? 'text-red-600' : 'text-gray-600'}`} type="button" onClick={() => setEditing({ ...project })}>
+                          <button className={`customer-project-cell timeline-cell ${late ? 'text-red-600' : 'text-gray-600'}`} type="button" onClick={() => setEditing({ ...project })}>
                             <CalendarDays size={14} /><span>{project.startDate ? formatDate(project.startDate) : 'Início'} — {formatDate(project.dueDate)}</span>
                           </button>
-                          <div className="flex items-center gap-2 border-r border-gray-200 px-3">
+                          <div className="customer-project-cell progress-cell">
                             <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full" style={{ width: `${checklist.progress}%`, backgroundColor: color }} /></div>
-                            <span className="w-8 text-right text-[0.68rem] font-bold text-gray-600">{checklist.progress}%</span>
+                            <small>{checklist.completed}/{checklist.total} · {checklist.progress}%</small>
                           </div>
-                          <button className="flex items-center justify-center text-gray-400 hover:text-gray-800" type="button" onClick={() => setEditing({ ...project })} aria-label={`Editar ${project.name}`}><Pencil size={15} /></button>
+                          <div className="customer-project-cell customer-project-actions"><button type="button" onClick={() => setEditing({ ...project })}>Abrir</button><button className="internal-project-edit-action focus-ring" type="button" onClick={() => setEditing({ ...project })} aria-label={`Editar ${project.name}`}><Pencil size={15} /></button></div>
                         </div>
                       )
                     })}
-                    <button className="flex w-full items-center gap-2 px-5 py-3 text-left text-xs font-semibold text-gray-500 hover:bg-gray-50 hover:text-gray-900" type="button" onClick={() => setEditing({ ...newProject(), category })}><Plus size={14} /> Adicionar projeto</button>
+                    <button className="customer-project-add" type="button" onClick={() => setEditing({ ...newProject(), category })}><Plus size={14} /> Adicionar projeto</button>
                   </div>
                 </div>
               </div>
