@@ -11,6 +11,7 @@ const openaiApiKey = defineSecret('OPENAI_API_KEY')
 const googleOAuthClientId = defineSecret('GOOGLE_OAUTH_CLIENT_ID')
 const googleOAuthClientSecret = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET')
 const allowedOrigins = new Set([
+  'https://flyflow.herodrone.com.br',
   'https://flyflow-a97ab.web.app',
   'https://flyflow-a97ab.firebaseapp.com',
   'https://emersongmsantos03.github.io',

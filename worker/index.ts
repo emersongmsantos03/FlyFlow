@@ -31,6 +31,7 @@ type InputLead = {
 }
 
 const allowedOrigins = new Set([
+  'https://flyflow.herodrone.com.br',
   'https://flyflow-a97ab.web.app',
   'https://flyflow-a97ab.firebaseapp.com',
   'https://emersongmsantos03.github.io',
