@@ -12540,9 +12540,9 @@ function TimeGridCalendar({
                           }
                         }}
                       >
-                        {task ? <button className={`calendar-task-toggle absolute right-1.5 top-1.5 z-20 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 shadow-sm ${completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-white bg-white text-transparent ring-1 ring-gray-400'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={12} /></button> : null}
-                        {(appointment.clientId || appointment.leadId) ? <p className={`calendar-event-contact truncate ${task ? 'pr-6' : ''}`}><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
-                        <p className={`calendar-event-title truncate ${completed ? 'is-completed' : ''} ${task && !appointment.clientId && !appointment.leadId ? 'pr-6' : ''}`}>{appointment.title}</p>
+                        {task ? <button className={`calendar-task-toggle absolute right-[3px] top-[3px] z-20 flex h-2.5 w-2.5 shrink-0 items-center justify-center rounded-full border shadow-sm ${completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-white bg-white text-transparent ring-1 ring-gray-400'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={7} strokeWidth={3.5} /></button> : null}
+                        {(appointment.clientId || appointment.leadId) ? <p className={`calendar-event-contact truncate ${task ? 'pr-4' : ''}`}><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
+                        <p className={`calendar-event-title truncate ${completed ? 'is-completed' : ''} ${task && !appointment.clientId && !appointment.leadId ? 'pr-4' : ''}`}>{appointment.title}</p>
                         <p className="calendar-event-meta truncate">{appointmentTime(effectiveAppointment)} · {appointment.appointmentType}</p>
                         {canResize ? <div
                           data-resize-handle
