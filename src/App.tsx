@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarDays,
   Camera,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -7525,6 +7526,7 @@ Hero Drone`,
               })}
               onOpenAppointment={openExistingAppointment}
               onOpenTask={openTaskEditor}
+              onToggleTask={(task) => void setTaskStatus(task, task.status === 'Concluída' ? 'Pendente' : 'Concluída')}
               onResizeAppointment={resizeAppointment}
               onMoveAppointment={moveAppointment}
             />
@@ -9620,6 +9622,7 @@ function AgendaPage({
   onCreateEvent,
   onOpenAppointment,
   onOpenTask,
+  onToggleTask,
   onResizeAppointment,
   onMoveAppointment,
 }: {
@@ -9630,6 +9633,7 @@ function AgendaPage({
   onCreateEvent: (defaults?: AppointmentFormDefaults) => void
   onOpenAppointment: (appointment: Appointment) => void
   onOpenTask: (task: TaskItem) => void
+  onToggleTask: (task: TaskItem) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
   onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
 }) {
@@ -9782,9 +9786,12 @@ function AgendaPage({
       {calendarView === 'mensal' ? (
         <MonthCalendar
           appointments={visibleAppointments}
+          state={state}
+          taskByAppointmentId={taskByAppointmentId}
           anchorDate={calendarDate}
           onCreateAt={requestCreateAtSlot}
           onOpenAppointment={openCalendarItem}
+          onToggleTask={onToggleTask}
         />
       ) : null}
       {calendarView === 'semanal' || calendarView === 'diaria' ? (
@@ -9795,6 +9802,7 @@ function AgendaPage({
           view={calendarView}
           onCreateAt={requestCreateAtSlot}
           onOpenAppointment={openCalendarItem}
+          onToggleTask={onToggleTask}
           onResizeAppointment={onResizeAppointment}
           onMoveAppointment={onMoveAppointment}
           conflictIds={conflictIds}
@@ -9808,7 +9816,9 @@ function AgendaPage({
             const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
             const project = appointment.projectId ? state.projects.find((item) => item.id === appointment.projectId) : undefined
             const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
-            const contactName = client?.companyName || lead?.companyName || 'Sem cliente'
+            const task = taskByAppointmentId.get(appointment.id)
+            const completed = task?.status === 'Concluída'
+            const contactName = client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : 'Sem contato vinculado'
             const whatsapp = client?.whatsapp || lead?.whatsapp || client?.phone || lead?.phone || ''
             return (
               <article
@@ -9822,10 +9832,14 @@ function AgendaPage({
                 }}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-black text-gray-950">{appointment.title}</h3>
+                  <div className="min-w-0 flex-1">
+                    {client || lead ? <p className="mb-1 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-[#866800]"><ContactRound size={14} /> {contactName}</p> : null}
+                    <div className="flex items-start gap-2">
+                      {task ? <button className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 bg-white text-transparent hover:border-emerald-400'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={14} /></button> : null}
+                      <h3 className={`font-black ${completed ? 'text-gray-500 line-through' : 'text-gray-950'}`}>{appointment.title}</h3>
+                    </div>
                     <p className="text-sm text-gray-500">{formatDateTime(appointment.startAt)} até {formatDateTime(appointment.endAt)}</p>
-                    <p className="text-sm text-gray-500">{contactName} • {project?.projectCode ?? appointment.appointmentType}</p>
+                    <p className="text-sm text-gray-500">{project?.projectCode ?? appointment.appointmentType}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {appointment.address ? (
                         <a className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-bold text-gray-700" href={mapsLink(appointment.address)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
@@ -12157,14 +12171,20 @@ function GlobalSearchResults({ query, state, onNavigate }: { query: string; stat
 
 function MonthCalendar({
   appointments,
+  state,
+  taskByAppointmentId,
   anchorDate,
   onCreateAt,
   onOpenAppointment,
+  onToggleTask,
 }: {
   appointments: Appointment[]
+  state: AppState
+  taskByAppointmentId: Map<string, TaskItem>
   anchorDate: Date
   onCreateAt: (startAt: string, endAt: string) => void
   onOpenAppointment: (appointment: Appointment) => void
+  onToggleTask: (task: TaskItem) => void
 }) {
   const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
   const daysInMonth = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 0).getDate()
@@ -12199,19 +12219,20 @@ function MonthCalendar({
             >
               <p className="text-xs font-black text-gray-950">{day || ''}</p>
               <div className="mt-1 space-y-1">
-                {dayAppointments.map((appointment) => (
-                  <button
-                    key={appointment.id}
-                    className="block w-full truncate rounded bg-white px-2 py-1 text-left text-[0.68rem] font-bold text-gray-700 hover:bg-gray-100"
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onOpenAppointment(appointment)
-                    }}
-                  >
-                    {appointment.title}
-                  </button>
-                ))}
+                {dayAppointments.map((appointment) => {
+                  const task = taskByAppointmentId.get(appointment.id)
+                  const completed = task?.status === 'Concluída'
+                  const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
+                  const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
+                  const contactName = client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : ''
+                  return <div key={appointment.id} className="rounded bg-white px-1.5 py-1 text-[0.68rem] text-gray-700 hover:bg-gray-100">
+                    {contactName ? <p className="truncate font-black text-[#866800]">{contactName}</p> : null}
+                    <div className="flex items-center gap-1">
+                      {task ? <button className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 text-transparent'}`} type="button" aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={11} /></button> : null}
+                      <button className={`min-w-0 flex-1 truncate text-left font-bold ${completed ? 'text-gray-400 line-through' : ''}`} type="button" onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment) }}>{appointment.title}</button>
+                    </div>
+                  </div>
+                })}
               </div>
             </div>
           )
@@ -12228,6 +12249,7 @@ function TimeGridCalendar({
   view,
   onCreateAt,
   onOpenAppointment,
+  onToggleTask,
   onResizeAppointment,
   onMoveAppointment,
   conflictIds,
@@ -12238,6 +12260,7 @@ function TimeGridCalendar({
   view: 'semanal' | 'diaria'
   onCreateAt: (startAt: string, endAt: string) => void
   onOpenAppointment: (appointment: Appointment) => void
+  onToggleTask: (task: TaskItem) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
   onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
   conflictIds: Set<string>
@@ -12263,7 +12286,7 @@ function TimeGridCalendar({
   const appointmentClient = (appointment: Appointment) => {
     const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
     const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
-    return client?.companyName || lead?.companyName || 'Sem cliente'
+    return client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : 'Sem contato vinculado'
   }
 
   const appointmentTime = (appointment: Appointment) => {
@@ -12474,6 +12497,8 @@ function TimeGridCalendar({
               })}
 
                   {dayAppointments.map((appointment) => {
+                    const task = state.tasks.find((item) => item.appointmentId === appointment.id)
+                    const completed = task?.status === 'Concluída'
                     const effectiveAppointment = movePreview?.appointmentId === appointment.id
                       ? { ...appointment, startAt: movePreview.startAt, endAt: movePreview.endAt }
                       : resizePreview?.appointmentId === appointment.id
@@ -12509,9 +12534,12 @@ function TimeGridCalendar({
                           }
                         }}
                       >
-                        <p className="calendar-event-title truncate">{appointment.title}</p>
+                        {(appointment.clientId || appointment.leadId) ? <p className="calendar-event-contact truncate"><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
+                        <div className="flex items-center gap-1">
+                          {task ? <button className={`calendar-task-toggle flex h-4 w-4 shrink-0 items-center justify-center rounded border ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-400 bg-white text-transparent'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={11} /></button> : null}
+                          <p className={`calendar-event-title truncate ${completed ? 'is-completed' : ''}`}>{appointment.title}</p>
+                        </div>
                         <p className="calendar-event-meta truncate">{appointmentTime(effectiveAppointment)} · {appointment.appointmentType}</p>
-                        <p className="calendar-event-meta truncate">{appointmentClient(appointment)}</p>
                         {canResize ? <div
                           data-resize-handle
                           className="absolute inset-x-0 bottom-0 flex h-3 touch-none cursor-ns-resize items-center justify-center border-t border-transparent transition group-hover:border-gray-300 group-hover:bg-gray-100"

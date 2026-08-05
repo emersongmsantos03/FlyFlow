@@ -5983,6 +5983,27 @@ html[data-theme='dark'] .dashboard-attention-list > button strong {
   line-height: 1.25;
 }
 
+.calendar-event-title.is-completed {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.calendar-event-contact {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-bottom: 0.18rem;
+  color: #866800;
+  font-size: 0.61rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.calendar-task-toggle {
+  cursor: pointer;
+}
+
 .calendar-event-meta {
   margin-top: 0.1rem;
   color: var(--text-muted);
