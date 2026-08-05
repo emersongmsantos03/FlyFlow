@@ -7665,3 +7665,123 @@ html[data-theme='dark'] .inbox-page .inbox-local-search input {
   background: #141815 !important;
   color: #e8ece7 !important;
 }
+
+/* Projects share one visual language in both operational boards. */
+.internal-projects-page .page-toolbar::before {
+  content: "OPERAÇÃO • PLANEJAMENTO E INICIATIVAS";
+}
+
+.internal-projects-page .internal-project-controls {
+  border-color: #e1e6e1 !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 5px 18px rgb(20 29 22 / .04) !important;
+}
+
+.internal-projects-page .monday-board-group {
+  border-radius: 1rem !important;
+  box-shadow: 0 6px 20px rgb(17 24 39 / .045) !important;
+}
+
+html[data-theme='dark'] .projects-page .list-control-bar,
+html[data-theme='dark'] .projects-page .customer-project-board,
+html[data-theme='dark'] .internal-projects-page .list-control-bar,
+html[data-theme='dark'] .internal-projects-page .monday-board-group {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #e8ece7 !important;
+  box-shadow: 0 10px 30px rgb(0 0 0 / .2) !important;
+}
+
+html[data-theme='dark'] .projects-page .list-control-bar > div:first-child > div:first-child,
+html[data-theme='dark'] .internal-projects-page .internal-project-controls > div:first-child > div:first-child > div:first-child,
+html[data-theme='dark'] .internal-projects-page .internal-project-controls > div:first-child > div:first-child > div:nth-child(2) {
+  border-color: #343b34 !important;
+  background: #202520 !important;
+}
+
+html[data-theme='dark'] .projects-page .list-control-bar button.bg-white,
+html[data-theme='dark'] .internal-projects-page .internal-project-controls button.bg-white,
+html[data-theme='dark'] .internal-projects-page .internal-project-controls button.bg-gray-900 {
+  border-color: #4a5047 !important;
+  background: #eef1ec !important;
+  color: #171b18 !important;
+  box-shadow: 0 2px 8px rgb(0 0 0 / .22) !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-group-title,
+html[data-theme='dark'] .internal-projects-page .monday-group-heading {
+  border-color: #303730 !important;
+  background: #1b201c !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-header,
+html[data-theme='dark'] .projects-page .customer-project-header > span:last-child,
+html[data-theme='dark'] .internal-projects-page .monday-board-header {
+  border-color: #394039 !important;
+  background: #222722 !important;
+  color: #aab3aa !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-row,
+html[data-theme='dark'] .internal-projects-page .monday-board-row {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-row:hover,
+html[data-theme='dark'] .internal-projects-page .monday-board-row:hover {
+  background: #20261f !important;
+  box-shadow: inset 3px 0 0 var(--module-gold) !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-row.is-late {
+  background: #241b1b !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-header > span,
+html[data-theme='dark'] .projects-page .customer-project-cell,
+html[data-theme='dark'] .projects-page .customer-project-name,
+html[data-theme='dark'] .internal-projects-page .monday-board-header > span,
+html[data-theme='dark'] .internal-projects-page .monday-board-row > * {
+  border-color: #303730 !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-name strong,
+html[data-theme='dark'] .internal-projects-page .monday-board-row strong {
+  color: #eef2ed !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-name small,
+html[data-theme='dark'] .projects-page .owner-cell small,
+html[data-theme='dark'] .projects-page .progress-cell small,
+html[data-theme='dark'] .internal-projects-page .monday-board-row small,
+html[data-theme='dark'] .internal-projects-page .internal-project-summary {
+  color: #929c93 !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-actions > button,
+html[data-theme='dark'] .projects-page .customer-project-actions .focus-ring {
+  border-color: #3a423b !important;
+  background: #202520 !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .projects-page .customer-project-add,
+html[data-theme='dark'] .internal-projects-page .monday-board-group > div:last-child > div > button:last-child {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #9da69d !important;
+}
+
+html[data-theme='dark'] .internal-projects-page .internal-project-board-select {
+  border: 1px solid #394139 !important;
+  background: #222821 !important;
+  color: #e4e9e3 !important;
+}
+
+html[data-theme='dark'] .internal-projects-page section.border-dashed,
+html[data-theme='dark'] .projects-page div.border-dashed {
+  border-color: #3a423a !important;
+  background: #171b18 !important;
+}

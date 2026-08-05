@@ -269,23 +269,17 @@ export function InternalProjectsPage({
 
   return (
     <div className="internal-projects-page module-page space-y-4">
-      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-5 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-[#ad8715]"><Sparkles size={15} /> Quadro de trabalho</div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-950">Projetos internos</h1>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">Organize as iniciativas da empresa por área, responsável, status e cronograma.</p>
-          </div>
-          <Button className="shrink-0" type="button" onClick={() => setEditing(newProject())}><Plus size={16} /> Novo projeto</Button>
+      <header className="page-toolbar flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-gray-950 sm:text-2xl">Projetos internos</h1>
+          <p className="mt-1 max-w-3xl text-sm text-gray-500">Organize as iniciativas da empresa por área, responsável, status e cronograma.</p>
         </div>
-        <div className="grid border-t border-gray-100 bg-gray-50/60 sm:grid-cols-3">
-          <div className="px-5 py-3"><p className="text-[0.66rem] font-bold uppercase text-gray-400">Em andamento</p><p className="mt-1 text-xl font-semibold text-gray-950">{inProgress}</p></div>
-          <div className="border-gray-200 px-5 py-3 sm:border-l"><p className="text-[0.66rem] font-bold uppercase text-gray-400">Progresso médio</p><p className="mt-1 text-xl font-semibold text-gray-950">{averageProgress}%</p></div>
-          <div className="border-gray-200 px-5 py-3 sm:border-l"><p className="text-[0.66rem] font-bold uppercase text-gray-400">Atenção necessária</p><p className={`mt-1 text-xl font-semibold ${overdue ? 'text-red-600' : 'text-gray-950'}`}>{overdue}</p></div>
+        <div className="page-toolbar-actions flex flex-wrap items-center gap-2">
+          <Button type="button" onClick={() => setEditing(newProject())}><Plus size={16} /> Novo projeto</Button>
         </div>
-      </section>
+      </header>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+      <section className="internal-project-controls list-control-bar">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex rounded-lg bg-gray-100 p-1">
@@ -301,6 +295,11 @@ export function InternalProjectsPage({
             <label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} /><input className="field-input w-full pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar projetos, categorias ou tags..." /></label>
             <label className="relative"><ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><select className="field-input pl-8 pr-7 text-xs" value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}><option value="updated">Recentes</option><option value="due">Prazo</option><option value="priority">Prioridade</option></select></label>
           </div>
+        </div>
+        <div className="internal-project-summary mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs font-bold text-gray-500">
+          <span>{inProgress} em andamento</span>
+          <span>{averageProgress}% de progresso médio</span>
+          {overdue ? <span className="text-red-600">{overdue} precisando de atenção</span> : null}
         </div>
       </section>
 
