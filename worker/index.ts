@@ -926,10 +926,29 @@ export default {
 
     if (url.pathname.startsWith('/google/')) {
       try {
-        const workspaceId = await workspaceForUser(token, userId, env.FIREBASE_PROJECT_ID)
+        // The shared workspace now lives in D1. Keep the former Firestore key as
+        // a migration source so existing Google connections remain authorized.
+        const googleIdentity = await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID)
+        const d1Access = googleIdentity ? await claimD1Invitation(env, googleIdentity) : null
+        const legacyWorkspaceId = await workspaceForUser(token, userId, env.FIREBASE_PROJECT_ID).catch(() => '')
+        const workspaceId = d1Access?.workspaceId || legacyWorkspaceId
+        if (!workspaceId) throw new Error('Usuário sem workspace ativo para conectar ao Google.')
         const key = `workspace:${workspaceId}`
         const signatureKey = `workspace:${workspaceId}:signature`
-        const stored = await env.GOOGLE_OAUTH.get(key, 'json') as { refreshToken?: string; email?: string; connectedAt?: string } | null
+        const legacyKey = legacyWorkspaceId && legacyWorkspaceId !== workspaceId ? `workspace:${legacyWorkspaceId}` : ''
+        const legacySignatureKey = legacyKey ? `${legacyKey}:signature` : ''
+        let stored = await env.GOOGLE_OAUTH.get(key, 'json') as { refreshToken?: string; email?: string; connectedAt?: string } | null
+        if (!stored?.refreshToken && legacyKey) {
+          const legacyStored = await env.GOOGLE_OAUTH.get(legacyKey, 'json') as typeof stored
+          if (legacyStored?.refreshToken) {
+            stored = legacyStored
+            await env.GOOGLE_OAUTH.put(key, JSON.stringify(legacyStored))
+          }
+        }
+        if (legacySignatureKey && !await env.GOOGLE_OAUTH.get(signatureKey)) {
+          const legacySignatureToken = await env.GOOGLE_OAUTH.get(legacySignatureKey)
+          if (legacySignatureToken) await env.GOOGLE_OAUTH.put(signatureKey, legacySignatureToken)
+        }
 
         if (request.method === 'GET' && url.pathname === '/google/status') {
           return json({ connected: Boolean(stored?.refreshToken), email: stored?.email || '', connectedAt: stored?.connectedAt || '' }, 200, origin)

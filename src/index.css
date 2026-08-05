@@ -7508,3 +7508,160 @@ html[data-theme='dark'] .modal-surface option {
   background: #1b201c;
   color: #e8ece7;
 }
+
+/* Pages with late, purpose-built light skins. */
+html[data-theme='dark'] .agenda-page,
+html[data-theme='dark'] .agenda-calendar-shell,
+html[data-theme='dark'] .agenda-summary-strip,
+html[data-theme='dark'] .agenda-control-bar,
+html[data-theme='dark'] .agenda-filter-bar,
+html[data-theme='dark'] .agenda-date-context,
+html[data-theme='dark'] .mini-agenda-calendar,
+html[data-theme='dark'] .agenda-day-preview,
+html[data-theme='dark'] .agenda-create-choice,
+html[data-theme='dark'] .agenda-list-row {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .agenda-summary-strip > div,
+html[data-theme='dark'] .agenda-filter-bar > label,
+html[data-theme='dark'] .agenda-period-navigation > button,
+html[data-theme='dark'] .agenda-create-choice > button,
+html[data-theme='dark'] .agenda-day-preview button {
+  border-color: #303730 !important;
+  background: #1e241f !important;
+  color: #d8ded8 !important;
+}
+
+html[data-theme='dark'] .agenda-page input,
+html[data-theme='dark'] .agenda-page select,
+html[data-theme='dark'] .agenda-page textarea {
+  border-color: #343b34 !important;
+  background-color: #1b201c !important;
+  color: #e8ece7 !important;
+}
+
+html[data-theme='dark'] .quotes-page {
+  --quote-ink: #eef2ed;
+  --quote-muted: #9ca69d;
+  --quote-line: #303730;
+  --quote-soft: #141815;
+}
+
+html[data-theme='dark'] .quotes-page .quotes-toolbar,
+html[data-theme='dark'] .quotes-page .quote-card,
+html[data-theme='dark'] .quotes-page .quote-card-summary,
+html[data-theme='dark'] .quotes-page .quote-card-section,
+html[data-theme='dark'] .quotes-page .quote-card-actions {
+  border-color: var(--quote-line) !important;
+  background: #171b18 !important;
+  color: #e8ece7 !important;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .18) !important;
+}
+
+html[data-theme='dark'] .quotes-page .quotes-segmented,
+html[data-theme='dark'] .quotes-page .quote-card-details,
+html[data-theme='dark'] .quotes-page .quote-details-button {
+  border-color: var(--quote-line) !important;
+  background: #202520 !important;
+  color: #c2cac2 !important;
+}
+
+html[data-theme='dark'] .quotes-page .quote-card-primary-actions .app-button {
+  border-color: #394139 !important;
+  background: #202520 !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .quotes-page .quote-card-primary-actions .app-button:hover {
+  border-color: #665b34 !important;
+  background: #29271d !important;
+}
+
+html[data-theme='dark'] .proposal-workspace > section,
+html[data-theme='dark'] .proposal-workspace > div > div,
+html[data-theme='dark'] .proposal-workspace > div > aside,
+html[data-theme='dark'] .proposal-workspace > details,
+html[data-theme='dark'] .proposal-workspace .panel-surface {
+  border-color: #303730 !important;
+  background-color: #171b18 !important;
+  color: #e8ece7 !important;
+  box-shadow: 0 10px 28px rgb(0 0 0 / .2) !important;
+}
+
+html[data-theme='dark'] .proposal-workspace aside {
+  background: linear-gradient(150deg,#111612,#202821) !important;
+}
+
+html[data-theme='dark'] .proposal-workspace input,
+html[data-theme='dark'] .proposal-workspace select,
+html[data-theme='dark'] .proposal-workspace textarea {
+  border-color: #343b34 !important;
+  background-color: #1b201c !important;
+  color: #e8ece7 !important;
+}
+
+html[data-theme='dark'] .reports-page .report-context,
+html[data-theme='dark'] .reports-page .small-stat,
+html[data-theme='dark'] .reports-page .dashboard-indicator,
+html[data-theme='dark'] .reports-page .report-advanced,
+html[data-theme='dark'] .reports-page .report-advanced > summary,
+html[data-theme='dark'] .reports-page .report-insight-card {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #e8ece7 !important;
+  box-shadow: 0 9px 25px rgb(0 0 0 / .18) !important;
+}
+
+html[data-theme='dark'] .reports-page .report-context-icon,
+html[data-theme='dark'] .reports-page .report-insight-icon {
+  border-color: #5d512d !important;
+  background: #302817 !important;
+  color: #e3c45e !important;
+}
+
+html[data-theme='dark'] .inbox-page .inbox-connect-state,
+html[data-theme='dark'] .inbox-page .inbox-shell,
+html[data-theme='dark'] .inbox-page .inbox-workspace,
+html[data-theme='dark'] .inbox-page .inbox-list-column,
+html[data-theme='dark'] .inbox-page .inbox-reader,
+html[data-theme='dark'] .inbox-page .inbox-message-body {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #e8ece7 !important;
+}
+
+html[data-theme='dark'] .inbox-page .inbox-sidebar,
+html[data-theme='dark'] .inbox-page .inbox-list-column > header,
+html[data-theme='dark'] .inbox-page .inbox-reader-header,
+html[data-theme='dark'] .inbox-page .inbox-correspondent,
+html[data-theme='dark'] .inbox-page .inbox-account-card,
+html[data-theme='dark'] .inbox-page .inbox-mini-stats {
+  border-color: #303730 !important;
+  background: #1b201c !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .inbox-page .inbox-message-row {
+  border-color: #2d342e !important;
+  background: #171b18 !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .inbox-page .inbox-message-row:hover {
+  background: #20261f !important;
+}
+
+html[data-theme='dark'] .inbox-page .inbox-message-row.is-active {
+  background: #2b281b !important;
+  box-shadow: inset 3px 0 0 var(--module-gold) !important;
+}
+
+html[data-theme='dark'] .inbox-page .inbox-local-search,
+html[data-theme='dark'] .inbox-page .inbox-local-search input {
+  border-color: #343b34 !important;
+  background: #141815 !important;
+  color: #e8ece7 !important;
+}
