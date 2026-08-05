@@ -7336,3 +7336,175 @@ html[data-theme='dark'] .overview-page .action-menu-popover button:hover {
   letter-spacing: 0;
   line-height: 1.15;
 }
+
+/* Dark-theme compatibility layer.
+   Keep this block last: several module-specific light-theme declarations are
+   intentionally defined late in the cascade and otherwise override dark mode. */
+html[data-theme='dark'] .module-page {
+  --module-ink: #eef2ed;
+  --module-muted: #9da79d;
+  --module-line: #303730;
+  --module-soft: #1b201b;
+}
+
+html[data-theme='dark'] .page-shell,
+html[data-theme='dark'] .app-content {
+  background: #0d110e !important;
+  color: var(--text-primary) !important;
+}
+
+html[data-theme='dark'] .app-header,
+html[data-theme='dark'] .app-header-inner {
+  border-color: #2c332d !important;
+  background: rgb(17 21 18 / .96) !important;
+}
+
+html[data-theme='dark'] .app-header-icon,
+html[data-theme='dark'] .app-header-date,
+html[data-theme='dark'] .app-header-controls button {
+  border-color: #343b34 !important;
+  background: #1b201c !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .module-page .panel-surface,
+html[data-theme='dark'] .module-page .finance-overview,
+html[data-theme='dark'] .module-page .inbox-shell,
+html[data-theme='dark'] .module-page .list-control-bar,
+html[data-theme='dark'] .module-page .agenda-control-bar,
+html[data-theme='dark'] .module-page .equipment-control-bar,
+html[data-theme='dark'] .module-page .agenda-summary-strip,
+html[data-theme='dark'] .module-page .equipment-summary-strip,
+html[data-theme='dark'] .module-page .equipment-table-shell,
+html[data-theme='dark'] .module-page .report-advanced,
+html[data-theme='dark'] .module-page .crm-intelligence,
+html[data-theme='dark'] .module-page .crm-commercial-header,
+html[data-theme='dark'] .modal-surface,
+html[data-theme='dark'] .crm-contact-drawer,
+html[data-theme='dark'] .action-menu-popover {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #eef2ed !important;
+  box-shadow: 0 14px 36px rgb(0 0 0 / .22) !important;
+}
+
+html[data-theme='dark'] .module-page .panel-header,
+html[data-theme='dark'] .module-page .data-table thead,
+html[data-theme='dark'] .module-page .crm-intelligence > summary,
+html[data-theme='dark'] .crm-contact-drawer > header,
+html[data-theme='dark'] .crm-drawer-tabs {
+  border-color: #303730 !important;
+  background: #1b201c !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .module-page .data-table tbody tr,
+html[data-theme='dark'] .module-page .data-table tbody td,
+html[data-theme='dark'] .module-page .data-table tbody th {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .module-page .data-table tbody tr:hover {
+  background: #20261f !important;
+  box-shadow: inset 3px 0 0 var(--module-gold) !important;
+}
+
+html[data-theme='dark'] .module-page .field-input,
+html[data-theme='dark'] .module-page .field-input:hover,
+html[data-theme='dark'] .module-page select,
+html[data-theme='dark'] .module-page textarea,
+html[data-theme='dark'] .module-page input:not([type='checkbox']):not([type='radio']):not([type='range']) {
+  border-color: #343b34 !important;
+  background-color: #1b201c !important;
+  color: #e8ece7 !important;
+}
+
+html[data-theme='dark'] .module-page input::placeholder,
+html[data-theme='dark'] .module-page textarea::placeholder {
+  color: #7f897f !important;
+}
+
+html[data-theme='dark'] .module-page .app-button:not(.app-button-primary),
+html[data-theme='dark'] .module-page .app-button-secondary {
+  border-color: #394139 !important;
+  background: #202520 !important;
+  color: #dce2dc !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='dark'] .module-page .app-button:not(.app-button-primary):hover {
+  border-color: #665b34 !important;
+  background: #29271d !important;
+  color: #f2df9a !important;
+}
+
+html[data-theme='dark'] .commercial-page .crm-commercial-header h1,
+html[data-theme='dark'] .commercial-page .crm-commercial-header .crm-commercial-summary strong {
+  color: #eef2ed !important;
+}
+
+html[data-theme='dark'] .commercial-page .crm-commercial-header .crm-commercial-summary {
+  color: #a4ada4 !important;
+}
+
+html[data-theme='dark'] .internal-projects-page > section:first-child,
+html[data-theme='dark'] .internal-projects-page > section:first-child > div:first-child,
+html[data-theme='dark'] .internal-projects-page > section:first-child > div:last-child,
+html[data-theme='dark'] .internal-projects-page > section:nth-child(2),
+html[data-theme='dark'] .internal-projects-page .monday-board-group,
+html[data-theme='dark'] .internal-projects-page table,
+html[data-theme='dark'] .internal-projects-page [class*='divide-y'] {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #e8ece7 !important;
+}
+
+html[data-theme='dark'] .internal-projects-page > section:first-child > div:first-child h1 {
+  color: #f1f4ef !important;
+}
+
+html[data-theme='dark'] .internal-projects-page > section:first-child > div:first-child p {
+  color: #a0aaa0 !important;
+}
+
+html[data-theme='dark'] .internal-projects-page .monday-group-heading,
+html[data-theme='dark'] .internal-projects-page .monday-board-header {
+  border-color: #303730 !important;
+  background: #202520 !important;
+  color: #aab3aa !important;
+}
+
+html[data-theme='dark'] .internal-projects-page .monday-board-row {
+  border-color: #303730 !important;
+  background: #171b18 !important;
+  color: #dce2dc !important;
+}
+
+html[data-theme='dark'] .internal-projects-page .monday-board-row:hover {
+  background: #20261f !important;
+  box-shadow: 0 3px 12px rgb(0 0 0 / .22) !important;
+}
+
+html[data-theme='dark'] .internal-projects-page .monday-board-row > *,
+html[data-theme='dark'] .internal-projects-page .monday-board-header > * {
+  border-color: #303730 !important;
+}
+
+html[data-theme='dark'] .internal-projects-page .internal-project-board-select {
+  background-color: #222821 !important;
+  color: #e4e9e3 !important;
+}
+
+html[data-theme='dark'] .internal-projects-page .bg-gray-50\/80,
+html[data-theme='dark'] .internal-projects-page .bg-gray-50\/60,
+html[data-theme='dark'] .internal-projects-page .hover\:bg-gray-50\/70:hover {
+  background-color: #1b201c !important;
+}
+
+html[data-theme='dark'] .module-page option,
+html[data-theme='dark'] .modal-surface option {
+  background: #1b201c;
+  color: #e8ece7;
+}
