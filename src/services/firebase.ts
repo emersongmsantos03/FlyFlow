@@ -178,6 +178,26 @@ export const saveCloudflareWorkspace = async (state: AppState, expectedUpdatedAt
   return body.updatedAt || ''
 }
 
+export type CloudflareRecordMutation = {
+  upserts?: Partial<Record<'tasks' | 'appointments' | 'leads' | 'statusHistory', Array<{ id: string }>>>
+  deletes?: Partial<Record<'tasks' | 'appointments', string[]>>
+  dismissedTaskSourceKeys?: string[]
+}
+
+export const saveCloudflareRecordMutation = async (mutation: CloudflareRecordMutation, expectedUpdatedAt: string) => {
+  const response = await safeFetch(`${cloudflareWorkerBaseUrl()}/data/records`, {
+    method: 'POST',
+    headers: {
+      Authorization: await cloudflareAuthorization(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ mutation, expectedUpdatedAt }),
+  })
+  const body = await response.json().catch(() => ({})) as { error?: string; updatedAt?: string }
+  if (!response.ok) throw new Error(body.error || 'Não foi possível salvar a tarefa no Cloudflare.')
+  return body.updatedAt || ''
+}
+
 export const completeCloudflareFirstLogin = async () => {
   const response = await safeFetch(`${cloudflareWorkerBaseUrl()}/auth/complete-first-login`, {
     method: 'POST',

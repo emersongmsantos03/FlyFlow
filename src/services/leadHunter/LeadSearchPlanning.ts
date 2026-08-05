@@ -24,6 +24,20 @@ export type SearchScopeInput = {
   }
 }
 
+export const buildLeadHunterNoResultsMessage = (warnings: string[] = []) => {
+  const normalizedWarnings = [...new Set(warnings.map((warning) => warning.trim()).filter(Boolean))]
+  if (!normalizedWarnings.length) {
+    return 'Nenhum lead novo foi localizado nesta região. Tente outra cidade, categoria ou raio de busca.'
+  }
+
+  const timeouts = normalizedWarnings.filter((warning) => /tempo limite|timeout|não concluída|indisponível|não respondeu/i.test(warning))
+  if (timeouts.length) {
+    return 'Nenhum lead novo foi localizado nesta região. O provedor público demorou para responder; tente outra cidade, categoria ou raio de busca.'
+  }
+
+  return `Nenhum lead novo foi localizado nesta região. ${normalizedWarnings.slice(0, 2).join(' · ')}`
+}
+
 export const resolveLeadHunterSearchScope = ({ activeCities, activeCategories, filters, recentCityUsage, recentCategoryUsage, searchLearningProfile }: SearchScopeInput) => {
   const candidateCities = filters.cityIds.length
     ? (() => {

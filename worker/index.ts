@@ -815,6 +815,56 @@ export default {
         return json({ error: error instanceof Error ? error.message : 'Não foi possível carregar o workspace.' }, 400, origin)
       }
     }
+    if (request.method === 'POST' && url.pathname === '/data/records') {
+      const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
+      if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+      const body = await request.json().catch(() => null) as {
+        expectedUpdatedAt?: string
+        mutation?: {
+          upserts?: Record<string, Array<Record<string, unknown>>>
+          deletes?: Record<string, string[]>
+          dismissedTaskSourceKeys?: string[]
+        }
+      } | null
+      if (!body?.mutation) return json({ error: 'Alteração não informada.' }, 400, origin)
+      try {
+        const access = await claimD1Invitation(env, identity)
+        if (!access) return json({ error: 'Usuário sem workspace no Cloudflare.' }, 403, origin)
+        const workspace = await env.FLYFLOW_DB.prepare(
+          'SELECT state_json, updated_at FROM workspaces WHERE workspace_id = ?',
+        ).bind(access.workspaceId).first<{ state_json: string; updated_at: string }>()
+        if (!workspace) return json({ error: 'Workspace não encontrado.' }, 404, origin)
+        if (!body.expectedUpdatedAt || body.expectedUpdatedAt !== workspace.updated_at) {
+          return json({ error: 'Os dados foram atualizados em outra sessão. Recarregue a página antes de salvar.' }, 409, origin)
+        }
+        const state = await readWorkspaceState(env, access.workspaceId, workspace.state_json)
+        const allowedUpserts = new Set(['tasks', 'appointments', 'leads', 'statusHistory'])
+        const allowedDeletes = new Set(['tasks', 'appointments'])
+        for (const [section, records] of Object.entries(body.mutation.upserts || {})) {
+          if (!allowedUpserts.has(section) || !Array.isArray(records)) continue
+          const current = Array.isArray(state[section]) ? state[section] as Array<Record<string, unknown>> : []
+          const byId = new Map(current.map((record) => [String(record.id || ''), record]))
+          records.forEach((record) => { if (record?.id) byId.set(String(record.id), record) })
+          state[section] = section === 'statusHistory' ? [...records, ...current.filter((record) => !records.some((item) => item.id === record.id))] : [...byId.values()]
+        }
+        for (const [section, ids] of Object.entries(body.mutation.deletes || {})) {
+          if (!allowedDeletes.has(section) || !Array.isArray(ids)) continue
+          const deleted = new Set(ids.map(String))
+          const current = Array.isArray(state[section]) ? state[section] as Array<Record<string, unknown>> : []
+          state[section] = current.filter((record) => !deleted.has(String(record.id || '')))
+        }
+        if (Array.isArray(body.mutation.dismissedTaskSourceKeys)) {
+          const previous = Array.isArray(state.dismissedTaskSourceKeys) ? state.dismissedTaskSourceKeys as string[] : []
+          state.dismissedTaskSourceKeys = [...new Set([...previous, ...body.mutation.dismissedTaskSourceKeys.map(String)])]
+        }
+        const updatedAt = new Date().toISOString()
+        state.updatedAt = updatedAt
+        await writeWorkspaceState(env, access.workspaceId, JSON.stringify(state), updatedAt)
+        return json({ saved: true, updatedAt }, 200, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Não foi possível alterar os registros.' }, 400, origin)
+      }
+    }
     if (request.method === 'POST' && url.pathname === '/data/state') {
       const identity = token ? await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID) : null
       if (!identity?.email) return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)

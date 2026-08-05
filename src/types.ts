@@ -1121,6 +1121,7 @@ export interface AppState {
   equipment: Equipment[]
   notifications: NotificationItem[]
   tasks: TaskItem[]
+  dismissedTaskSourceKeys?: string[]
   internalProjects?: InternalProject[]
   statusHistory: StatusHistoryItem[]
   projectAdjustments: ProjectAdjustment[]

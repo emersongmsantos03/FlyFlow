@@ -42,10 +42,6 @@ interface GoogleCodeClient {
   requestCode: () => void
 }
 
-interface GoogleTokenClient {
-  requestAccessToken: (options?: { prompt?: string }) => void
-}
-
 interface GoogleOAuthRoot {
   accounts?: {
     oauth2?: {
@@ -56,12 +52,6 @@ interface GoogleOAuthRoot {
         callback: (response: GoogleCodeResponse) => void
         error_callback?: (error: unknown) => void
       }) => GoogleCodeClient
-      initTokenClient: (config: {
-        client_id: string
-        scope: string
-        callback: (response: { access_token?: string; expires_in?: number; error?: string }) => void
-        error_callback?: (error: unknown) => void
-      }) => GoogleTokenClient
       revoke: (token: string, callback: () => void) => void
     }
   }
@@ -111,53 +101,16 @@ const backendRequest = async <T>(path: string, init?: RequestInit) => {
   return body
 }
 
-const connectLegacyGoogleWorkspace = async (clientId: string) => {
-  const oauth2 = googleOAuth()
-  if (!oauth2) throw new Error('Google Identity Services indisponível.')
-  return new Promise<{ email: string }>((resolve, reject) => {
-    const client = oauth2.initTokenClient({
-      client_id: clientId.trim(),
-      scope: SCOPES,
-      callback: async (response) => {
-        if (!response.access_token) return reject(new Error(response.error || 'A autorização do Google não foi concluída.'))
-        try {
-          const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${response.access_token}` },
-          })
-          const profile = await profileResponse.json() as { email?: string }
-          const token = {
-            accessToken: response.access_token,
-            expiresAt: Date.now() + Math.max(response.expires_in || 3600, 60) * 1000,
-            email: profile.email || '',
-          }
-          currentToken = token
-          currentConnection = { connected: true, email: token.email }
-          localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify(token))
-          localStorage.setItem(GOOGLE_CONNECTED_KEY, 'true')
-          resolve({ email: token.email })
-        } catch (error) {
-          reject(error)
-        }
-      },
-      error_callback: () => reject(new Error('A janela de autorização do Google foi fechada ou bloqueada.')),
-    })
-    client.requestAccessToken({ prompt: '' })
-  })
-}
-
 export const connectGoogleWorkspace = async (clientId: string) => {
   const effectiveClientId = CONFIGURED_GOOGLE_OAUTH_CLIENT_ID || clientId.trim()
   if (!effectiveClientId) throw new Error('Informe o OAuth Client ID do Google.')
   await loadGoogleIdentityServices()
   const oauth2 = googleOAuth()
   if (!oauth2) throw new Error('Google Identity Services indisponível.')
-  try {
-    await backendRequest('/status')
-  } catch {
-    const connection = await connectLegacyGoogleWorkspace(effectiveClientId)
-    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, effectiveClientId)
-    return connection
-  }
+  // The server-side authorization-code flow stores a refresh token and is the
+  // only flow that can keep the connection alive automatically. Do not silently
+  // fall back to a browser-only token when the API is temporarily unavailable.
+  await backendRequest('/status')
 
   return new Promise<{ email: string }>((resolve, reject) => {
     const client = oauth2.initCodeClient({

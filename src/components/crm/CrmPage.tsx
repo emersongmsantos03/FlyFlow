@@ -260,15 +260,13 @@ export function CrmPage({
   return (
     <div className="crm-page commercial-page module-page space-y-4">
       <section className="crm-commercial-header rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">CRM e vendas</p>
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h1 className="text-2xl font-black text-gray-950">Comercial</h1>
-              <p className="text-sm text-gray-500">{openLeads.length} oportunidades · {formatCurrency(potentialValue)} em potencial</p>
-            </div>
+        <div className="crm-commercial-header-layout">
+          <div className="crm-commercial-header-copy">
+            <p className="crm-commercial-eyebrow">CRM e vendas</p>
+            <h1>Comercial</h1>
+            <p className="crm-commercial-summary"><strong>{openLeads.length}</strong> oportunidades <span aria-hidden="true">•</span> <strong>{formatCurrency(potentialValue)}</strong> em potencial</p>
           </div>
-          <div className="flex flex-wrap gap-2"><Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button><Button type="button" onClick={onCreateLead}><Plus size={16} /> Nova oportunidade</Button></div>
+          <div className="crm-commercial-header-actions"><Button variant="secondary" type="button" onClick={() => onCreateTask()}><CheckCircle2 size={16} /> Nova tarefa</Button><Button type="button" onClick={onCreateLead}><Plus size={16} /> Nova oportunidade</Button></div>
         </div>
       </section>
 

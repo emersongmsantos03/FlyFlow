@@ -190,12 +190,13 @@ import {
   buildLeadOutreachEmail,
   leadOutreachIdempotencyKey,
 } from './services/leadHunter/LeadOutreachAutomation'
-import { resolveLeadHunterSearchScope } from './services/leadHunter/LeadSearchPlanning'
+import { buildLeadHunterNoResultsMessage, resolveLeadHunterSearchScope } from './services/leadHunter/LeadSearchPlanning'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   firebaseAuth,
   bootstrapCloudflareWorkspace,
   loadCloudflareWorkspace,
+  saveCloudflareRecordMutation,
   saveCloudflareWorkspace,
   isFirebaseConfigured,
   observeFirebaseAuth,
@@ -1441,6 +1442,7 @@ function App() {
   const firebaseSaveQueue = useRef<Promise<void>>(Promise.resolve())
   const cloudflareSaveQueue = useRef<Promise<void>>(Promise.resolve())
   const cloudflareVersion = useRef('')
+  const skipNextCloudflareStateSave = useRef(false)
 
   useEffect(() => {
     latestState.current = state
@@ -1529,6 +1531,8 @@ function App() {
 
       void (async () => {
         if (!firebaseUser) {
+          setCloudflareDataReady(false)
+          cloudflareVersion.current = ''
           clearActiveFirebaseWorkspace()
           clearAuthSession()
           if (!cancelled) {
@@ -1646,7 +1650,10 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !authSession) return
+    // Cloudflare/D1 is the primary workspace once it has been loaded. Keeping
+    // the legacy Firestore listener active at the same time lets an older
+    // snapshot overwrite a deletion that has just succeeded locally.
+    if (!isFirebaseConfigured || !authSession || !firebaseAuthReady || cloudflareDataReady) return
 
     let disposed = false
     let refreshing = false
@@ -1689,7 +1696,7 @@ function App() {
       disposed = true
       unsubscribe()
     }
-  }, [authSession])
+  }, [authSession, cloudflareDataReady, firebaseAuthReady])
 
   useEffect(() => {
     const refreshAutomations = () => setState((current) => synchronizeOperationalState(current))
@@ -1714,7 +1721,17 @@ function App() {
     const localTimeout = window.setTimeout(() => saveAppState(state), 350)
     if (!authSession) return () => window.clearTimeout(localTimeout)
 
+    // Do not write to the fallback backend while authentication is still
+    // deciding whether this session belongs to Cloudflare or Firestore.
+    if (isFirebaseConfigured && !firebaseAuthReady) {
+      return () => window.clearTimeout(localTimeout)
+    }
+
     if (isFirebaseConfigured && cloudflareDataReady) {
+      if (skipNextCloudflareStateSave.current) {
+        skipNextCloudflareStateSave.current = false
+        return () => window.clearTimeout(localTimeout)
+      }
       const timeout = window.setTimeout(() => {
         cloudflareSaveQueue.current = cloudflareSaveQueue.current
           .then(async () => {
@@ -1754,7 +1771,7 @@ function App() {
       window.clearTimeout(localTimeout)
       window.clearTimeout(timeout)
     }
-  }, [authSession, cloudflareDataReady, state])
+  }, [authSession, cloudflareDataReady, firebaseAuthReady, state])
 
   useEffect(() => {
     if (!toast) return
@@ -1917,25 +1934,6 @@ function App() {
       const nextState = synchronizeOperationalState(producer(current))
       latestState.current = nextState
       saveAppState(nextState)
-      if (cloudflareDataReady) {
-        cloudflareSaveQueue.current = cloudflareSaveQueue.current
-          .then(async () => {
-            const updatedAt = await saveCloudflareWorkspace(nextState, cloudflareVersion.current)
-            if (updatedAt) cloudflareVersion.current = updatedAt
-          })
-          .catch((error) => {
-            setToast(error instanceof Error ? error.message : 'Não foi possível salvar no Cloudflare.')
-          })
-      } else if (isFirebaseConfigured && authSession) {
-        firebaseSaveQueue.current = firebaseSaveQueue.current
-          .catch(() => undefined)
-          .then(() => saveFirebaseAppState(nextState))
-          .catch((error) => {
-            setToast(error instanceof Error ? error.message : 'Não foi possível salvar as alterações no Firebase.')
-          })
-      } else if (isSupabaseConfigured && authSession) {
-        void saveCloudAppState(nextState).catch(() => setToast('Não foi possível salvar as alterações no Supabase.'))
-      }
       return nextState
     })
     setToast(message)
@@ -2739,6 +2737,8 @@ Hero Drone`,
   const handleLogin = async (values: LoginFormValues) => {
     if (isFirebaseConfigured) {
       firebaseLoginInProgress.current = true
+      setCloudflareDataReady(false)
+      cloudflareVersion.current = ''
       try {
         const credential = await Promise.race([
           signInWithFirebase(values.email, values.password, values.remember),
@@ -2924,6 +2924,8 @@ Hero Drone`,
     if (isFirebaseConfigured) {
       void signOutFromFirebase()
       clearActiveFirebaseWorkspace()
+      setCloudflareDataReady(false)
+      cloudflareVersion.current = ''
     } else if (isSupabaseConfigured && supabase) void supabase.auth.signOut()
     clearAuthSession()
     setAuthSession(null)
@@ -3479,6 +3481,8 @@ Hero Drone`,
     const taskId = existingTask?.id || createId('task')
     const appointmentId = existingTask?.appointmentId || createId('appt')
     const googleWorkspaceConnected = getGoogleWorkspaceConnection().connected
+    const stateBeforeTaskSave = latestState.current
+    if (cloudflareDataReady) skipNextCloudflareStateSave.current = true
     updateState(
       (current) => {
         const leadIds = [...new Set(values.leadIds)]
@@ -3542,6 +3546,31 @@ Hero Drone`,
       existingTask ? 'Tarefa atualizada.' : values.leadIds.length || values.clientIds.length ? 'Tarefa criada e vinculada aos contatos.' : 'Tarefa independente criada.',
     )
 
+    if (cloudflareDataReady) {
+      try {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+        const nextState = latestState.current
+        const savedTask = nextState.tasks.find((item) => item.id === taskId)
+        const savedAppointment = nextState.appointments.find((item) => item.id === appointmentId)
+        if (!savedTask || !savedAppointment) throw new Error('A tarefa não foi preparada corretamente.')
+        const updatedAt = await saveCloudflareRecordMutation({
+          upserts: {
+            tasks: [savedTask],
+            appointments: [savedAppointment],
+            leads: nextState.leads.filter((lead) => values.leadIds.includes(lead.id)),
+            statusHistory: nextState.statusHistory.slice(0, 1),
+          },
+        }, cloudflareVersion.current)
+        if (updatedAt) cloudflareVersion.current = updatedAt
+      } catch (error) {
+        latestState.current = stateBeforeTaskSave
+        saveAppState(stateBeforeTaskSave)
+        setState(stateBeforeTaskSave)
+        setToast(error instanceof Error ? error.message : 'Não foi possível salvar a tarefa no Cloudflare.')
+        return
+      }
+    }
+
     if (values.createGoogleCalendar) {
       const selectedLeads = state.leads.filter((lead) => values.leadIds.includes(lead.id))
       const selectedClients = state.clients.filter((client) => values.clientIds.includes(client.id))
@@ -3588,20 +3617,41 @@ Hero Drone`,
     setSelectedTaskId('')
   }
 
-  const setTaskStatus = (task: TaskItem, status: TaskItem['status']) => {
+  const setTaskStatus = async (task: TaskItem, status: TaskItem['status']) => {
     const now = new Date().toISOString()
-    updateState(
-      (current) => ({
-        ...current,
-        tasks: current.tasks.map((item) => item.id === task.id ? { ...item, status, updatedAt: now } : item),
-        appointments: task.appointmentId
-          ? current.appointments.map((appointment) => appointment.id === task.appointmentId
-              ? { ...appointment, status: status === 'Concluída' ? 'Concluído' : status === 'Cancelada' ? 'Cancelado' : 'Agendado', updatedAt: now }
-              : appointment)
-          : current.appointments,
-      }),
-      status === 'Concluída' ? 'Tarefa concluída.' : status === 'Pendente' ? 'Tarefa reaberta como pendente.' : status === 'Em andamento' ? 'Tarefa iniciada.' : 'Tarefa cancelada.',
-    )
+    const previousState = latestState.current
+    const message = status === 'Concluída' ? 'Tarefa concluída.' : status === 'Pendente' ? 'Tarefa reaberta como pendente.' : status === 'Em andamento' ? 'Tarefa iniciada.' : 'Tarefa cancelada.'
+    const nextState = synchronizeOperationalState({
+      ...previousState,
+      tasks: previousState.tasks.map((item) => item.id === task.id ? { ...item, status, updatedAt: now } : item),
+      appointments: task.appointmentId
+        ? previousState.appointments.map((appointment) => appointment.id === task.appointmentId
+            ? { ...appointment, status: status === 'Concluída' ? 'Concluído' : status === 'Cancelada' ? 'Cancelado' : 'Agendado', updatedAt: now }
+            : appointment)
+        : previousState.appointments,
+    })
+    if (cloudflareDataReady) {
+      try {
+        const updatedTask = nextState.tasks.find((item) => item.id === task.id)
+        const updatedAppointment = task.appointmentId ? nextState.appointments.find((item) => item.id === task.appointmentId) : undefined
+        if (!updatedTask) throw new Error('Tarefa não encontrada após a alteração.')
+        const updatedAt = await saveCloudflareRecordMutation({
+          upserts: {
+            tasks: [updatedTask],
+            ...(updatedAppointment ? { appointments: [updatedAppointment] } : {}),
+          },
+        }, cloudflareVersion.current)
+        if (updatedAt) cloudflareVersion.current = updatedAt
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : 'Não foi possível atualizar a tarefa no Cloudflare.')
+        return
+      }
+    }
+    if (cloudflareDataReady) skipNextCloudflareStateSave.current = true
+    latestState.current = nextState
+    saveAppState(nextState)
+    setState(nextState)
+    setToast(message)
   }
 
   const deleteTask = (task: TaskItem) => {
@@ -3610,12 +3660,36 @@ Hero Drone`,
       description: `${task.title} será removida definitivamente. O compromisso vinculado também será excluído.`,
       confirmLabel: 'Excluir tarefa',
       tone: 'danger',
-      onConfirm: () => {
-        updateState((current) => ({
-          ...current,
-          tasks: current.tasks.filter((item) => item.id !== task.id),
-          appointments: task.appointmentId ? current.appointments.filter((item) => item.id !== task.appointmentId) : current.appointments,
-        }), 'Tarefa excluída.')
+      onConfirm: async () => {
+        const previousState = latestState.current
+        const nextState = synchronizeOperationalState({
+          ...previousState,
+          tasks: previousState.tasks.filter((item) => item.id !== task.id),
+          dismissedTaskSourceKeys: task.sourceKey
+            ? [...new Set([...(previousState.dismissedTaskSourceKeys ?? []), task.sourceKey])]
+            : previousState.dismissedTaskSourceKeys,
+          appointments: task.appointmentId ? previousState.appointments.filter((item) => item.id !== task.appointmentId) : previousState.appointments,
+        })
+        if (cloudflareDataReady) {
+          try {
+            const updatedAt = await saveCloudflareRecordMutation({
+              deletes: {
+                tasks: [task.id],
+                ...(task.appointmentId ? { appointments: [task.appointmentId] } : {}),
+              },
+              dismissedTaskSourceKeys: task.sourceKey ? [task.sourceKey] : [],
+            }, cloudflareVersion.current)
+            if (updatedAt) cloudflareVersion.current = updatedAt
+          } catch (error) {
+            setToast(error instanceof Error ? error.message : 'Não foi possível excluir a tarefa no Cloudflare.')
+            return
+          }
+        }
+        if (cloudflareDataReady) skipNextCloudflareStateSave.current = true
+        latestState.current = nextState
+        saveAppState(nextState)
+        setState(nextState)
+        setToast('Tarefa excluída.')
         if (selectedTaskId === task.id) {
           setSelectedTaskId('')
           setTaskDefaults({})
@@ -6928,10 +7002,7 @@ Hero Drone`,
                     fallbackResult.forEach(collectPublicResult)
                   }
                   if (!combinedLeads.size) {
-                    const diagnostic = searchWarnings.slice(-2).join(' · ')
-                    const message = diagnostic
-                      ? `Nenhum lead novo foi localizado. ${diagnostic}`
-                      : 'Nenhum lead novo foi localizado nesta rodada.'
+                    const message = buildLeadHunterNoResultsMessage(searchWarnings)
                     setToast(message)
                     result = {
                       leads: [],
@@ -11642,7 +11713,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         <div className="space-y-4">
           <Panel id="settings-google" title="Google Workspace">
             <div className="space-y-3">
-              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar com autorização oficial. A autorização fica salva com segurança no workspace e estará disponível em todos os seus dispositivos.</p>
+              <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar uma única vez. Depois disso, o FlyFlow renova a autorização automaticamente e a conexão fica disponível em todos os seus dispositivos.</p>
               <InputField label="OAuth Client ID do Google" error={getError(errors.googleOAuthClientId?.message)}><input className="field-input" {...register('googleOAuthClientId')} readOnly={Boolean(CONFIGURED_GOOGLE_OAUTH_CLIENT_ID)} placeholder="000000000000-xxxx.apps.googleusercontent.com" /></InputField>
               <input type="hidden" {...register('googleWorkspaceEmail')} />
               <div className={`rounded-xl border p-3 ${googleConnection.connected ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
@@ -11655,7 +11726,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
                   ? <Button variant="secondary" type="button" onClick={() => void disconnectGoogle()}>Desconectar Google</Button>
                   : <Button type="button" disabled={!googleClientId.trim() || connectingGoogle} onClick={() => void connectGoogle()}>{connectingGoogle ? 'Conectando...' : 'Conectar Gmail e Agenda'}</Button>}
               </div>
-              <p className="text-xs leading-5 text-gray-500">No Google Cloud, habilite Gmail API e Google Calendar API e adicione <strong>https://flyflow-a97ab.web.app</strong> como origem JavaScript autorizada.</p>
+              <p className="text-xs leading-5 text-gray-500">Origem OAuth deste acesso: <strong>{window.location.origin}</strong>.</p>
             </div>
           </Panel>
 
