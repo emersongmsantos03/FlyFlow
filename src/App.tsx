@@ -1921,6 +1921,10 @@ function App() {
     () => state.appointments.find((appointment) => appointment.id === selectedAppointmentId),
     [selectedAppointmentId, state.appointments],
   )
+  const selectedTask = useMemo(
+    () => state.tasks.find((task) => task.id === selectedTaskId),
+    [selectedTaskId, state.tasks],
+  )
   const selectedProject = useMemo(
     () => state.projects.find((project) => project.id === selectedProjectId),
     [selectedProjectId, state.projects],
@@ -7863,6 +7867,8 @@ Hero Drone`,
             state={state}
             initialValues={taskDefaults}
             editing={Boolean(selectedTaskId)}
+            task={selectedTask}
+            onToggleStatus={selectedTask ? () => void setTaskStatus(selectedTask, selectedTask.status === 'Concluída' ? 'Pendente' : 'Concluída') : undefined}
             onDelete={selectedTaskId ? () => { const task = state.tasks.find((item) => item.id === selectedTaskId); if (task) deleteTask(task) } : undefined}
             onCancel={() => { setModal(null); setTaskDefaults({}); setSelectedTaskId('') }}
             onSubmit={saveTask}
@@ -12534,11 +12540,9 @@ function TimeGridCalendar({
                           }
                         }}
                       >
-                        {(appointment.clientId || appointment.leadId) ? <p className="calendar-event-contact truncate"><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
-                        <div className="flex items-center gap-1">
-                          {task ? <button className={`calendar-task-toggle flex h-4 w-4 shrink-0 items-center justify-center rounded border ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-400 bg-white text-transparent'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={11} /></button> : null}
-                          <p className={`calendar-event-title truncate ${completed ? 'is-completed' : ''}`}>{appointment.title}</p>
-                        </div>
+                        {task ? <button className={`calendar-task-toggle absolute right-1.5 top-1.5 z-20 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 shadow-sm ${completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-white bg-white text-transparent ring-1 ring-gray-400'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={12} /></button> : null}
+                        {(appointment.clientId || appointment.leadId) ? <p className={`calendar-event-contact truncate ${task ? 'pr-6' : ''}`}><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
+                        <p className={`calendar-event-title truncate ${completed ? 'is-completed' : ''} ${task && !appointment.clientId && !appointment.leadId ? 'pr-6' : ''}`}>{appointment.title}</p>
                         <p className="calendar-event-meta truncate">{appointmentTime(effectiveAppointment)} · {appointment.appointmentType}</p>
                         {canResize ? <div
                           data-resize-handle
@@ -13238,6 +13242,8 @@ function TaskForm({
   state,
   initialValues,
   editing,
+  task,
+  onToggleStatus,
   onDelete,
   onSubmit,
   onCancel,
@@ -13245,6 +13251,8 @@ function TaskForm({
   state: AppState
   initialValues?: TaskFormDefaults
   editing?: boolean
+  task?: TaskItem
+  onToggleStatus?: () => void
   onDelete?: () => void
   onSubmit: (values: TaskFormValues) => void
   onCancel: () => void
@@ -13295,6 +13303,10 @@ function TaskForm({
 
   return <form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}>
     {error ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800 sm:col-span-2">{error}</div> : null}
+    {editing && task && onToggleStatus ? <button className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-left sm:col-span-2 ${task.status === 'Concluída' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-gray-50 text-gray-800'}`} type="button" onClick={onToggleStatus}>
+      <span><strong className="block text-sm">{task.status === 'Concluída' ? 'Tarefa concluída' : 'Marcar como concluída'}</strong><small className="mt-0.5 block text-xs opacity-75">{task.status === 'Concluída' ? 'Clique para voltar a tarefa para pendente.' : 'A conclusão ficará visível também no calendário.'}</small></span>
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${task.status === 'Concluída' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 bg-white text-transparent'}`}><Check size={16} /></span>
+    </button> : null}
     <div className="sm:col-span-2"><InputField label="Tarefa"><input className="field-input" value={title} onChange={(event) => setTitle(event.currentTarget.value)} placeholder="Ex.: Confirmar horário com o cliente" autoFocus required /></InputField></div>
     <InputField label="Tipo"><select className="field-input" value={taskType} onChange={(event) => setTaskType(event.currentTarget.value as NonNullable<TaskItem['taskType']>)}>{['Tarefa', 'Ligação', 'E-mail', 'WhatsApp', 'Follow-up'].map((type) => <option key={type}>{type}</option>)}</select></InputField>
     <div className="sm:col-span-2">
