@@ -405,6 +405,8 @@ export function CrmPage({
                         onGenerateProposal={onGenerateProposal}
                         onRegisterInteraction={onRegisterInteraction}
                         onScheduleReturn={onScheduleReturn}
+                        onCreateTask={onCreateTask}
+                        onEditTask={onEditTask}
                         onRegisterDeposit={onRegisterDeposit}
                         onCreateProject={onCreateProject}
                         isDragging={draggedLeadId === lead.id}
@@ -519,7 +521,7 @@ export function CrmPage({
   )
 }
 
-function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject, isDragging, onDragStateChange }: {
+function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onCreateTask, onEditTask, onRegisterDeposit, onCreateProject, isDragging, onDragStateChange }: {
   lead: Lead
   state: AppState
   onOpen: (lead: Lead) => void
@@ -530,6 +532,8 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
   onScheduleReturn: (lead: Lead) => void
+  onCreateTask: (lead?: Lead) => void
+  onEditTask: (task: TaskItem) => void
   onRegisterDeposit: (quote: Quote) => void
   onCreateProject: (lead: Lead) => void
   isDragging: boolean
@@ -538,6 +542,9 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
   const quote = newestQuote(state, lead.id)
   const overdue = Boolean(lead.nextContactAt && new Date(lead.nextContactAt) < new Date())
   const nextAction = lead.nextContactAt ? `${overdue ? 'Atrasada' : 'Próxima ação'} · ${formatDateTime(lead.nextContactAt)}` : 'Sem próxima atividade'
+  const nextTask = state.tasks
+    .filter((task) => (task.leadId === lead.id || task.leadIds?.includes(lead.id)) && !['Concluída', 'Cancelada'].includes(task.status))
+    .sort((left, right) => Number(right.dueAt === lead.nextContactAt) - Number(left.dueAt === lead.nextContactAt) || left.dueAt.localeCompare(right.dueAt))[0]
   const health = opportunityHealth(lead)
 
   const stop = (event: MouseEvent) => event.stopPropagation()
@@ -562,9 +569,19 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
         <div className="min-w-0"><p className="truncate text-sm text-gray-600">{lead.serviceInterest}</p>{quote ? <p className="mt-1 truncate text-xs text-gray-500"><FileText className="mr-1 inline" size={12} />{quote.status}</p> : null}</div>
         <strong className="shrink-0 text-sm text-gray-950">{formatCurrency(lead.estimatedValue)}</strong>
       </div>
-      <div className={`mt-3 flex items-center gap-2 rounded-md px-2.5 py-2 text-xs ${overdue ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}>
-        <Clock3 className="shrink-0" size={13} /><span className="truncate">{nextAction}</span>
-      </div>
+      <button
+        className={`crm-next-action mt-3 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs ${overdue ? 'is-overdue bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'}`}
+        type="button"
+        title={nextTask ? 'Abrir tarefa para ajustar data, concluir ou excluir' : 'Criar tarefa para esta oportunidade'}
+        aria-label={`${nextAction}. ${nextTask ? 'Abrir tarefa para ajustar' : 'Criar tarefa'}`}
+        onClick={(event) => {
+          stop(event)
+          if (nextTask) onEditTask(nextTask)
+          else onCreateTask(lead)
+        }}
+      >
+        <Clock3 className="shrink-0" size={13} /><span className="min-w-0 flex-1 truncate">{nextAction}</span><span className="crm-next-action-label">Ajustar</span>
+      </button>
       <footer className="mt-2 flex items-center justify-between gap-1 border-t border-gray-100 pt-2">
         <ContactShortcuts
           lead={lead}

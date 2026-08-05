@@ -6218,6 +6218,11 @@ html[data-theme='dark'] .page-toolbar h1 {
 .commercial-page .crm-column-header{background:linear-gradient(180deg,#fff,#f8faf7)}
 .commercial-page .crm-opportunity-card{border-color:#e0e5e0;box-shadow:0 2px 8px rgb(20 29 22/.04);transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease}
 .commercial-page .crm-opportunity-card:hover{border-color:rgb(216 174 55/.52);box-shadow:0 12px 24px rgb(20 29 22/.1);transform:translateY(-3px)}
+.crm-next-action{border:1px solid transparent;transition:border-color .15s ease,background-color .15s ease,box-shadow .15s ease}
+.crm-next-action:hover{border-color:#d5dbd5;background:#fff!important;box-shadow:0 3px 10px rgb(20 29 22/.06)}
+.crm-next-action.is-overdue:hover{border-color:#f0a6a6;background:#fff7f7!important}
+.crm-next-action-label{flex-shrink:0;font-size:.62rem;font-weight:850;letter-spacing:.02em;opacity:0;transform:translateX(3px);transition:opacity .15s ease,transform .15s ease}
+.crm-next-action:hover .crm-next-action-label,.crm-next-action:focus-visible .crm-next-action-label{opacity:1;transform:translateX(0)}
 
 .contacts-page .page-toolbar::before{content:"RELACIONAMENTO • CARTEIRA DE CONTATOS"}
 .contacts-page>.grid{align-items:start}
