@@ -6576,6 +6576,11 @@ Hero Drone`,
     ? { page: 'profile' as const, label: 'Meu perfil', icon: UserCog, group: 'Gestão' as const }
     : navigation.find((item) => item.page === page)
   const CurrentPageIcon = currentNavigation?.icon ?? LayoutDashboard
+  const sidebarTodayKey = dateInput()
+  const sidebarTodayAppointments = state.appointments
+    .filter((appointment) => appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === sidebarTodayKey)
+    .sort((left, right) => left.startAt.localeCompare(right.startAt))
+  const sidebarNextAppointment = sidebarTodayAppointments.find((appointment) => new Date(appointment.endAt).getTime() >= Date.now())
   const openSystemNotification = (notification: AppState['notifications'][number]) => {
     updateState((current) => ({
       ...current,
@@ -6631,6 +6636,11 @@ Hero Drone`,
               </div>
             </div>
           </div>
+          <button className={`sidebar-agenda-focus ${page === 'agenda' ? 'is-active' : ''}`} type="button" onClick={() => { setPage('agenda'); setCalendarView('diaria') }}>
+            <span className="sidebar-agenda-date"><strong>{new Date().getDate()}</strong><small>{new Date().toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}</small></span>
+            <span className="sidebar-agenda-copy"><small>MINHA AGENDA</small><strong>{sidebarTodayAppointments.length ? `${sidebarTodayAppointments.length} item(ns) hoje` : 'Dia livre'}</strong><em>{sidebarNextAppointment ? `${new Date(sidebarNextAppointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${sidebarNextAppointment.title}` : 'Planejar meu dia'}</em></span>
+            <ChevronRight size={16} />
+          </button>
           <nav className="no-scrollbar flex-1 overflow-auto px-2.5 py-3">
             {navigationGroups.map((group) => {
               const items = availableNavigation.filter((item) => item.group === group)
@@ -9723,6 +9733,16 @@ function AgendaPage({
   const todayAppointments = visibleAppointments.filter((appointment) =>
     appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === todayKey,
   )
+  const nowTimestamp = Date.now()
+  const nextTodayAppointment = todayAppointments.find((appointment) => new Date(appointment.endAt).getTime() >= nowTimestamp)
+  const todayScheduledMinutes = todayAppointments.reduce((total, appointment) => total + getDurationMinutes(appointment.startAt, appointment.endAt), 0)
+  const todayTasks = todayAppointments.map((appointment) => taskByAppointmentId.get(appointment.id)).filter((task): task is TaskItem => Boolean(task))
+  const completedTodayTasks = todayTasks.filter((task) => task.status === 'Concluída').length
+  const nextContact = nextTodayAppointment?.clientId
+    ? state.clients.find((client) => client.id === nextTodayAppointment.clientId)
+    : nextTodayAppointment?.leadId
+      ? state.leads.find((lead) => lead.id === nextTodayAppointment.leadId)
+      : undefined
   const nextSevenDays = addCalendarDays(todayKey, 7)
   const upcomingAppointments = visibleAppointments.filter((appointment) => {
     const key = dateInputFromDate(new Date(appointment.startAt))
@@ -9778,6 +9798,20 @@ function AgendaPage({
         description="Tudo o que precisa acontecer, no tempo certo."
         action={<Button type="button" title="Atalho: N" onClick={() => setCreateChoice({})}><Plus size={16} /> Criar</Button>}
       />
+
+      <section className="agenda-day-command">
+        <div className="agenda-day-command__date"><span>{new Date().toLocaleDateString('pt-BR', { weekday: 'long' })}</span><strong>{new Date().getDate()}</strong><small>{new Date().toLocaleDateString('pt-BR', { month: 'long' })}</small></div>
+        <div className="agenda-day-command__focus">
+          <span>{nextTodayAppointment ? (new Date(nextTodayAppointment.startAt).getTime() <= nowTimestamp ? 'ACONTECENDO AGORA' : 'PRÓXIMO DO SEU DIA') : 'SEU DIA ESTÁ LIVRE'}</span>
+          <strong>{nextTodayAppointment?.title || 'Reserve um momento para planejar'}</strong>
+          <p>{nextTodayAppointment ? `${new Date(nextTodayAppointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} – ${new Date(nextTodayAppointment.endAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${nextContact ? ` · ${contactDisplayName(nextContact)}` : ''}` : 'Adicione tarefas e eventos para transformar prioridades em um plano claro.'}</p>
+        </div>
+        <div className="agenda-day-command__progress">
+          <div><span>Ocupado</span><strong>{formatDurationLabel(todayScheduledMinutes)}</strong></div>
+          <div><span>Tarefas</span><strong>{completedTodayTasks}/{todayTasks.length}</strong></div>
+        </div>
+        <div className="agenda-day-command__actions"><button type="button" onClick={() => { setCalendarDate(new Date()); onCalendarViewChange('diaria') }}><Eye size={15} /> Ver meu dia</button><button type="button" onClick={() => onCreateTask()}><CheckCircle2 size={15} /> Tarefa</button></div>
+      </section>
 
       <section className="agenda-summary-strip">
         <div><i className="agenda-metric-icon"><Clock size={18} /></i><span>Hoje</span><strong>{todayAppointments.length}</strong><small>compromissos</small></div>
@@ -12530,6 +12564,9 @@ function TimeGridCalendar({
                 return dateInputFromDate(startDate) === dayKey && endMinutes > rangeStartMinutes && startMinutes < rangeEndMinutes
               })
               const appointmentColumns = overlappingAppointmentColumns(dayAppointments)
+              const isToday = dayKey === dateInput()
+              const currentTime = new Date()
+              const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes()
 
               return (
                 <div key={dayKey} data-calendar-day={dayKey} className="relative border-l border-gray-200 bg-white" style={{ height: totalHeight }}>
@@ -12557,6 +12594,8 @@ function TimeGridCalendar({
                   </div>
                 )
               })}
+
+                  {isToday ? <div className="calendar-now-line" style={{ top: `${(currentMinutes / 60) * hourHeight}px` }} aria-label={`Horário atual: ${currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}><span>{currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></div> : null}
 
                   {dayAppointments.map((appointment) => {
                     const task = state.tasks.find((item) => item.appointmentId === appointment.id)
