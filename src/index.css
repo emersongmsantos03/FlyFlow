@@ -7823,6 +7823,17 @@ html[data-theme='dark'] .appointment-form__color-name { background: #232a24; col
   color: #d6ad3c !important;
 }
 
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active {
+  border-color: #cfd5d0 !important;
+  background: #e1e5e2 !important;
+  color: #343a35 !important;
+  box-shadow: inset 3px 0 0 #c99b20 !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active svg {
+  color: #b8890b !important;
+}
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
