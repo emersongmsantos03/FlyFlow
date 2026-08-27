@@ -7128,6 +7128,221 @@ html[data-theme='dark'] .time-grid-panel,
 html[data-theme='dark'] .month-calendar-panel { border-color: #303732; background: #151a16; }
 html[data-theme='dark'] .agenda-main-toolbar .erp-segmented-control button.is-active { background: #253c5f !important; color: #aecbfa !important; }
 
+/* Ultra-light agenda finish. */
+.app-page-agenda {
+  padding-top: 0.65rem !important;
+  background: #fff;
+}
+
+.agenda-main-toolbar {
+  min-height: 3.25rem;
+  padding: 0.25rem 0;
+  border-bottom-color: #edf0ed;
+}
+
+.agenda-create-button {
+  min-height: 2.35rem;
+  padding-inline: 0.75rem;
+  border-color: transparent;
+  background: #edf4ff;
+  color: #1967d2;
+  box-shadow: none;
+}
+
+.agenda-create-button:hover {
+  border-color: transparent;
+  background: #e3edfc;
+  box-shadow: none;
+}
+
+.agenda-main-toolbar .agenda-period-navigation {
+  gap: 0.08rem;
+}
+
+.agenda-main-toolbar .agenda-period-navigation > strong {
+  margin-left: 0.45rem;
+  color: #4c534e;
+  font-size: 0.9rem;
+  font-weight: 590;
+}
+
+.agenda-main-toolbar .agenda-period-navigation > button,
+.agenda-main-toolbar .agenda-date-jump,
+.agenda-toolbar-search {
+  width: 2rem;
+  height: 2rem;
+  color: #717973;
+}
+
+.agenda-main-toolbar .agenda-period-navigation .agenda-today-button {
+  min-width: 3.4rem;
+  border-color: #e3e7e3 !important;
+  background: transparent;
+  color: #525a54;
+  font-size: 0.66rem;
+}
+
+.agenda-main-toolbar .erp-segmented-control {
+  border: 0;
+  background: #f5f7f5;
+}
+
+.agenda-main-toolbar .erp-segmented-control button {
+  min-height: 2.1rem;
+  border-right: 0;
+  color: #747c76;
+  font-size: 0.65rem;
+  font-weight: 680;
+}
+
+.agenda-main-toolbar .erp-segmented-control button.is-active {
+  background: #fff !important;
+  color: #1967d2 !important;
+  box-shadow: 0 1px 3px rgb(30 45 35 / 0.08) !important;
+}
+
+.agenda-page .agenda-filter-bar.is-open {
+  padding: 0.35rem 0;
+  border: 0;
+  border-bottom: 1px solid #edf0ed;
+  border-radius: 0;
+  background: transparent;
+}
+
+.agenda-page .agenda-filter-bar.is-open > label,
+.agenda-page .agenda-filter-bar.is-open > button,
+.agenda-page .agenda-filter-bar.is-open > span {
+  min-height: 2.25rem;
+  border-color: #e8ebe8;
+  background: #fafbfa;
+}
+
+.agenda-conflict-alert {
+  min-height: 2rem;
+  padding: 0.35rem 0.55rem;
+  background: #fffaf0;
+  color: #876619;
+  opacity: 0.88;
+}
+
+.time-grid-panel,
+.month-calendar-panel {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #fff;
+}
+
+.time-grid-panel .grid.border-b {
+  border-color: #edf0ed;
+}
+
+.time-grid-panel .grid.border-b > div {
+  min-height: 4rem;
+  border-color: #edf0ed;
+}
+
+.time-grid-panel .grid.border-b p:first-child {
+  color: #858c87 !important;
+  font-weight: 650 !important;
+}
+
+.time-grid-panel .grid.border-b p:last-child {
+  color: #515853 !important;
+  font-size: 1.2rem !important;
+}
+
+.time-grid-panel .relative.bg-gray-50 {
+  background: #fff !important;
+}
+
+.time-grid-panel .border-gray-200,
+.time-grid-panel [data-calendar-day] {
+  border-color: #edf0ed !important;
+}
+
+.time-grid-panel .relative.bg-gray-50 > div {
+  color: #8b928d !important;
+  font-size: 0.59rem !important;
+  font-weight: 580 !important;
+}
+
+.calendar-quarter-slot:hover,
+.calendar-quarter-slot:focus-visible {
+  background: rgb(26 115 232 / 0.025);
+  box-shadow: inset 1px 0 #8ab4f8;
+}
+
+.calendar-event-block {
+  background: #e8f0fe !important;
+  color: #174ea6 !important;
+}
+
+.calendar-event-block:hover {
+  background: #dfeafd !important;
+  box-shadow: none !important;
+}
+
+.calendar-event-block.is-task {
+  background: #f1f3f4 !important;
+}
+
+.calendar-event-block.is-task:hover {
+  background: #e8eaed !important;
+}
+
+.calendar-event-block .calendar-event-title,
+.calendar-event-block .calendar-event-contact {
+  color: #174ea6 !important;
+}
+
+.calendar-event-block .calendar-event-meta {
+  color: #4f6f9e !important;
+}
+
+.calendar-event-block.is-task .calendar-event-title {
+  color: #4d5156 !important;
+}
+
+.calendar-event-block.is-task .calendar-event-meta,
+.calendar-event-block.is-task .calendar-event-contact {
+  color: #767b80 !important;
+}
+
+.calendar-now-line {
+  height: 1px;
+  background: #d93025;
+  box-shadow: none;
+}
+
+.calendar-now-line span {
+  display: none;
+}
+
+.calendar-now-line::before {
+  top: -3px;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+}
+
+.month-calendar-grid,
+.month-calendar-cell,
+.month-calendar-grid > div:nth-child(-n + 7) {
+  border-color: #edf0ed !important;
+}
+
+.month-calendar-cell {
+  background: #fff !important;
+}
+
+.calendar-month-event {
+  border-left: 0;
+  background: #edf4ff;
+  color: #174ea6;
+}
+
+html[data-theme='dark'] .app-page-agenda { background: #111512; }
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
