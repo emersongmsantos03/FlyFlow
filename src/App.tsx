@@ -6647,7 +6647,7 @@ Hero Drone`,
               if (!items.length) return null
               return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => {
                 const Icon = item.icon
-                return <button key={item.page} className={`app-nav-item focus-ring flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold transition ${page === item.page ? 'is-active bg-white text-gray-950' : 'text-white/65 hover:bg-white/10 hover:text-white'}`} type="button" onClick={() => setPage(item.page)}><Icon size={16} strokeWidth={1.8} />{item.label}</button>
+                return <button key={item.page} className={`app-nav-item focus-ring flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold transition ${page === item.page ? 'is-active' : 'text-white/65 hover:bg-white/10 hover:text-white'}`} type="button" onClick={() => setPage(item.page)}><Icon size={16} strokeWidth={1.8} />{item.label}</button>
               })}</div></div>
             })}
           </nav>
