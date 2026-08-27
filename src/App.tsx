@@ -7533,6 +7533,18 @@ Hero Drone`,
               calendarView={calendarView}
               onCalendarViewChange={setCalendarView}
               onCreateTask={openTaskModal}
+              onQuickCreateTask={(title, dueAt) => void saveTask({
+                title,
+                description: '',
+                taskType: 'Tarefa',
+                dueAt,
+                durationMinutes: 15,
+                priority: 'Média',
+                leadIds: [],
+                clientIds: [],
+                responsibleUserId: activeUserId,
+                createGoogleCalendar: false,
+              })}
               onCreateEvent={(defaults) => openAppointmentModal({
                 title: '',
                 appointmentType: 'Evento',
@@ -9638,6 +9650,7 @@ function AgendaPage({
   calendarView,
   onCalendarViewChange,
   onCreateTask,
+  onQuickCreateTask,
   onCreateEvent,
   onOpenAppointment,
   onOpenTask,
@@ -9649,6 +9662,7 @@ function AgendaPage({
   calendarView: 'mensal' | 'semanal' | 'diaria' | 'lista'
   onCalendarViewChange: (view: 'mensal' | 'semanal' | 'diaria' | 'lista') => void
   onCreateTask: (defaults?: TaskFormDefaults) => void
+  onQuickCreateTask: (title: string, dueAt: string) => void
   onCreateEvent: (defaults?: AppointmentFormDefaults) => void
   onOpenAppointment: (appointment: Appointment) => void
   onOpenTask: (task: TaskItem) => void
@@ -9675,6 +9689,9 @@ function AgendaPage({
   const [statusFilter, setStatusFilter] = useState<'ativos' | 'todos' | Appointment['status']>('ativos')
   const [calendarSearch, setCalendarSearch] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [quickTasksOpen, setQuickTasksOpen] = useState(true)
+  const [quickTaskTitle, setQuickTaskTitle] = useState('')
+  const [quickTaskDay, setQuickTaskDay] = useState<'today' | 'tomorrow'>('today')
   const [createChoice, setCreateChoice] = useState<{ startAt?: string; endAt?: string } | null>(null)
   const taskByAppointmentId = new Map(state.tasks.filter((task) => task.appointmentId).map((task) => [task.appointmentId!, task]))
   const appointmentResponsibleId = (appointment: Appointment) => {
@@ -9738,6 +9755,27 @@ function AgendaPage({
     setStatusFilter('ativos')
     setCalendarSearch('')
   }
+  const activeQuickTasks = state.tasks
+    .filter((task) => task.status !== 'Concluída' && task.status !== 'Cancelada')
+    .filter((task) => dateInputFromDate(new Date(task.dueAt)) >= dateInput())
+    .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
+  const todayQuickTasks = activeQuickTasks.filter((task) => dateInputFromDate(new Date(task.dueAt)) === dateInput())
+  const upcomingQuickTasks = activeQuickTasks.filter((task) => dateInputFromDate(new Date(task.dueAt)) > dateInput())
+  const submitQuickTask = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const title = quickTaskTitle.trim()
+    if (!title) return
+    const due = new Date()
+    if (quickTaskDay === 'tomorrow') due.setDate(due.getDate() + 1)
+    due.setHours(9, 0, 0, 0)
+    if (quickTaskDay === 'today' && due.getTime() < Date.now()) {
+      const now = new Date()
+      now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0)
+      due.setTime(now.getTime())
+    }
+    onQuickCreateTask(title, dateTimeInputFromDate(due))
+    setQuickTaskTitle('')
+  }
 
   useEffect(() => {
     const handleCalendarShortcuts = (event: KeyboardEvent) => {
@@ -9780,6 +9818,7 @@ function AgendaPage({
           <label className="agenda-date-jump" title="Ir para uma data"><CalendarDays size={15} /><input aria-label="Ir para uma data" type="date" value={dateInputFromDate(calendarDate)} onChange={(event) => { if (event.currentTarget.value) setCalendarDate(new Date(`${event.currentTarget.value}T12:00:00`)) }} /></label>
         </div>
         <button className={`agenda-toolbar-search ${filtersOpen || hasFilters ? 'is-active' : ''}`} type="button" aria-label="Buscar e filtrar" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><Search size={18} />{hasFilters ? <i /> : null}</button>
+        <button className={`agenda-toolbar-tasks ${quickTasksOpen ? 'is-active' : ''}`} type="button" aria-label="Tarefas rápidas" aria-expanded={quickTasksOpen} onClick={() => setQuickTasksOpen((open) => !open)}><CheckCircle2 size={18} />{activeQuickTasks.length ? <span>{activeQuickTasks.length}</span> : null}</button>
         <div className="erp-segmented-control" aria-label="Visualização da agenda">
           {([['mensal', 'Mês'], ['semanal', 'Semana'], ['diaria', 'Dia'], ['lista', 'Lista']] as const).map(([view, label]) => (
             <button key={view} className={calendarView === view ? 'is-active' : ''} type="button" onClick={() => onCalendarViewChange(view)}>{label}</button>
@@ -9795,6 +9834,15 @@ function AgendaPage({
         <label><CheckCircle2 size={15} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as typeof statusFilter)}><option value="ativos">Somente ativos</option><option value="todos">Todos os status</option><option value="Agendado">Agendados</option><option value="Concluído">Concluídos</option><option value="Cancelado">Cancelados</option></select></label>
         {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}
       </section> : null}
+
+      {quickTasksOpen ? <aside className="agenda-quick-tasks" aria-label="Tarefas rápidas">
+        <header><div><CheckCircle2 size={17} /><span><strong>Tarefas rápidas</strong><small>Adicione e conclua sem interromper seu dia.</small></span></div><button type="button" aria-label="Fechar tarefas rápidas" onClick={() => setQuickTasksOpen(false)}><X size={16} /></button></header>
+        <form onSubmit={submitQuickTask}><Plus size={16} /><input aria-label="Nova tarefa rápida" autoFocus placeholder="Adicionar uma tarefa…" value={quickTaskTitle} onChange={(event) => setQuickTaskTitle(event.currentTarget.value)} /><div><button className={quickTaskDay === 'today' ? 'is-active' : ''} type="button" onClick={() => setQuickTaskDay('today')}>Hoje</button><button className={quickTaskDay === 'tomorrow' ? 'is-active' : ''} type="button" onClick={() => setQuickTaskDay('tomorrow')}>Amanhã</button></div><button type="submit" disabled={!quickTaskTitle.trim()}>Adicionar</button></form>
+        <div className="agenda-quick-tasks__list">
+          {[{ label: 'Hoje', items: todayQuickTasks }, { label: 'Próximas', items: upcomingQuickTasks }].map((group) => group.items.length ? <section key={group.label}><h3>{group.label}<span>{group.items.length}</span></h3>{group.items.slice(0, 8).map((task) => <article key={task.id}><button className="agenda-quick-check" type="button" aria-label={`Concluir ${task.title}`} onClick={() => onToggleTask(task)}><Check size={13} /></button><button type="button" onClick={() => onOpenTask(task)}><strong>{task.title}</strong><small>{new Date(task.dueAt).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })} · {new Date(task.dueAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</small></button></article>)}</section> : null)}
+          {!activeQuickTasks.length ? <div className="agenda-quick-empty"><CheckCircle2 size={22} /><strong>Tudo em dia</strong><small>Adicione algo acima quando lembrar.</small></div> : null}
+        </div>
+      </aside> : null}
 
       {conflicts.length ? (
         <button className="agenda-conflict-alert" type="button" onClick={focusFirstConflict}>
