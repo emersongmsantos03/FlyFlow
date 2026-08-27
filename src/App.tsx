@@ -9674,6 +9674,7 @@ function AgendaPage({
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<'ativos' | 'todos' | Appointment['status']>('ativos')
   const [calendarSearch, setCalendarSearch] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [createChoice, setCreateChoice] = useState<{ startAt?: string; endAt?: string } | null>(null)
   const taskByAppointmentId = new Map(state.tasks.filter((task) => task.appointmentId).map((task) => [task.appointmentId!, task]))
   const appointmentResponsibleId = (appointment: Appointment) => {
@@ -9743,16 +9744,6 @@ function AgendaPage({
     : nextTodayAppointment?.leadId
       ? state.leads.find((lead) => lead.id === nextTodayAppointment.leadId)
       : undefined
-  const nextSevenDays = addCalendarDays(todayKey, 7)
-  const upcomingAppointments = visibleAppointments.filter((appointment) => {
-    const key = dateInputFromDate(new Date(appointment.startAt))
-    return appointment.status !== 'Cancelado' && key >= todayKey && key <= nextSevenDays
-  })
-  const pendingConfirmations = upcomingAppointments.filter((appointment) =>
-    appointment.appointmentType === 'Captação' &&
-    appointment.confirmationStatus !== 'Confirmado' &&
-    appointment.status !== 'Concluído',
-  )
   const hasFilters = Boolean(responsibleFilter || contactFilter || typeFilter || calendarSearch.trim() || statusFilter !== 'ativos')
   const clearFilters = () => {
     setResponsibleFilter('')
@@ -9799,37 +9790,11 @@ function AgendaPage({
         action={<Button type="button" title="Atalho: N" onClick={() => setCreateChoice({})}><Plus size={16} /> Criar</Button>}
       />
 
-      <section className="agenda-day-command">
-        <div className="agenda-day-command__date"><span>{new Date().toLocaleDateString('pt-BR', { weekday: 'long' })}</span><strong>{new Date().getDate()}</strong><small>{new Date().toLocaleDateString('pt-BR', { month: 'long' })}</small></div>
-        <div className="agenda-day-command__focus">
-          <span>{nextTodayAppointment ? (new Date(nextTodayAppointment.startAt).getTime() <= nowTimestamp ? 'ACONTECENDO AGORA' : 'PRÓXIMO DO SEU DIA') : 'SEU DIA ESTÁ LIVRE'}</span>
-          <strong>{nextTodayAppointment?.title || 'Reserve um momento para planejar'}</strong>
-          <p>{nextTodayAppointment ? `${new Date(nextTodayAppointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} – ${new Date(nextTodayAppointment.endAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${nextContact ? ` · ${contactDisplayName(nextContact)}` : ''}` : 'Adicione tarefas e eventos para transformar prioridades em um plano claro.'}</p>
-        </div>
-        <div className="agenda-day-command__progress">
-          <div><span>Ocupado</span><strong>{formatDurationLabel(todayScheduledMinutes)}</strong></div>
-          <div><span>Tarefas</span><strong>{completedTodayTasks}/{todayTasks.length}</strong></div>
-        </div>
-        <div className="agenda-day-command__actions"><button type="button" onClick={() => { setCalendarDate(new Date()); onCalendarViewChange('diaria') }}><Eye size={15} /> Ver meu dia</button><button type="button" onClick={() => onCreateTask()}><CheckCircle2 size={15} /> Tarefa</button></div>
-      </section>
-
-      <section className="agenda-summary-strip">
-        <div><i className="agenda-metric-icon"><Clock size={18} /></i><span>Hoje</span><strong>{todayAppointments.length}</strong><small>compromissos</small></div>
-        <div><i className="agenda-metric-icon"><CalendarDays size={18} /></i><span>Próximos 7 dias</span><strong>{upcomingAppointments.length}</strong><small>itens planejados</small></div>
-        <div><i className="agenda-metric-icon"><Camera size={18} /></i><span>Captações</span><strong>{upcomingAppointments.filter((item) => item.appointmentType === 'Captação').length}</strong><small>na próxima semana</small></div>
-        <div className={pendingConfirmations.length ? 'is-attention' : ''}><i className="agenda-metric-icon"><MessageCircle size={18} /></i><span>Confirmações</span><strong>{pendingConfirmations.length}</strong><small>{pendingConfirmations.length ? 'aguardando cliente' : 'tudo confirmado'}</small></div>
-        <div
-          className={`${conflicts.length ? 'is-warning is-clickable' : ''}`}
-          role={conflicts.length ? 'button' : undefined}
-          tabIndex={conflicts.length ? 0 : undefined}
-          onClick={conflicts.length ? focusFirstConflict : undefined}
-          onKeyDown={conflicts.length ? (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              focusFirstConflict()
-            }
-          } : undefined}
-        ><i className="agenda-metric-icon"><AlertTriangle size={18} /></i><span>Conflitos</span><strong>{conflicts.length}</strong><small>{conflicts.length ? 'clique para revisar' : 'agenda organizada'}</small></div>
+      <section className="agenda-brief" aria-label="Resumo do dia">
+        <span className="agenda-brief__date"><CalendarDays size={15} /> {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+        <span className="agenda-brief__next"><strong>{nextTodayAppointment ? (new Date(nextTodayAppointment.startAt).getTime() <= nowTimestamp ? 'Agora' : 'Próximo') : 'Hoje'}</strong>{nextTodayAppointment ? `${new Date(nextTodayAppointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${nextTodayAppointment.title}${nextContact ? ` · ${contactDisplayName(nextContact)}` : ''}` : 'Nenhum compromisso pendente'}</span>
+        <span className="agenda-brief__meta">{todayAppointments.length} itens · {formatDurationLabel(todayScheduledMinutes)}{todayTasks.length ? ` · ${completedTodayTasks}/${todayTasks.length} tarefas` : ''}</span>
+        <button type="button" onClick={() => { setCalendarDate(new Date()); onCalendarViewChange('diaria') }}>Ver hoje</button>
       </section>
 
       <section className="agenda-control-bar">
@@ -9847,13 +9812,14 @@ function AgendaPage({
         </div>
       </section>
 
-      <section className="agenda-filter-bar" aria-label="Filtros da agenda">
+      <section className={`agenda-filter-bar ${filtersOpen ? 'is-open' : 'is-collapsed'}`} aria-label="Filtros da agenda">
         <label className="agenda-search-field"><Search size={15} /><input aria-label="Buscar na agenda" placeholder="Buscar evento, cliente ou local" value={calendarSearch} onChange={(event) => setCalendarSearch(event.currentTarget.value)} /></label>
-        <label><Users size={15} /><select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.currentTarget.value)}><option value="">Todos os responsáveis</option>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+        <button className="agenda-filter-toggle" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><List size={15} /> Filtros{hasFilters ? <i /> : null}<ChevronDown size={14} /></button>
+        {filtersOpen ? <><label><Users size={15} /><select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.currentTarget.value)}><option value="">Todos os responsáveis</option>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
         <label><ContactRound size={15} /><select value={contactFilter} onChange={(event) => setContactFilter(event.currentTarget.value)}><option value="">Todos os contatos</option>{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={`client:${client.id}`}>{contactDisplayName(client)}</option>)}{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={`lead:${lead.id}`}>{contactDisplayName(lead)}</option>)}</select></label>
         <label><List size={15} /><select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)}><option value="">Todos os tipos</option>{appointmentTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
         <label><CheckCircle2 size={15} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as typeof statusFilter)}><option value="ativos">Somente ativos</option><option value="todos">Todos os status</option><option value="Agendado">Agendados</option><option value="Concluído">Concluídos</option><option value="Cancelado">Cancelados</option></select></label>
-        {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}
+        {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}</> : <span className="agenda-visible-count">{visibleAppointments.length} itens</span>}
       </section>
 
       {conflicts.length ? (
@@ -12587,7 +12553,6 @@ function TimeGridCalendar({
                         className="calendar-quarter-slot"
                         type="button"
                         aria-label={`Criar item às ${timeLabel}, duração inicial de 15 minutos`}
-                        title={`${timeLabel} · criar item de 15 min`}
                         onClick={() => onCreateAt(dateTimeInputFromDate(startAt), dateTimeInputFromDate(endAt))}
                       />
                     })}

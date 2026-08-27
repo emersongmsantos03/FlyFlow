@@ -6883,6 +6883,123 @@ html[data-theme='dark'] .agenda-day-command__focus strong { color: #f0f4f0; }
 html[data-theme='dark'] .agenda-day-command__progress,
 html[data-theme='dark'] .agenda-day-command__actions button { border-color: #303832; background: #1a201b; }
 
+/* Agenda clean pass: keep capability, remove dashboard noise. */
+.agenda-page { gap: 0.7rem !important; }
+.agenda-page .page-toolbar { min-height: auto; margin: 0; padding-block: 0.25rem 0.55rem; }
+.agenda-page .page-toolbar h1 { font-size: clamp(1.65rem, 2.5vw, 2.1rem); }
+.agenda-page .page-toolbar p { margin-top: 0.15rem; }
+
+.agenda-brief {
+  display: flex;
+  min-height: 2.8rem;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #e2e6e2;
+  border-radius: 0.7rem;
+  background: #fff;
+  color: #667068;
+  font-size: 0.68rem;
+  box-shadow: none;
+}
+
+.agenda-brief__date { display: inline-flex; align-items: center; gap: 0.4rem; color: #4f5851; font-weight: 750; text-transform: capitalize; white-space: nowrap; }
+.agenda-brief__date svg { color: #1a73e8; }
+.agenda-brief__next { min-width: 0; overflow: hidden; flex: 1; padding-left: 0.85rem; border-left: 1px solid #e5e8e5; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-brief__next strong { margin-right: 0.4rem; color: #1a73e8; }
+.agenda-brief__meta { color: #858d86; white-space: nowrap; }
+.agenda-brief > button { min-height: 1.95rem; padding: 0 0.65rem; border-radius: 0.45rem; color: #1a73e8; font-size: 0.65rem; font-weight: 800; }
+.agenda-brief > button:hover { background: #f1f6fe; }
+
+.agenda-page .agenda-control-bar {
+  position: static;
+  min-height: 3.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #e2e6e2;
+  border-radius: 0.7rem;
+  box-shadow: none;
+}
+
+.agenda-page .agenda-period-navigation > button,
+.agenda-page .agenda-date-jump { border-color: transparent; background: transparent; }
+.agenda-page .agenda-period-navigation > button:hover,
+.agenda-page .agenda-date-jump:hover { background: #f1f3f1; }
+.agenda-page .agenda-today-button { border: 1px solid #dadfda !important; }
+.agenda-page .erp-segmented-control { padding: 0.18rem; background: #f3f5f3; }
+.agenda-page .erp-segmented-control button { min-height: 2.15rem; padding-inline: 0.85rem; }
+.agenda-page .erp-segmented-control button.is-active { background: #fff !important; color: #1a73e8 !important; box-shadow: 0 1px 4px rgb(24 40 29 / 0.1) !important; }
+
+.agenda-page .agenda-filter-bar,
+.agenda-page .agenda-filter-bar.is-collapsed {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) auto auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.agenda-page .agenda-filter-bar.is-open { grid-template-columns: minmax(14rem, 1.4fr) repeat(4, minmax(8rem, 1fr)) auto; }
+.agenda-page .agenda-filter-bar > label,
+.agenda-page .agenda-filter-bar > span,
+.agenda-page .agenda-filter-bar > button { min-height: 2.45rem; border-radius: 0.6rem; box-shadow: none; }
+.agenda-filter-toggle { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.7rem !important; color: #626b64; font-size: 0.67rem; font-weight: 800; }
+.agenda-filter-toggle i { width: 0.42rem; height: 0.42rem; border-radius: 50%; background: #1a73e8; }
+.agenda-visible-count { border: 0 !important; background: transparent !important; color: #929993 !important; }
+
+.agenda-conflict-alert {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.7rem;
+  border-color: #f1d18b;
+  border-radius: 0.6rem;
+  background: #fffdf7;
+  color: #825b14;
+  font-size: 0.67rem;
+}
+.agenda-conflict-alert svg { width: 15px; height: 15px; }
+
+.time-grid-panel,
+.month-calendar-panel { border-color: #e1e5e1 !important; border-radius: 0.7rem !important; box-shadow: none !important; }
+.time-grid-panel > div:first-child,
+.month-calendar-panel > div:first-child { min-height: 2.8rem; padding-block: 0.6rem !important; }
+.time-grid-panel > div:first-child h2,
+.month-calendar-panel > div:first-child h2 { font-size: 0.8rem !important; font-weight: 750 !important; }
+
+.time-grid-panel .calendar-time-slot { background-image: none !important; }
+.calendar-quarter-slot { border-top-color: transparent !important; }
+.calendar-quarter-slot:hover,
+.calendar-quarter-slot:focus-visible { background: rgb(26 115 232 / 0.045); box-shadow: inset 2px 0 #1a73e8; }
+
+.calendar-event-block {
+  border-color: #dfe4df !important;
+  border-left-color: var(--calendar-item-color) !important;
+  border-radius: 0.35rem !important;
+  background: #fff !important;
+  box-shadow: 0 1px 2px rgb(20 30 22 / 0.045) !important;
+}
+.calendar-event-block:hover { border-color: #cbd2cb !important; background: #fafcfb !important; box-shadow: 0 2px 7px rgb(20 30 22 / 0.09) !important; }
+.calendar-event-title { font-size: 0.69rem; font-weight: 720; }
+.calendar-event-meta { color: #7e877f; font-weight: 550; }
+.calendar-event-contact { color: #687269; }
+.calendar-event-block [data-resize-handle] { background: transparent; opacity: 0; }
+.calendar-event-block:hover [data-resize-handle] { opacity: 1; }
+
+@media (max-width: 900px) {
+  .agenda-page .agenda-filter-bar.is-open { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agenda-page .agenda-filter-bar.is-open .agenda-search-field { grid-column: 1 / -1; }
+}
+
+@media (max-width: 700px) {
+  .agenda-brief { display: grid; grid-template-columns: 1fr auto; }
+  .agenda-brief__next { grid-column: 1 / -1; grid-row: 2; padding: 0.45rem 0 0; border-top: 1px solid #e5e8e5; border-left: 0; }
+  .agenda-brief__meta { display: none; }
+  .agenda-page .agenda-filter-bar, .agenda-page .agenda-filter-bar.is-collapsed { grid-template-columns: 1fr auto; }
+  .agenda-page .agenda-filter-bar.is-open { grid-template-columns: 1fr; }
+  .agenda-visible-count { display: none !important; }
+}
+
+html[data-theme='dark'] .agenda-brief,
+html[data-theme='dark'] .calendar-event-block { border-color: #303732 !important; background: #171c18 !important; }
+html[data-theme='dark'] .agenda-page .erp-segmented-control button.is-active { background: #242b25 !important; color: #8ab4f8 !important; }
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
