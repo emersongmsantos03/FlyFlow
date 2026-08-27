@@ -7834,6 +7834,142 @@ html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active svg {
   color: #b8890b !important;
 }
 
+/* Light, quiet sidebar for the default theme. */
+html:not([data-theme='dark']) .app-sidebar {
+  border-right: 1px solid #e2e6e2 !important;
+  background: #f5f7f4 !important;
+  color: #343a35 !important;
+  box-shadow: none !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand {
+  min-height: 5.25rem !important;
+  border-bottom: 1px solid #e5e8e5 !important;
+  background: transparent;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand img {
+  filter: none;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand h1 {
+  color: #242a25 !important;
+  font-size: 0.9rem !important;
+  font-weight: 780 !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand p {
+  color: #9c7916 !important;
+  font-size: 0.53rem !important;
+  letter-spacing: 0.1em;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus {
+  margin-top: 0.65rem;
+  border-color: #dde4e8;
+  background: #edf2f5;
+  color: #343b36;
+  box-shadow: none;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus:hover,
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus.is-active {
+  border-color: #cfd9df;
+  background: #e7edf1;
+  transform: none;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-date {
+  background: #fff;
+  color: #49708a;
+  box-shadow: 0 1px 2px rgb(35 48 39 / 0.06);
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-copy small {
+  color: #668399;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-copy strong {
+  color: #343b36;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-copy em,
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus > svg {
+  color: #87918a;
+}
+
+html:not([data-theme='dark']) .app-sidebar nav {
+  padding: 0.7rem 0.65rem !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-group {
+  margin-bottom: 0.7rem !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-group > p {
+  margin-bottom: 0.25rem !important;
+  color: #9aa19b !important;
+  font-size: 0.51rem !important;
+  font-weight: 800;
+  letter-spacing: 0.14em !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item {
+  min-height: 2.35rem !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: #69716b !important;
+  font-size: 0.7rem !important;
+  font-weight: 620 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item svg {
+  color: #89918b !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item:hover {
+  border-color: transparent !important;
+  background: #ecefec !important;
+  color: #353b36 !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item:hover svg {
+  color: #667069 !important;
+  transform: none;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active {
+  border-color: transparent !important;
+  background: #e3e7e4 !important;
+  color: #2f3530 !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active::before {
+  display: none !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active svg {
+  color: #66716a !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-sidebar-footer {
+  border-color: #e2e6e2 !important;
+  background: #f1f3f0 !important;
+  color: #7f8781 !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-sync-status {
+  color: #7c847e !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-admin-menu summary {
+  color: #858c86 !important;
+}
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
