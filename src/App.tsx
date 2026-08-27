@@ -13414,8 +13414,6 @@ function AppointmentForm({
   const watchedProjectId = watch('projectId')
   const watchedClientId = watch('clientId')
   const watchedLeadId = watch('leadId')
-  const watchedStatus = watch('status')
-  const watchedAppointmentType = watch('appointmentType')
   const watchedColor = watch('color')
   const watchedStartAt = watch('startAt')
   const watchedEndAt = watch('endAt')
@@ -13441,14 +13439,6 @@ function AppointmentForm({
       detail: client.city || 'Sem cidade',
     })),
   ]
-  const selectedProject = watchedProjectId ? state.projects.find((project) => project.id === watchedProjectId) : undefined
-  const selectedContactLabel = contactOptions.find((contact) => contact.key === selectedContactKey)?.label ?? 'Sem contato vinculado'
-  const selectedProjectLabel = selectedProject
-    ? `${selectedProject.projectCode} - ${selectedProject.name}`
-    : watchedProjectId
-      ? 'Projeto não localizado'
-      : 'Sem projeto vinculado'
-
   const chooseContact = (key: string) => {
     const [type, id] = key.split(':')
     if (type === 'lead') {
@@ -13497,23 +13487,6 @@ function AppointmentForm({
       <input type="hidden" {...register('leadId')} />
       <input type="hidden" {...register('color')} />
       <input type="hidden" {...register('address')} />
-      {isEditing ? (
-        <div className="appointment-form__editing">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-gray-500">Agendamento vinculado</p>
-              <h3 className="mt-1 text-base font-black text-gray-950">{appointment?.title}</h3>
-              <p className="mt-1 text-sm text-gray-600">{selectedContactLabel}</p>
-              <p className="text-sm text-gray-500">{selectedProjectLabel}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Tag>{watchedAppointmentType}</Tag>
-              <StatusBadge>{watchedStatus}</StatusBadge>
-            </div>
-          </div>
-          <p className="mt-3 text-sm text-gray-600">Edite só o que muda de fato: nome, horário, endereço, status e observações.</p>
-        </div>
-      ) : null}
       <section className="appointment-form__section">
         <header className="appointment-form__section-heading">
           <span><CalendarDays size={17} /></span>
@@ -13521,12 +13494,12 @@ function AppointmentForm({
         </header>
         <div className="appointment-form__grid">
           <div className="md:col-span-2"><InputField label={isEditing ? 'Título' : 'Título do agendamento'} error={getError(errors.title?.message)}><input autoFocus={!isEditing} className="field-input" placeholder="Ex.: Reunião de alinhamento com cliente" {...register('title')} /></InputField></div>
-          {!isEditing ? <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><Select options={appointmentTypes} register={register('appointmentType')} /></InputField> : null}
+          <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><Select options={appointmentTypes} register={register('appointmentType')} /></InputField>
           <InputField label="Status" error={getError(errors.status?.message)}><Select options={appointmentStatuses} register={register('status')} /></InputField>
         </div>
       </section>
 
-      {!isEditing ? <section className="appointment-form__section">
+      <section className="appointment-form__section">
         <header className="appointment-form__section-heading">
           <span><ContactRound size={17} /></span>
           <div><strong>Vínculos</strong><small>Conecte o evento ao contato e ao projeto correspondente.</small></div>
@@ -13542,7 +13515,7 @@ function AppointmentForm({
             <select className="field-input" {...register('projectId')}><option value="">Sem projeto vinculado</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select>
           </InputField>
         </div>
-      </section> : null}
+      </section>
 
       <section className="appointment-form__section">
         <header className="appointment-form__section-heading">
@@ -13581,34 +13554,30 @@ function AppointmentForm({
         </header>
         <div className="appointment-form__grid">
           <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24 resize-y" placeholder="Briefing, pontos importantes, links ou instruções…" {...register('notes')} /></InputField></div>
-          {!isEditing ? (
-            <div className="md:col-span-2">
-              <InputField label="Cor na agenda" error={getError(errors.color?.message)}>
-                <div className="appointment-form__colors">
-                  {appointmentColorOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      aria-label={option.label}
-                      aria-pressed={watchedColor === option.value}
-                      className={watchedColor === option.value ? 'is-selected' : ''}
-                      style={{ '--appointment-color': option.value } as React.CSSProperties}
-                      type="button"
-                      onClick={() => setValue('color', option.value)}
-                      title={option.label}
-                    ><span />{watchedColor === option.value ? <CheckCircle2 size={14} /> : null}</button>
-                  ))}
-                </div>
-              </InputField>
-            </div>
-          ) : null}
-          {!isEditing ? (
-            <label className={`appointment-form__calendar-sync md:col-span-2 ${watchedCreateGoogleCalendar ? 'is-active' : ''}`}>
-              <input type="checkbox" {...register('createGoogleCalendar')} />
-              <span><CalendarDays size={18} /></span>
-              <div><strong>Adicionar ao Google Calendar</strong><small>O evento será sincronizado automaticamente após salvar.</small></div>
-              <i>{watchedCreateGoogleCalendar ? 'Ativado' : 'Desativado'}</i>
-            </label>
-          ) : null}
+          <div className="md:col-span-2">
+            <InputField label="Cor na agenda" error={getError(errors.color?.message)}>
+              <div className="appointment-form__colors">
+                {appointmentColorOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    aria-label={option.label}
+                    aria-pressed={watchedColor === option.value}
+                    className={watchedColor === option.value ? 'is-selected' : ''}
+                    style={{ '--appointment-color': option.value } as React.CSSProperties}
+                    type="button"
+                    onClick={() => setValue('color', option.value)}
+                    title={option.label}
+                  ><span />{watchedColor === option.value ? <CheckCircle2 size={14} /> : null}</button>
+                ))}
+              </div>
+            </InputField>
+          </div>
+          <label className={`appointment-form__calendar-sync md:col-span-2 ${watchedCreateGoogleCalendar ? 'is-active' : ''}`}>
+            <input type="checkbox" {...register('createGoogleCalendar')} />
+            <span><CalendarDays size={18} /></span>
+            <div><strong>Google Calendar</strong><small>{isEditing ? 'Atualizar este evento no Google após salvar.' : 'Sincronizar automaticamente após criar.'}</small></div>
+            <i>{watchedCreateGoogleCalendar ? 'Ativo' : 'Opcional'}</i>
+          </label>
         </div>
       </section>
 

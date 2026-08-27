@@ -7343,6 +7343,209 @@ html[data-theme='dark'] .agenda-main-toolbar .erp-segmented-control button.is-ac
 
 html[data-theme='dark'] .app-page-agenda { background: #111512; }
 
+/* Appointment create/edit — one unified, lightweight experience. */
+.modal-surface:has(.appointment-form) {
+  width: min(46rem, calc(100vw - 2rem)) !important;
+  max-width: 46rem !important;
+  border-color: #e5e8e5;
+  border-radius: 0.85rem !important;
+  background: #fff;
+  box-shadow: 0 18px 55px rgb(28 38 31 / 0.16) !important;
+}
+
+.modal-surface:has(.appointment-form) .modal-header {
+  min-height: 3.6rem;
+  padding: 0.7rem 1rem !important;
+  background: #fff !important;
+  backdrop-filter: none;
+}
+
+.modal-surface:has(.appointment-form) .modal-header h2 {
+  color: #343b36;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.appointment-form {
+  gap: 0;
+  padding: 0 1rem 0.75rem;
+}
+
+.appointment-form__section {
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid #edf0ed;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.appointment-form__section:last-of-type {
+  border-bottom: 0;
+}
+
+.appointment-form__section-heading {
+  min-height: 2.8rem;
+  padding: 0.65rem 0 0.35rem;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.appointment-form__section-heading > span {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: #edf4ff;
+  color: #1967d2;
+}
+
+.appointment-form__section-heading strong {
+  color: #4a524c;
+  font-size: 0.69rem;
+  font-weight: 750;
+}
+
+.appointment-form__section-heading small {
+  color: #929994;
+  font-size: 0.58rem;
+  font-weight: 550;
+}
+
+.appointment-form__grid {
+  gap: 0.6rem 0.75rem;
+  padding: 0.45rem 0 0.75rem;
+}
+
+.appointment-form .field-label {
+  color: #727a74;
+  font-size: 0.61rem;
+  font-weight: 680;
+}
+
+.appointment-form .field-input {
+  min-height: 2.4rem !important;
+  border-color: #e1e5e1 !important;
+  border-radius: 0.55rem !important;
+  background: #fff !important;
+  font-size: 0.72rem !important;
+  box-shadow: none;
+}
+
+.appointment-form .field-input:hover {
+  border-color: #cfd5cf !important;
+}
+
+.appointment-form .field-input:focus {
+  border-color: #8ab4f8 !important;
+  box-shadow: 0 0 0 2px rgb(26 115 232 / 0.09) !important;
+}
+
+.appointment-form__duration {
+  min-width: 4.6rem;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  background: #f6f8f6;
+}
+
+.appointment-duration-presets {
+  gap: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.appointment-duration-presets > span {
+  display: none;
+}
+
+.appointment-duration-presets > button {
+  min-height: 1.75rem;
+  padding-inline: 0.55rem;
+  border-color: #e4e7e4;
+  background: #f8faf8;
+  font-size: 0.6rem;
+}
+
+.appointment-duration-presets > button:hover,
+.appointment-duration-presets > button.is-active {
+  border-color: transparent;
+  background: #e8f0fe;
+  color: #1967d2;
+}
+
+.appointment-duration-presets > small {
+  margin-left: auto;
+  font-size: 0.58rem;
+}
+
+.appointment-form__colors {
+  min-height: 2rem;
+  gap: 0.45rem;
+}
+
+.appointment-form__colors button {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-width: 1px;
+}
+
+.appointment-form__colors button.is-selected {
+  border-color: #5f6368;
+  box-shadow: 0 0 0 2px rgb(95 99 104 / 0.1);
+}
+
+.appointment-form__calendar-sync {
+  min-height: 3rem;
+  padding: 0.5rem 0.65rem;
+  border-color: #e6e9e6;
+  border-radius: 0.6rem;
+  background: #fafbfa;
+}
+
+.appointment-form__calendar-sync > span {
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 0.5rem;
+  box-shadow: none;
+}
+
+.appointment-form__calendar-sync.is-active {
+  border-color: #d4e2f8;
+  background: #f5f8fd;
+}
+
+.appointment-form__calendar-sync.is-active > span {
+  background: #e8f0fe;
+  color: #1967d2;
+}
+
+.appointment-form__calendar-sync.is-active i {
+  background: #e8f0fe;
+  color: #1967d2;
+}
+
+.appointment-form__actions {
+  position: sticky;
+  margin: 0 -1rem -0.75rem;
+  padding: 0.65rem 1rem;
+  border-color: #edf0ed;
+  background: rgb(255 255 255 / 0.97);
+  box-shadow: none;
+}
+
+@media (max-width: 639px) {
+  .appointment-form { padding: 0 0.7rem 0.7rem; }
+  .appointment-form__actions { margin: 0 -0.7rem -0.7rem; }
+  .appointment-duration-presets > small { display: none; }
+}
+
+html[data-theme='dark'] .modal-surface:has(.appointment-form),
+html[data-theme='dark'] .modal-surface:has(.appointment-form) .modal-header,
+html[data-theme='dark'] .appointment-form__actions { background: #151a16 !important; }
+html[data-theme='dark'] .appointment-form__section { border-color: #292f2a; }
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
