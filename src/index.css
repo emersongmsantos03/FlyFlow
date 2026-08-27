@@ -6198,6 +6198,284 @@ html[data-theme='dark'] .page-toolbar h1 {
   color: #f2f4ef !important;
 }
 
+/* Agenda 2026 — quieter, faster planning inspired by modern calendar tools. */
+.agenda-page {
+  --agenda-blue: #1a73e8;
+  --agenda-blue-soft: #e8f0fe;
+  max-width: none;
+}
+
+.agenda-page .page-toolbar {
+  margin-bottom: -0.35rem;
+}
+
+.agenda-page .page-toolbar h1 {
+  letter-spacing: -0.035em;
+}
+
+.agenda-page .agenda-summary-strip {
+  border-radius: 0.8rem;
+  box-shadow: none;
+}
+
+.agenda-page .agenda-summary-strip > div {
+  min-height: 4.7rem;
+  padding-block: 0.75rem;
+}
+
+.agenda-page .agenda-control-bar {
+  position: sticky;
+  z-index: 25;
+  top: 0.75rem;
+  justify-content: space-between;
+  padding: 0.6rem;
+  border-radius: 0.8rem;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 2px 8px rgb(30 42 34 / 0.07);
+  backdrop-filter: blur(14px);
+}
+
+.agenda-date-jump {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.55rem;
+  color: var(--text-muted);
+  transition: 150ms ease;
+}
+
+.agenda-date-jump:hover {
+  border-color: #aecbfa;
+  background: var(--agenda-blue-soft);
+  color: var(--agenda-blue);
+}
+
+.agenda-date-jump input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agenda-page .erp-segmented-control button.is-active {
+  background: var(--agenda-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgb(26 115 232 / 0.25);
+}
+
+.agenda-page .agenda-filter-bar {
+  grid-template-columns: minmax(15rem, 1.5fr) repeat(4, minmax(9rem, 1fr)) auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agenda-page .agenda-filter-bar > label,
+.agenda-page .agenda-filter-bar > span,
+.agenda-page .agenda-filter-bar > button {
+  min-height: 2.7rem;
+  border: 1px solid #e0e3e0;
+  border-radius: 0.7rem;
+  background: #fff;
+}
+
+.agenda-search-field input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.agenda-search-field input::placeholder {
+  color: #929a93;
+}
+
+.month-calendar-panel {
+  border-radius: 0.8rem !important;
+  box-shadow: 0 2px 8px rgb(30 42 34 / 0.06) !important;
+}
+
+.month-calendar-panel > div:first-child,
+.time-grid-panel > div:first-child {
+  background: #fff !important;
+  color: var(--text-primary) !important;
+}
+
+.month-calendar-grid {
+  gap: 0 !important;
+  border-top: 1px solid #e3e7e3;
+  border-left: 1px solid #e3e7e3;
+}
+
+.month-calendar-grid > div:nth-child(-n + 7) {
+  min-height: 2.3rem;
+  border-right: 1px solid #e3e7e3;
+  background: #fafbfa;
+}
+
+.month-calendar-cell {
+  min-height: 7.4rem !important;
+  border-width: 0 1px 1px 0 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+}
+
+.month-calendar-cell:hover {
+  z-index: 2;
+  background: #f8fafd !important;
+  box-shadow: inset 0 0 0 1px #aecbfa;
+}
+
+.month-calendar-cell.is-outside-month {
+  background: #fafbfa !important;
+}
+
+.month-calendar-cell.is-outside-month > .month-calendar-day-number,
+.month-calendar-cell.is-outside-month .calendar-month-event {
+  opacity: 0.45;
+}
+
+.month-calendar-day-number {
+  display: grid;
+  width: 1.65rem;
+  height: 1.65rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #4f5750;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.month-calendar-cell.is-today .month-calendar-day-number {
+  background: var(--agenda-blue);
+  color: #fff;
+}
+
+.calendar-month-event {
+  overflow: hidden;
+  padding: 0.22rem 0.35rem;
+  border-left: 3px solid var(--calendar-item-color);
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--calendar-item-color) 11%, #fff);
+  color: #263027;
+  font-size: 0.65rem;
+  font-weight: 720;
+}
+
+.calendar-month-event time {
+  color: #707871;
+  font-size: 0.59rem;
+  font-weight: 650;
+}
+
+.calendar-month-event .is-completed {
+  color: #8a918b;
+  text-decoration: line-through;
+}
+
+.month-calendar-more {
+  padding-left: 0.35rem;
+  color: var(--agenda-blue);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.agenda-empty-state {
+  display: grid;
+  min-height: 18rem;
+  place-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  color: #899189;
+  text-align: center;
+}
+
+.agenda-empty-state strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.agenda-empty-state p {
+  font-size: 0.75rem;
+}
+
+.agenda-empty-state button {
+  margin-top: 0.35rem;
+  color: var(--agenda-blue);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+@media (max-width: 1180px) {
+  .agenda-page .agenda-filter-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .agenda-page .agenda-search-field {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 700px) {
+  .agenda-page .agenda-control-bar {
+    position: static;
+    align-items: stretch;
+  }
+
+  .agenda-page .agenda-period-navigation {
+    width: 100%;
+  }
+
+  .agenda-page .erp-segmented-control {
+    width: 100%;
+  }
+
+  .agenda-page .erp-segmented-control button {
+    flex: 1;
+  }
+
+  .agenda-page .agenda-filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .agenda-page .agenda-search-field {
+    grid-column: 1 / -1;
+  }
+
+  .month-calendar-panel > div:last-child {
+    overflow-x: auto;
+  }
+
+  .month-calendar-grid {
+    min-width: 48rem;
+  }
+}
+
+html[data-theme='dark'] .agenda-page .agenda-control-bar,
+html[data-theme='dark'] .agenda-page .agenda-filter-bar > label,
+html[data-theme='dark'] .agenda-page .agenda-filter-bar > span,
+html[data-theme='dark'] .agenda-page .agenda-filter-bar > button,
+html[data-theme='dark'] .month-calendar-panel > div:first-child,
+html[data-theme='dark'] .time-grid-panel > div:first-child,
+html[data-theme='dark'] .month-calendar-cell {
+  background: #151a16 !important;
+}
+
+html[data-theme='dark'] .month-calendar-cell.is-outside-month,
+html[data-theme='dark'] .month-calendar-grid > div:nth-child(-n + 7) {
+  background: #111512 !important;
+}
+
 /* PW OS inspired module language — Hero Drone edition */
 .module-page{--module-ink:#141a16;--module-muted:#6f776f;--module-line:#dfe4df;--module-soft:#f5f7f4;--module-gold:#d8ae37;position:relative;isolation:isolate;animation:moduleReveal .42s cubic-bezier(.2,.78,.25,1) both}
 .module-page::before{position:absolute;z-index:-1;top:-1.4rem;right:-1rem;width:min(32rem,48vw);height:12rem;border-radius:50%;background:radial-gradient(circle,rgb(216 174 55/.08),transparent 68%);content:"";pointer-events:none}

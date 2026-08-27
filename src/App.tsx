@@ -56,7 +56,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
-import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useForm } from 'react-hook-form'
 import {
@@ -9659,6 +9659,8 @@ function AgendaPage({
   const [responsibleFilter, setResponsibleFilter] = useState('')
   const [contactFilter, setContactFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'ativos' | 'todos' | Appointment['status']>('ativos')
+  const [calendarSearch, setCalendarSearch] = useState('')
   const [createChoice, setCreateChoice] = useState<{ startAt?: string; endAt?: string } | null>(null)
   const taskByAppointmentId = new Map(state.tasks.filter((task) => task.appointmentId).map((task) => [task.appointmentId!, task]))
   const appointmentResponsibleId = (appointment: Appointment) => {
@@ -9673,7 +9675,15 @@ function AgendaPage({
     const matchesContact = !contactFilter ||
       (contactFilter.startsWith('client:') && appointment.clientId === contactFilter.slice(7)) ||
       (contactFilter.startsWith('lead:') && appointment.leadId === contactFilter.slice(5))
-    return matchesResponsible && matchesType && matchesContact
+    const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
+    const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
+    const project = appointment.projectId ? state.projects.find((item) => item.id === appointment.projectId) : undefined
+    const searchableText = `${appointment.title} ${appointment.appointmentType} ${appointment.address || ''} ${appointment.notes || ''} ${client ? contactDisplayName(client) : ''} ${lead ? contactDisplayName(lead) : ''} ${project?.projectCode || ''}`
+    const matchesSearch = !calendarSearch.trim() || matches(searchableText, calendarSearch)
+    const matchesStatus = statusFilter === 'todos'
+      || (statusFilter === 'ativos' && appointment.status !== 'Cancelado' && appointment.status !== 'Concluído')
+      || appointment.status === statusFilter
+    return matchesResponsible && matchesType && matchesContact && matchesSearch && matchesStatus
   })
   const conflicts = findAppointmentConflicts(visibleAppointments)
   const conflictIds = new Set(conflicts.map((appointment) => appointment.id))
@@ -9720,6 +9730,31 @@ function AgendaPage({
     appointment.confirmationStatus !== 'Confirmado' &&
     appointment.status !== 'Concluído',
   )
+  const hasFilters = Boolean(responsibleFilter || contactFilter || typeFilter || calendarSearch.trim() || statusFilter !== 'ativos')
+  const clearFilters = () => {
+    setResponsibleFilter('')
+    setContactFilter('')
+    setTypeFilter('')
+    setStatusFilter('ativos')
+    setCalendarSearch('')
+  }
+
+  useEffect(() => {
+    const handleCalendarShortcuts = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (event.key.toLowerCase() === 'n') {
+        event.preventDefault()
+        setCreateChoice({})
+      }
+      if (event.key.toLowerCase() === 't') {
+        event.preventDefault()
+        setCalendarDate(new Date())
+      }
+    }
+    window.addEventListener('keydown', handleCalendarShortcuts)
+    return () => window.removeEventListener('keydown', handleCalendarShortcuts)
+  }, [])
   const focusFirstConflict = () => {
     const firstConflict = conflicts[0]
     if (!firstConflict) return
@@ -9737,8 +9772,8 @@ function AgendaPage({
     <div className="agenda-page space-y-4">
       <PageToolbar
         title="Agenda"
-        description="Planeje compromissos, captações e retornos sem perder conflitos de horário."
-        action={<Button type="button" onClick={() => setCreateChoice({})}><Plus size={16} /> Criar item</Button>}
+        description="Tudo o que precisa acontecer, no tempo certo."
+        action={<Button type="button" title="Atalho: N" onClick={() => setCreateChoice({})}><Plus size={16} /> Criar</Button>}
       />
 
       <section className="agenda-summary-strip">
@@ -9761,24 +9796,27 @@ function AgendaPage({
       </section>
 
       <section className="agenda-control-bar">
+        <div className="agenda-period-navigation">
+          <button type="button" aria-label="Período anterior" onClick={() => moveCalendar(-1)}><ChevronLeft size={16} /></button>
+          <strong className="capitalize">{calendarLabel}</strong>
+          <button type="button" aria-label="Próximo período" onClick={() => moveCalendar(1)}><ChevronRight size={16} /></button>
+          <button className="agenda-today-button" title="Atalho: T" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</button>
+          <label className="agenda-date-jump" title="Ir para uma data"><CalendarDays size={15} /><input aria-label="Ir para uma data" type="date" value={dateInputFromDate(calendarDate)} onChange={(event) => { if (event.currentTarget.value) setCalendarDate(new Date(`${event.currentTarget.value}T12:00:00`)) }} /></label>
+        </div>
         <div className="erp-segmented-control" aria-label="Visualização da agenda">
           {([['mensal', 'Mês'], ['semanal', 'Semana'], ['diaria', 'Dia'], ['lista', 'Lista']] as const).map(([view, label]) => (
             <button key={view} className={calendarView === view ? 'is-active' : ''} type="button" onClick={() => onCalendarViewChange(view)}>{label}</button>
           ))}
         </div>
-        <div className="agenda-period-navigation">
-          <button type="button" aria-label="Período anterior" onClick={() => moveCalendar(-1)}><ChevronLeft size={16} /></button>
-          <strong className="capitalize">{calendarLabel}</strong>
-          <button type="button" aria-label="Próximo período" onClick={() => moveCalendar(1)}><ChevronRight size={16} /></button>
-          <button className="agenda-today-button" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</button>
-        </div>
       </section>
 
       <section className="agenda-filter-bar" aria-label="Filtros da agenda">
+        <label className="agenda-search-field"><Search size={15} /><input aria-label="Buscar na agenda" placeholder="Buscar evento, cliente ou local" value={calendarSearch} onChange={(event) => setCalendarSearch(event.currentTarget.value)} /></label>
         <label><Users size={15} /><select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.currentTarget.value)}><option value="">Todos os responsáveis</option>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
         <label><ContactRound size={15} /><select value={contactFilter} onChange={(event) => setContactFilter(event.currentTarget.value)}><option value="">Todos os contatos</option>{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={`client:${client.id}`}>{contactDisplayName(client)}</option>)}{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={`lead:${lead.id}`}>{contactDisplayName(lead)}</option>)}</select></label>
         <label><List size={15} /><select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)}><option value="">Todos os tipos</option>{appointmentTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-        {responsibleFilter || contactFilter || typeFilter ? <button type="button" onClick={() => { setResponsibleFilter(''); setContactFilter(''); setTypeFilter('') }}><X size={14} /> Limpar filtros</button> : <span>{visibleAppointments.length} item(ns) visível(is)</span>}
+        <label><CheckCircle2 size={15} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as typeof statusFilter)}><option value="ativos">Somente ativos</option><option value="todos">Todos os status</option><option value="Agendado">Agendados</option><option value="Concluído">Concluídos</option><option value="Cancelado">Cancelados</option></select></label>
+        {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}
       </section>
 
       {conflicts.length ? (
@@ -9798,6 +9836,7 @@ function AgendaPage({
           onCreateAt={requestCreateAtSlot}
           onOpenAppointment={openCalendarItem}
           onToggleTask={onToggleTask}
+          onShowDay={(date) => { setCalendarDate(date); onCalendarViewChange('diaria') }}
         />
       ) : null}
       {calendarView === 'semanal' || calendarView === 'diaria' ? (
@@ -9869,6 +9908,7 @@ function AgendaPage({
               </article>
             )
           })}
+          {!visibleAppointments.length ? <div className="agenda-empty-state"><CalendarDays size={28} /><strong>Nada por aqui</strong><p>Ajuste os filtros ou crie um novo item para começar.</p><button type="button" onClick={clearFilters}>Limpar filtros</button></div> : null}
         </div>
       </Panel>
       ) : null}
@@ -12183,6 +12223,7 @@ function MonthCalendar({
   onCreateAt,
   onOpenAppointment,
   onToggleTask,
+  onShowDay,
 }: {
   appointments: Appointment[]
   state: AppState
@@ -12191,11 +12232,17 @@ function MonthCalendar({
   onCreateAt: (startAt: string, endAt: string) => void
   onOpenAppointment: (appointment: Appointment) => void
   onToggleTask: (task: TaskItem) => void
+  onShowDay: (date: Date) => void
 }) {
   const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
-  const daysInMonth = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 0).getDate()
-  const offset = first.getDay()
-  const cells = Array.from({ length: offset + daysInMonth }, (_, index) => (index < offset ? 0 : index - offset + 1))
+  const gridStart = new Date(first)
+  gridStart.setDate(first.getDate() - first.getDay())
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart)
+    date.setDate(gridStart.getDate() + index)
+    return date
+  })
+  const today = dateInput()
 
   return (
     <Panel className="month-calendar-panel" title="Calendário mensal">
@@ -12203,42 +12250,43 @@ function MonthCalendar({
         {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
           <div key={day} className="p-2 text-center text-xs font-bold uppercase text-gray-500">{day}</div>
         ))}
-        {cells.map((day, index) => {
-          const cell = day ? new Date(anchorDate.getFullYear(), anchorDate.getMonth(), day, 9, 0, 0, 0) : undefined
-          const cellDate = cell ? dateInputFromDate(cell) : ''
+        {cells.map((cell) => {
+          const cellDate = dateInputFromDate(cell)
           const dayAppointments = appointments.filter((appointment) => dateInputFromDate(new Date(appointment.startAt)) === cellDate)
-          const end = cell ? new Date(cell.getTime() + 60 * 60_000) : undefined
+          const createAt = new Date(cell)
+          createAt.setHours(9, 0, 0, 0)
+          const end = new Date(createAt.getTime() + 60 * 60_000)
+          const outsideMonth = cell.getMonth() !== anchorDate.getMonth()
           return (
             <div
-              key={index}
-              className="month-calendar-cell min-h-24 rounded-lg border border-gray-200 bg-gray-50 p-2 text-left transition"
-              role={cell ? 'button' : undefined}
-              tabIndex={cell ? 0 : undefined}
+              key={cellDate}
+              className={`month-calendar-cell min-h-24 border border-gray-200 bg-gray-50 p-2 text-left transition ${outsideMonth ? 'is-outside-month' : ''} ${cellDate === today ? 'is-today' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`${cell.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}: ${dayAppointments.length} itens. Clique para criar.`}
               onClick={() => {
-                if (!cell || !end) return
-                onCreateAt(dateTimeInputFromDate(cell), dateTimeInputFromDate(end))
+                onCreateAt(dateTimeInputFromDate(createAt), dateTimeInputFromDate(end))
               }}
               onKeyDown={(event) => {
-                if (!cell || !end) return
-                if (event.key === 'Enter' || event.key === ' ') onCreateAt(dateTimeInputFromDate(cell), dateTimeInputFromDate(end))
+                if (event.key === 'Enter' || event.key === ' ') onCreateAt(dateTimeInputFromDate(createAt), dateTimeInputFromDate(end))
               }}
             >
-              <p className="text-xs font-black text-gray-950">{day || ''}</p>
+              <p className="month-calendar-day-number">{cell.getDate()}</p>
               <div className="mt-1 space-y-1">
-                {dayAppointments.map((appointment) => {
+                {dayAppointments.slice(0, 3).map((appointment) => {
                   const task = taskByAppointmentId.get(appointment.id)
                   const completed = task?.status === 'Concluída'
                   const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
                   const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
                   const contactName = client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : ''
-                  return <div key={appointment.id} className="rounded bg-white px-1.5 py-1 text-[0.68rem] text-gray-700 hover:bg-gray-100">
-                    {contactName ? <p className="truncate font-black text-[#866800]">{contactName}</p> : null}
+                  return <div key={appointment.id} className="calendar-month-event" style={{ '--calendar-item-color': appointment.color || '#3b82f6' } as CSSProperties}>
                     <div className="flex items-center gap-1">
                       {task ? <button className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 text-transparent'}`} type="button" aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={11} /></button> : null}
-                      <button className={`min-w-0 flex-1 truncate text-left font-bold ${completed ? 'text-gray-400 line-through' : ''}`} type="button" onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment) }}>{appointment.title}</button>
+                      <button className={`min-w-0 flex-1 truncate text-left ${completed ? 'is-completed' : ''}`} title={`${formatDateTime(appointment.startAt)} · ${appointment.title}${contactName ? ` · ${contactName}` : ''}`} type="button" onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment) }}><time>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time> {appointment.title}</button>
                     </div>
                   </div>
                 })}
+                {dayAppointments.length > 3 ? <button className="month-calendar-more" type="button" onClick={(event) => { event.stopPropagation(); onShowDay(cell) }}>+{dayAppointments.length - 3} itens</button> : null}
               </div>
             </div>
           )
