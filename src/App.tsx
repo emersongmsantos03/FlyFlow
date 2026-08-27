@@ -12531,22 +12531,27 @@ function TimeGridCalendar({
               return (
                 <div key={dayKey} data-calendar-day={dayKey} className="relative border-l border-gray-200 bg-white" style={{ height: totalHeight }}>
                   {hours.map((hour, index) => {
-                const startAt = new Date(day)
-                startAt.setHours(hour, 0, 0, 0)
-                const endAt = new Date(startAt.getTime() + 60 * 60_000)
                 return (
                   <div
                     key={`${dayKey}-${hour}`}
-                    className="calendar-time-slot absolute left-0 right-0 border-b border-gray-200 p-2 text-left transition"
+                    className="calendar-time-slot absolute left-0 right-0 border-b border-gray-200 text-left transition"
                     style={{ top: index * hourHeight, height: hourHeight }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Criar tarefa às ${String(hour).padStart(2, '0')}:00`}
-                    onClick={() => onCreateAt(dateTimeInputFromDate(startAt), dateTimeInputFromDate(endAt))}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') onCreateAt(dateTimeInputFromDate(startAt), dateTimeInputFromDate(endAt))
-                    }}
-                  />
+                  >
+                    {[0, 15, 30, 45].map((minute) => {
+                      const startAt = new Date(day)
+                      startAt.setHours(hour, minute, 0, 0)
+                      const endAt = new Date(startAt.getTime() + 15 * 60_000)
+                      const timeLabel = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+                      return <button
+                        key={minute}
+                        className="calendar-quarter-slot"
+                        type="button"
+                        aria-label={`Criar item às ${timeLabel}, duração inicial de 15 minutos`}
+                        title={`${timeLabel} · criar item de 15 min`}
+                        onClick={() => onCreateAt(dateTimeInputFromDate(startAt), dateTimeInputFromDate(endAt))}
+                      />
+                    })}
+                  </div>
                 )
               })}
 
@@ -13435,6 +13440,12 @@ function AppointmentForm({
   const watchedAddress = watch('address') ?? ''
   const watchedCreateGoogleCalendar = watch('createGoogleCalendar')
   const currentDuration = getDurationMinutes(watchedStartAt, watchedEndAt)
+  const setAppointmentDuration = (minutes: number) => {
+    if (!watchedStartAt) return
+    const start = new Date(watchedStartAt)
+    if (Number.isNaN(start.getTime())) return
+    setValue('endAt', dateTimeInputFromDate(new Date(start.getTime() + minutes * 60_000)), { shouldDirty: true, shouldValidate: true })
+  }
   const selectedContactKey = watchedLeadId ? `lead:${watchedLeadId}` : watchedClientId ? `client:${watchedClientId}` : ''
   const contactOptions = [
     ...state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({
@@ -13560,6 +13571,15 @@ function AppointmentForm({
         <div className="appointment-form__grid">
           <InputField label="Início" error={getError(errors.startAt?.message)}><input className="field-input" type="datetime-local" {...register('startAt')} /></InputField>
           <InputField label="Fim" error={getError(errors.endAt?.message)}><input className="field-input" type="datetime-local" {...register('endAt')} /></InputField>
+          <div className="appointment-duration-presets md:col-span-2" aria-label="Duração rápida">
+            <span>Duração rápida</span>
+            {[15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => (
+              <button key={minutes} className={currentDuration === minutes ? 'is-active' : ''} type="button" onClick={() => setAppointmentDuration(minutes)}>
+                {formatDurationLabel(minutes)}
+              </button>
+            ))}
+            <small>Ou ajuste o horário final livremente.</small>
+          </div>
           <div className="md:col-span-2">
             <MapsAddressField
               label="Endereço ou local"
