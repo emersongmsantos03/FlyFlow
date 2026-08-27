@@ -3551,6 +3551,11 @@ Hero Drone`,
       existingTask ? 'Tarefa atualizada.' : values.leadIds.length || values.clientIds.length ? 'Tarefa criada e vinculada aos contatos.' : 'Tarefa independente criada.',
     )
 
+    // Close optimistically: local state is already updated and remote persistence can finish in the background.
+    setModal(null)
+    setTaskDefaults({})
+    setSelectedTaskId('')
+
     if (cloudflareDataReady) {
       try {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
@@ -3617,9 +3622,6 @@ Hero Drone`,
         setToast(error instanceof Error ? error.message : 'Tarefa salva, mas não foi possível sincronizar com o Google Calendar.')
       }
     }
-    setModal(null)
-    setTaskDefaults({})
-    setSelectedTaskId('')
   }
 
   const setTaskStatus = async (task: TaskItem, status: TaskItem['status']) => {
@@ -3810,6 +3812,10 @@ Hero Drone`,
       },
       selectedAppointmentId ? 'Agendamento atualizado sem duplicar o evento.' : 'Agendamento criado.',
     )
+    // Keep the interface instant while Google Calendar synchronization completes.
+    setModal(null)
+    setAppointmentDefaults({})
+    setSelectedAppointmentId('')
     if (values.createGoogleCalendar) {
       const project = values.projectId ? state.projects.find((item) => item.id === values.projectId) : undefined
       if (!googleWorkspaceConnected) {
@@ -3839,9 +3845,6 @@ Hero Drone`,
         setToast(error instanceof Error ? error.message : 'Evento salvo no FlyFlow, mas não foi possível sincronizar com o Google Calendar.')
       }
     }
-    setModal(null)
-    setAppointmentDefaults({})
-    setSelectedAppointmentId('')
   }
 
   const deleteAppointment = (appointment: Appointment) => {
@@ -13354,44 +13357,45 @@ function TaskForm({
     current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
   )
 
-  return <form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}>
-    {error ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800 sm:col-span-2">{error}</div> : null}
-    {editing && task && onToggleStatus ? <button className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-left sm:col-span-2 ${task.status === 'Concluída' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-gray-200 bg-gray-50 text-gray-800'}`} type="button" onClick={onToggleStatus}>
-      <span><strong className="block text-sm">{task.status === 'Concluída' ? 'Tarefa concluída' : 'Marcar como concluída'}</strong><small className="mt-0.5 block text-xs opacity-75">{task.status === 'Concluída' ? 'Clique para voltar a tarefa para pendente.' : 'A conclusão ficará visível também no calendário.'}</small></span>
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${task.status === 'Concluída' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-gray-300 bg-white text-transparent'}`}><Check size={16} /></span>
+  const taskTypes = ['Tarefa', 'Ligação', 'E-mail', 'WhatsApp', 'Follow-up'] as const
+  return <form className="task-quick-form" onSubmit={submit}>
+    {error ? <div className="task-quick-error"><AlertTriangle size={16} /> {error}</div> : null}
+    {editing && task && onToggleStatus ? <button className={`task-completion-toggle ${task.status === 'Concluída' ? 'is-completed' : ''}`} type="button" onClick={onToggleStatus}>
+      <span className="task-check"><Check size={16} /></span><span><strong>{task.status === 'Concluída' ? 'Tarefa concluída' : 'Marcar como concluída'}</strong><small>{task.status === 'Concluída' ? 'Clique para reabrir' : 'Atualiza também na agenda'}</small></span>
     </button> : null}
-    <div className="sm:col-span-2"><InputField label="Tarefa"><input className="field-input" value={title} onChange={(event) => setTitle(event.currentTarget.value)} placeholder="Ex.: Confirmar horário com o cliente" autoFocus required /></InputField></div>
-    <InputField label="Tipo"><select className="field-input" value={taskType} onChange={(event) => setTaskType(event.currentTarget.value as NonNullable<TaskItem['taskType']>)}>{['Tarefa', 'Ligação', 'E-mail', 'WhatsApp', 'Follow-up'].map((type) => <option key={type}>{type}</option>)}</select></InputField>
-    <div className="sm:col-span-2">
-      <InputField label="Contatos do CRM (opcional)">
-        <details className="rounded-xl border border-gray-200 bg-white">
-          <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-bold text-gray-700">{contactKeys.length ? `${contactKeys.length} contato(s) vinculado(s)` : 'Tarefa sem contato vinculado'}</summary>
-          <div className="max-h-52 space-y-1 overflow-y-auto border-t border-gray-200 p-2">
-            {state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => {
-              const key = `lead:${lead.id}`
-              return <label key={key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-gray-50"><input className="h-4 w-4 accent-[#d8a500]" type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><span className="font-bold text-gray-900">{contactDisplayName(lead)}</span><span className="ml-auto text-xs text-gray-400">Oportunidade</span></label>
-            })}
-            {state.clients.filter((client) => !client.archived).map((client) => {
-              const key = `client:${client.id}`
-              return <label key={key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-gray-50"><input className="h-4 w-4 accent-[#d8a500]" type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><span className="font-bold text-gray-900">{contactDisplayName(client)}</span><span className="ml-auto text-xs text-gray-400">Cliente</span></label>
-            })}
-          </div>
-        </details>
-      </InputField>
+
+    <section className="task-quick-main">
+      <input className="task-title-input" value={title} onChange={(event) => { setTitle(event.currentTarget.value); if (error) setError('') }} placeholder="O que precisa ser feito?" autoFocus required />
+      <div className="task-type-chips" aria-label="Tipo da tarefa">{taskTypes.map((type) => <button key={type} className={taskType === type ? 'is-active' : ''} type="button" onClick={() => setTaskType(type)}>{type}</button>)}</div>
+    </section>
+
+    <section className="task-schedule-card">
+      <div className="task-section-label"><Clock size={15} /><span>Quando</span></div>
+      <input aria-label="Data e horário" className="field-input" type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.currentTarget.value)} required />
+      <div className="task-duration-chips" aria-label="Duração">{[15, 30, 45, 60, 90, 120].map((minutes) => <button key={minutes} className={durationMinutes === minutes ? 'is-active' : ''} type="button" onClick={() => setDurationMinutes(minutes)}>{formatDurationLabel(minutes)}</button>)}</div>
+    </section>
+
+    <div className="task-quick-grid">
+      <InputField label="Prioridade"><select className="field-input" value={priority} onChange={(event) => setPriority(event.currentTarget.value as TaskItem['priority'])}>{['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => <option key={value}>{value}</option>)}</select></InputField>
+      <InputField label="Responsável"><select className="field-input" value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.currentTarget.value)}>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
     </div>
-    <InputField label="Data e horário"><input className="field-input" type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.currentTarget.value)} required /></InputField>
-    <InputField label="Duração"><select className="field-input" value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.currentTarget.value))}>{[15, 30, 45, 60, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes < 60 ? `${minutes} minutos` : minutes === 60 ? '1 hora' : `${minutes / 60} horas`}</option>)}</select></InputField>
-    <InputField label="Prioridade"><select className="field-input" value={priority} onChange={(event) => setPriority(event.currentTarget.value as TaskItem['priority'])}>{['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => <option key={value}>{value}</option>)}</select></InputField>
-    <InputField label="Responsável"><select className="field-input" value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.currentTarget.value)}>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
-    <div className="sm:col-span-2"><InputField label="Observações"><textarea className="field-input min-h-20" value={description} onChange={(event) => setDescription(event.currentTarget.value)} placeholder="Contexto ou próximo passo" /></InputField></div>
-    <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-700 sm:col-span-2">
-      <input className="h-5 w-5 accent-[#d8a500]" type="checkbox" checked={createGoogleCalendar} onChange={(event) => setCreateGoogleCalendar(event.currentTarget.checked)} />
-      Adicionar também ao meu Google Calendar
-    </label>
-    <div className="flex flex-wrap justify-between gap-2 sm:col-span-2">
-      <div>{onDelete ? <Button variant="danger" type="button" onClick={onDelete}><Trash2 size={16} /> Excluir</Button> : null}</div>
-      <div className="flex gap-2"><Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button><Button type="submit"><CheckCircle2 size={16} /> {editing ? 'Salvar alterações' : 'Criar tarefa'}</Button></div>
-    </div>
+
+    <details className="task-optional-details" open={Boolean(description || contactKeys.length)}>
+      <summary><Plus size={15} /> Contato e detalhes opcionais <span>{contactKeys.length ? `${contactKeys.length} vinculado(s)` : ''}</span></summary>
+      <div className="task-optional-content">
+        <InputField label="Contatos do CRM">
+          <details className="task-contact-picker">
+            <summary>{contactKeys.length ? `${contactKeys.length} contato(s) selecionado(s)` : 'Selecionar contatos'}</summary>
+            <div>{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => { const key = `lead:${lead.id}`; return <label key={key}><input type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><strong>{contactDisplayName(lead)}</strong><small>Oportunidade</small></label> })}{state.clients.filter((client) => !client.archived).map((client) => { const key = `client:${client.id}`; return <label key={key}><input type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><strong>{contactDisplayName(client)}</strong><small>Cliente</small></label> })}</div>
+          </details>
+        </InputField>
+        <InputField label="Observações"><textarea className="field-input min-h-20 resize-y" value={description} onChange={(event) => setDescription(event.currentTarget.value)} placeholder="Contexto, links ou próximo passo…" /></InputField>
+      </div>
+    </details>
+
+    <label className={`task-calendar-sync ${createGoogleCalendar ? 'is-active' : ''}`}><input type="checkbox" checked={createGoogleCalendar} onChange={(event) => setCreateGoogleCalendar(event.currentTarget.checked)} /><CalendarDays size={17} /><span><strong>Google Calendar</strong><small>{createGoogleCalendar ? 'Sincronizar após salvar' : 'Não sincronizar'}</small></span><i>{createGoogleCalendar ? 'Ativo' : 'Opcional'}</i></label>
+
+    <footer className="task-quick-actions"><div>{onDelete ? <Button variant="danger" type="button" onClick={onDelete}><Trash2 size={16} /> Excluir</Button> : null}</div><div><Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button><Button type="submit"><CheckCircle2 size={16} /> {editing ? 'Salvar' : 'Criar tarefa'}</Button></div></footer>
   </form>
 }
 
