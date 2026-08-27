@@ -9730,20 +9730,6 @@ function AgendaPage({
     : calendarView === 'semanal'
       ? `Semana de ${getWeekStart(calendarDate).toLocaleDateString('pt-BR')}`
       : calendarDate.toLocaleDateString('pt-BR')
-  const todayKey = dateInput()
-  const todayAppointments = visibleAppointments.filter((appointment) =>
-    appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === todayKey,
-  )
-  const nowTimestamp = Date.now()
-  const nextTodayAppointment = todayAppointments.find((appointment) => new Date(appointment.endAt).getTime() >= nowTimestamp)
-  const todayScheduledMinutes = todayAppointments.reduce((total, appointment) => total + getDurationMinutes(appointment.startAt, appointment.endAt), 0)
-  const todayTasks = todayAppointments.map((appointment) => taskByAppointmentId.get(appointment.id)).filter((task): task is TaskItem => Boolean(task))
-  const completedTodayTasks = todayTasks.filter((task) => task.status === 'Concluída').length
-  const nextContact = nextTodayAppointment?.clientId
-    ? state.clients.find((client) => client.id === nextTodayAppointment.clientId)
-    : nextTodayAppointment?.leadId
-      ? state.leads.find((lead) => lead.id === nextTodayAppointment.leadId)
-      : undefined
   const hasFilters = Boolean(responsibleFilter || contactFilter || typeFilter || calendarSearch.trim() || statusFilter !== 'ativos')
   const clearFilters = () => {
     setResponsibleFilter('')
@@ -9784,27 +9770,16 @@ function AgendaPage({
 
   return (
     <div className="agenda-page space-y-4">
-      <PageToolbar
-        title="Agenda"
-        description="Tudo o que precisa acontecer, no tempo certo."
-        action={<Button type="button" title="Atalho: N" onClick={() => setCreateChoice({})}><Plus size={16} /> Criar</Button>}
-      />
-
-      <section className="agenda-brief" aria-label="Resumo do dia">
-        <span className="agenda-brief__date"><CalendarDays size={15} /> {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-        <span className="agenda-brief__next"><strong>{nextTodayAppointment ? (new Date(nextTodayAppointment.startAt).getTime() <= nowTimestamp ? 'Agora' : 'Próximo') : 'Hoje'}</strong>{nextTodayAppointment ? `${new Date(nextTodayAppointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${nextTodayAppointment.title}${nextContact ? ` · ${contactDisplayName(nextContact)}` : ''}` : 'Nenhum compromisso pendente'}</span>
-        <span className="agenda-brief__meta">{todayAppointments.length} itens · {formatDurationLabel(todayScheduledMinutes)}{todayTasks.length ? ` · ${completedTodayTasks}/${todayTasks.length} tarefas` : ''}</span>
-        <button type="button" onClick={() => { setCalendarDate(new Date()); onCalendarViewChange('diaria') }}>Ver hoje</button>
-      </section>
-
-      <section className="agenda-control-bar">
+      <section className="agenda-main-toolbar" aria-label="Controles da agenda">
+        <button className="agenda-create-button" type="button" title="Atalho: N" onClick={() => setCreateChoice({})}><Plus size={19} /> Criar</button>
         <div className="agenda-period-navigation">
-          <button type="button" aria-label="Período anterior" onClick={() => moveCalendar(-1)}><ChevronLeft size={16} /></button>
-          <strong className="capitalize">{calendarLabel}</strong>
-          <button type="button" aria-label="Próximo período" onClick={() => moveCalendar(1)}><ChevronRight size={16} /></button>
           <button className="agenda-today-button" title="Atalho: T" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</button>
+          <button type="button" aria-label="Período anterior" onClick={() => moveCalendar(-1)}><ChevronLeft size={16} /></button>
+          <button type="button" aria-label="Próximo período" onClick={() => moveCalendar(1)}><ChevronRight size={16} /></button>
+          <strong className="capitalize">{calendarLabel}</strong>
           <label className="agenda-date-jump" title="Ir para uma data"><CalendarDays size={15} /><input aria-label="Ir para uma data" type="date" value={dateInputFromDate(calendarDate)} onChange={(event) => { if (event.currentTarget.value) setCalendarDate(new Date(`${event.currentTarget.value}T12:00:00`)) }} /></label>
         </div>
+        <button className={`agenda-toolbar-search ${filtersOpen || hasFilters ? 'is-active' : ''}`} type="button" aria-label="Buscar e filtrar" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><Search size={18} />{hasFilters ? <i /> : null}</button>
         <div className="erp-segmented-control" aria-label="Visualização da agenda">
           {([['mensal', 'Mês'], ['semanal', 'Semana'], ['diaria', 'Dia'], ['lista', 'Lista']] as const).map(([view, label]) => (
             <button key={view} className={calendarView === view ? 'is-active' : ''} type="button" onClick={() => onCalendarViewChange(view)}>{label}</button>
@@ -9812,15 +9787,14 @@ function AgendaPage({
         </div>
       </section>
 
-      <section className={`agenda-filter-bar ${filtersOpen ? 'is-open' : 'is-collapsed'}`} aria-label="Filtros da agenda">
+      {filtersOpen ? <section className="agenda-filter-bar is-open" aria-label="Filtros da agenda">
         <label className="agenda-search-field"><Search size={15} /><input aria-label="Buscar na agenda" placeholder="Buscar evento, cliente ou local" value={calendarSearch} onChange={(event) => setCalendarSearch(event.currentTarget.value)} /></label>
-        <button className="agenda-filter-toggle" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><List size={15} /> Filtros{hasFilters ? <i /> : null}<ChevronDown size={14} /></button>
-        {filtersOpen ? <><label><Users size={15} /><select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.currentTarget.value)}><option value="">Todos os responsáveis</option>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+        <label><Users size={15} /><select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.currentTarget.value)}><option value="">Todos os responsáveis</option>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
         <label><ContactRound size={15} /><select value={contactFilter} onChange={(event) => setContactFilter(event.currentTarget.value)}><option value="">Todos os contatos</option>{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={`client:${client.id}`}>{contactDisplayName(client)}</option>)}{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={`lead:${lead.id}`}>{contactDisplayName(lead)}</option>)}</select></label>
         <label><List size={15} /><select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)}><option value="">Todos os tipos</option>{appointmentTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
         <label><CheckCircle2 size={15} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as typeof statusFilter)}><option value="ativos">Somente ativos</option><option value="todos">Todos os status</option><option value="Agendado">Agendados</option><option value="Concluído">Concluídos</option><option value="Cancelado">Cancelados</option></select></label>
-        {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}</> : <span className="agenda-visible-count">{visibleAppointments.length} itens</span>}
-      </section>
+        {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}
+      </section> : null}
 
       {conflicts.length ? (
         <button className="agenda-conflict-alert" type="button" onClick={focusFirstConflict}>
