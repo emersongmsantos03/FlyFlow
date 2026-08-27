@@ -3637,28 +3637,51 @@ Hero Drone`,
             : appointment)
         : previousState.appointments,
     })
-    if (cloudflareDataReady) {
-      try {
-        const updatedTask = nextState.tasks.find((item) => item.id === task.id)
-        const updatedAppointment = task.appointmentId ? nextState.appointments.find((item) => item.id === task.appointmentId) : undefined
-        if (!updatedTask) throw new Error('Tarefa não encontrada após a alteração.')
-        const updatedAt = await saveCloudflareRecordMutation({
-          upserts: {
-            tasks: [updatedTask],
-            ...(updatedAppointment ? { appointments: [updatedAppointment] } : {}),
-          },
-        }, cloudflareVersion.current)
-        if (updatedAt) cloudflareVersion.current = updatedAt
-      } catch (error) {
-        setToast(error instanceof Error ? error.message : 'Não foi possível atualizar a tarefa no Cloudflare.')
-        return
-      }
-    }
+    // Update the checklist immediately; remote persistence is serialized below.
     if (cloudflareDataReady) skipNextCloudflareStateSave.current = true
     latestState.current = nextState
     saveAppState(nextState)
     setState(nextState)
     setToast(message)
+
+    if (cloudflareDataReady) {
+      try {
+        const updatedTask = nextState.tasks.find((item) => item.id === task.id)
+        const updatedAppointment = task.appointmentId ? nextState.appointments.find((item) => item.id === task.appointmentId) : undefined
+        if (!updatedTask) throw new Error('Tarefa não encontrada após a alteração.')
+        cloudflareSaveQueue.current = cloudflareSaveQueue.current
+          .catch(() => undefined)
+          .then(async () => {
+            const updatedAt = await saveCloudflareRecordMutation({
+              upserts: {
+                tasks: [updatedTask],
+                ...(updatedAppointment ? { appointments: [updatedAppointment] } : {}),
+              },
+            }, cloudflareVersion.current)
+            if (updatedAt) cloudflareVersion.current = updatedAt
+          })
+        await cloudflareSaveQueue.current
+      } catch (error) {
+        const currentState = latestState.current
+        const currentTask = currentState.tasks.find((item) => item.id === task.id)
+        if (currentTask?.status === status) {
+          const previousTask = previousState.tasks.find((item) => item.id === task.id)
+          const previousAppointment = task.appointmentId ? previousState.appointments.find((item) => item.id === task.appointmentId) : undefined
+          const rollbackState = synchronizeOperationalState({
+            ...currentState,
+            tasks: previousTask ? currentState.tasks.map((item) => item.id === task.id ? previousTask : item) : currentState.tasks,
+            appointments: previousAppointment
+              ? currentState.appointments.map((item) => item.id === previousAppointment.id ? previousAppointment : item)
+              : currentState.appointments,
+          })
+          skipNextCloudflareStateSave.current = true
+          latestState.current = rollbackState
+          saveAppState(rollbackState)
+          setState(rollbackState)
+        }
+        setToast(error instanceof Error ? error.message : 'Não foi possível atualizar a tarefa no Cloudflare.')
+      }
+    }
   }
 
   const deleteTask = (task: TaskItem) => {
