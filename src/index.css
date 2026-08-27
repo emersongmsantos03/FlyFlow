@@ -7811,6 +7811,18 @@ html[data-theme='dark'] .appointment-form__color-picker { border-color: #303732;
 html[data-theme='dark'] .appointment-form__color-picker .appointment-form__colors button.is-selected { background: #151a16; box-shadow: 0 0 0 2px #151a16, 0 0 0 3px var(--appointment-color); }
 html[data-theme='dark'] .appointment-form__color-name { background: #232a24; color: #cbd1cc; }
 
+/* Sidebar selection: soft graphite instead of a bright white block. */
+.app-sidebar .app-nav-item.is-active {
+  border-color: rgb(255 255 255 / 0.1) !important;
+  background: #262b27 !important;
+  color: #f1f3f1 !important;
+  box-shadow: inset 3px 0 0 #d6ad3c !important;
+}
+
+.app-sidebar .app-nav-item.is-active svg {
+  color: #d6ad3c !important;
+}
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
