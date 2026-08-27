@@ -7734,6 +7734,83 @@ html[data-theme='dark'] .agenda-task-rail { border-color: #292f2a; background: #
 html[data-theme='dark'] .agenda-task-rail article { background: #202621; }
 html[data-theme='dark'] .agenda-task-rail article > button:last-child { color: #d8ddd8; }
 
+/* Refined event color palette. */
+.appointment-form__color-picker {
+  display: flex;
+  min-height: 2.7rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #e6e9e6;
+  border-radius: 0.65rem;
+  background: #fafbfa;
+}
+
+.appointment-form__color-picker .appointment-form__colors {
+  min-height: 0;
+  gap: 0.48rem;
+}
+
+.appointment-form__color-picker .appointment-form__colors button {
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+}
+
+.appointment-form__color-picker .appointment-form__colors button > span {
+  inset: 2px;
+  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.08);
+}
+
+.appointment-form__color-picker .appointment-form__colors button:hover {
+  transform: scale(1.12);
+}
+
+.appointment-form__color-picker .appointment-form__colors button.is-selected {
+  border-color: var(--appointment-color);
+  background: #fff;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px color-mix(in srgb, var(--appointment-color) 55%, #d5dad5);
+  transform: scale(1.06);
+}
+
+.appointment-form__color-name {
+  display: inline-flex;
+  min-height: 1.8rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.38rem;
+  margin: 0;
+  padding: 0 0.55rem;
+  border-radius: 99px;
+  background: #fff;
+  color: #69716b;
+  font-size: 0.59rem;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.appointment-form__color-name i {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: var(--appointment-color);
+}
+
+@media (max-width: 520px) {
+  .appointment-form__color-picker { align-items: flex-start; flex-direction: column; }
+  .appointment-form__color-picker .appointment-form__colors { gap: 0.55rem; }
+}
+
+html[data-theme='dark'] .appointment-form__color-picker { border-color: #303732; background: #191f1a; }
+html[data-theme='dark'] .appointment-form__color-picker .appointment-form__colors button.is-selected { background: #151a16; box-shadow: 0 0 0 2px #151a16, 0 0 0 3px var(--appointment-color); }
+html[data-theme='dark'] .appointment-form__color-name { background: #232a24; color: #cbd1cc; }
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));

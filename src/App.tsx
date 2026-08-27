@@ -13606,8 +13606,9 @@ function AppointmentForm({
         <div className="appointment-form__grid">
           <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24 resize-y" placeholder="Briefing, pontos importantes, links ou instruções…" {...register('notes')} /></InputField></div>
           <div className="md:col-span-2">
-            <InputField label="Cor na agenda" error={getError(errors.color?.message)}>
-              <div className="appointment-form__colors">
+            <InputField label="Cor do evento" error={getError(errors.color?.message)}>
+              <div className="appointment-form__color-picker">
+                <div className="appointment-form__colors">
                 {appointmentColorOptions.map((option) => (
                   <button
                     key={option.value}
@@ -13618,9 +13619,10 @@ function AppointmentForm({
                     type="button"
                     onClick={() => setValue('color', option.value)}
                     title={option.label}
-                  ><span />{watchedColor === option.value ? <CheckCircle2 size={14} /> : null}</button>
+                  ><span /></button>
                 ))}
-                <small className="appointment-form__color-name">{appointmentColorOptions.find((option) => option.value === watchedColor)?.label || 'Personalizada'}</small>
+                </div>
+                <small className="appointment-form__color-name" style={{ '--appointment-color': watchedColor } as React.CSSProperties}><i />{appointmentColorOptions.find((option) => option.value === watchedColor)?.label || 'Personalizada'}</small>
               </div>
             </InputField>
           </div>
