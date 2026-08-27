@@ -13569,6 +13569,7 @@ function AppointmentForm({
                     title={option.label}
                   ><span />{watchedColor === option.value ? <CheckCircle2 size={14} /> : null}</button>
                 ))}
+                <small className="appointment-form__color-name">{appointmentColorOptions.find((option) => option.value === watchedColor)?.label || 'Personalizada'}</small>
               </div>
             </InputField>
           </div>

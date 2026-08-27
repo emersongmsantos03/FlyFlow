@@ -7546,6 +7546,52 @@ html[data-theme='dark'] .modal-surface:has(.appointment-form) .modal-header,
 html[data-theme='dark'] .appointment-form__actions { background: #151a16 !important; }
 html[data-theme='dark'] .appointment-form__section { border-color: #292f2a; }
 
+/* Selected event colors remain meaningful without making the calendar noisy. */
+.calendar-event-block,
+.calendar-event-block.is-task {
+  border: 1px solid color-mix(in srgb, var(--calendar-item-color) 18%, #e5e8e5) !important;
+  border-left: 3px solid var(--calendar-item-color) !important;
+  background: color-mix(in srgb, var(--calendar-item-color) 7%, #fff) !important;
+  color: #303632 !important;
+}
+
+.calendar-event-block:hover,
+.calendar-event-block.is-task:hover {
+  border-color: color-mix(in srgb, var(--calendar-item-color) 32%, #dfe4df) !important;
+  background: color-mix(in srgb, var(--calendar-item-color) 11%, #fff) !important;
+}
+
+.calendar-event-block .calendar-event-title,
+.calendar-event-block.is-task .calendar-event-title {
+  color: #303632 !important;
+}
+
+.calendar-event-block .calendar-event-meta,
+.calendar-event-block .calendar-event-contact,
+.calendar-event-block.is-task .calendar-event-meta,
+.calendar-event-block.is-task .calendar-event-contact {
+  color: #707871 !important;
+}
+
+.appointment-form__color-name {
+  margin-left: 0.25rem;
+  color: #747c76;
+  font-size: 0.61rem;
+  font-weight: 700;
+}
+
+html[data-theme='dark'] .calendar-event-block,
+html[data-theme='dark'] .calendar-event-block.is-task {
+  border-color: color-mix(in srgb, var(--calendar-item-color) 38%, #303732) !important;
+  border-left-color: var(--calendar-item-color) !important;
+  background: color-mix(in srgb, var(--calendar-item-color) 16%, #171c18) !important;
+}
+
+html[data-theme='dark'] .calendar-event-block .calendar-event-title,
+html[data-theme='dark'] .calendar-event-block.is-task .calendar-event-title {
+  color: #edf1ed !important;
+}
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
