@@ -9716,7 +9716,8 @@ function AgendaPage({
       || appointment.status === statusFilter
     return matchesResponsible && matchesType && matchesContact && matchesSearch && matchesStatus
   })
-  const conflicts = findAppointmentConflicts(visibleAppointments)
+  const scheduledAppointments = visibleAppointments.filter((appointment) => appointment.appointmentType !== 'Tarefa')
+  const conflicts = findAppointmentConflicts(scheduledAppointments)
   const conflictIds = new Set(conflicts.map((appointment) => appointment.id))
   const openCalendarItem = (appointment: Appointment) => {
     const task = taskByAppointmentId.get(appointment.id)
@@ -9835,11 +9836,13 @@ function AgendaPage({
         {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}
       </section> : null}
 
+      {todayQuickTasks.length ? <section className="agenda-task-rail" aria-label="Checklist de hoje"><span><CheckCircle2 size={15} /> Hoje</span><div>{todayQuickTasks.slice(0, 5).map((task) => <article key={task.id}><button type="button" aria-label={`Concluir ${task.title}`} onClick={() => onToggleTask(task)}><Check size={11} /></button><button type="button" title={task.title} onClick={() => onOpenTask(task)}>{task.title}</button></article>)}</div>{todayQuickTasks.length > 5 ? <button type="button" onClick={() => setQuickTasksOpen(true)}>+{todayQuickTasks.length - 5} tarefas</button> : null}</section> : null}
+
       {quickTasksOpen ? <aside className="agenda-quick-tasks" aria-label="Tarefas rápidas">
         <header><div><CheckCircle2 size={17} /><span><strong>Tarefas rápidas</strong><small>Adicione e conclua sem interromper seu dia.</small></span></div><button type="button" aria-label="Fechar tarefas rápidas" onClick={() => setQuickTasksOpen(false)}><X size={16} /></button></header>
         <form onSubmit={submitQuickTask}><Plus size={16} /><input aria-label="Nova tarefa rápida" autoFocus placeholder="Adicionar uma tarefa…" value={quickTaskTitle} onChange={(event) => setQuickTaskTitle(event.currentTarget.value)} /><div><button className={quickTaskDay === 'today' ? 'is-active' : ''} type="button" onClick={() => setQuickTaskDay('today')}>Hoje</button><button className={quickTaskDay === 'tomorrow' ? 'is-active' : ''} type="button" onClick={() => setQuickTaskDay('tomorrow')}>Amanhã</button></div><button type="submit" disabled={!quickTaskTitle.trim()}>Adicionar</button></form>
         <div className="agenda-quick-tasks__list">
-          {[{ label: 'Hoje', items: todayQuickTasks }, { label: 'Próximas', items: upcomingQuickTasks }].map((group) => group.items.length ? <section key={group.label}><h3>{group.label}<span>{group.items.length}</span></h3>{group.items.slice(0, 8).map((task) => <article key={task.id}><button className="agenda-quick-check" type="button" aria-label={`Concluir ${task.title}`} onClick={() => onToggleTask(task)}><Check size={13} /></button><button type="button" onClick={() => onOpenTask(task)}><strong>{task.title}</strong><small>{new Date(task.dueAt).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })} · {new Date(task.dueAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</small></button></article>)}</section> : null)}
+          {[{ label: 'Hoje', items: todayQuickTasks }, { label: 'Próximas', items: upcomingQuickTasks }].map((group) => group.items.length ? <section key={group.label}><h3>{group.label}<span>{group.items.length}</span></h3>{group.items.slice(0, 8).map((task) => <article key={task.id}><button className="agenda-quick-check" type="button" aria-label={`Concluir ${task.title}`} onClick={() => onToggleTask(task)}><Check size={13} /></button><button type="button" onClick={() => onOpenTask(task)}><strong>{task.title}</strong><small>{dateInputFromDate(new Date(task.dueAt)) === dateInput() ? 'Hoje' : new Date(task.dueAt).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}</small></button></article>)}</section> : null)}
           {!activeQuickTasks.length ? <div className="agenda-quick-empty"><CheckCircle2 size={22} /><strong>Tudo em dia</strong><small>Adicione algo acima quando lembrar.</small></div> : null}
         </div>
       </aside> : null}
@@ -9867,7 +9870,7 @@ function AgendaPage({
       {calendarView === 'semanal' || calendarView === 'diaria' ? (
         <TimeGridCalendar
           anchorDate={calendarDate}
-          appointments={visibleAppointments}
+          appointments={scheduledAppointments}
           state={state}
           view={calendarView}
           onCreateAt={requestCreateAtSlot}

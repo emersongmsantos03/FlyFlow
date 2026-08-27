@@ -7693,6 +7693,47 @@ html[data-theme='dark'] .agenda-quick-tasks > header strong,
 html[data-theme='dark'] .agenda-quick-tasks > form > input,
 html[data-theme='dark'] .agenda-quick-tasks__list article strong { color: #edf1ed; }
 
+/* Tasks live beside the schedule, never squeezed inside time columns. */
+.agenda-task-rail {
+  display: flex;
+  min-height: 2.7rem;
+  align-items: center;
+  gap: 0.6rem;
+  overflow: hidden;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #edf0ed;
+  background: #fff;
+}
+
+.agenda-task-rail > span {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  color: #68716a;
+  font-size: 0.6rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.agenda-task-rail > span svg { color: #1967d2; }
+.agenda-task-rail > div { display: flex; min-width: 0; flex: 1; gap: 0.35rem; overflow-x: auto; scrollbar-width: none; }
+.agenda-task-rail > div::-webkit-scrollbar { display: none; }
+.agenda-task-rail article { display: inline-flex; min-width: 0; max-width: 12rem; flex: 0 1 auto; align-items: center; gap: 0.3rem; padding: 0.25rem 0.45rem 0.25rem 0.3rem; border-radius: 99px; background: #f3f5f4; }
+.agenda-task-rail article > button:first-child { display: grid; width: 1rem; height: 1rem; flex: 0 0 auto; place-items: center; border: 1px solid #b9c1bb; border-radius: 50%; color: transparent; }
+.agenda-task-rail article > button:first-child:hover { border-color: #34a853; background: #e9f7ed; color: #25883f; }
+.agenda-task-rail article > button:last-child { overflow: hidden; color: #555e57; font-size: 0.61rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.agenda-task-rail > button { flex: 0 0 auto; color: #1967d2; font-size: 0.58rem; font-weight: 800; }
+
+@media (max-width: 700px) {
+  .agenda-task-rail { padding-inline: 0.2rem; }
+  .agenda-task-rail article { max-width: 9rem; }
+}
+
+html[data-theme='dark'] .agenda-task-rail { border-color: #292f2a; background: #111512; }
+html[data-theme='dark'] .agenda-task-rail article { background: #202621; }
+html[data-theme='dark'] .agenda-task-rail article > button:last-child { color: #d8ddd8; }
+
 @media (max-width: 1180px) {
   .agenda-page .agenda-filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
