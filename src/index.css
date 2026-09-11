@@ -9710,3 +9710,25 @@ html[data-theme='dark'] .internal-project-table .progress-cell > div {
     grid-template-columns: minmax(15rem, 1.5fr) 7.5rem 8rem 7.5rem 11rem 8rem 6.5rem;
   }
 }
+
+/* Keep the time gutter and headings in sync with the selected theme. */
+html[data-theme='dark'] .agenda-conflict-alert {
+  background: #302817 !important;
+  color: #f2d58a !important;
+}
+html[data-theme='dark'] .time-grid-panel .calendar-hour-column {
+  background: #1b201c !important;
+}
+html[data-theme='dark'] .time-grid-panel .calendar-hour-column > div,
+html[data-theme='dark'] .time-grid-panel .grid.border-b p:first-child {
+  color: #aab5ab !important;
+}
+html[data-theme='dark'] .time-grid-panel .grid.border-b p:last-child {
+  color: #e8ece7 !important;
+}
+html[data-theme='dark'] .time-grid-panel [data-calendar-day] {
+  background: #171b18 !important;
+}
+html[data-theme='dark'] .time-grid-panel .border-gray-200 {
+  border-color: #343b34 !important;
+}

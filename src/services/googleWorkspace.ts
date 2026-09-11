@@ -1,4 +1,5 @@
 import { firebaseAuth, firebaseConfig } from './firebase'
+import { domainMailRequest, getDomainMailConnection } from './domainMail'
 
 const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
 const GOOGLE_SESSION_KEY = 'flyflow.google.workspace.session'
@@ -81,6 +82,11 @@ const loadGoogleIdentityServices = () => new Promise<void>((resolve, reject) => 
 
 export const getGoogleWorkspaceConnection = () => {
   return currentConnection
+}
+
+export const getEmailConnection = () => {
+  const domain = getDomainMailConnection()
+  return domain.connected ? domain : currentConnection
 }
 
 export const getStoredGoogleOAuthClientId = () => localStorage.getItem(GOOGLE_CLIENT_ID_KEY)?.trim() || ''
@@ -391,6 +397,11 @@ export const sendGoogleWorkspaceEmail = async (input: {
         ? [`Content-Type: multipart/related; boundary="${relatedBoundary}"`, '', relatedBody]
       : [`Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`, '', bodyParts]),
   ].join('\r\n')
+  if (getDomainMailConnection().connected) {
+    return domainMailRequest<{ id: string; threadId: string; warning?: string }>('/send', {
+      method: 'POST', body: JSON.stringify({ to: recipients, raw: bytesToBase64(new TextEncoder().encode(raw)) }),
+    })
+  }
   const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: {
@@ -419,7 +430,7 @@ export const sendGoogleWorkspaceEmail = async (input: {
     }
     throw new Error(googleMessage ? `Gmail: ${googleMessage}` : `Gmail recusou o envio (${response.status}).`)
   }
-  return response.json() as Promise<{ id: string; threadId: string }>
+  return response.json() as Promise<{ id: string; threadId: string; warning?: string }>
 }
 
 export interface GoogleMailboxMessage {
@@ -530,6 +541,7 @@ export const listGoogleWorkspaceEmails = async (input: {
   query?: string
   maxResults?: number
 }) => {
+  if (getDomainMailConnection().connected) return domainMailRequest<GoogleMailboxMessage[]>(`/messages?box=${input.box}&limit=${input.maxResults || 30}`)
   const params = new URLSearchParams({
     maxResults: String(Math.min(Math.max(input.maxResults || 30, 1), 50)),
     ...(input.query?.trim() ? { q: input.query.trim() } : {}),

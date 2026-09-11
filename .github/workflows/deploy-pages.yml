@@ -36,6 +36,9 @@ jobs:
         run: npm install --include=optional --no-audit --no-fund
 
       - name: Build
+        run: npm --prefix functions ci --no-audit --no-fund && npm test
+
+      - name: Build frontend
         run: npm run build
         env:
           VITE_PUBLIC_BASE: /FlyFlow/

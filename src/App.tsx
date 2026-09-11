@@ -1,4 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { MailAccountSettings } from './components/MailAccountSettings'
+import { refreshDomainMail } from './services/domainMail'
+import { getEmailConnection } from './services/googleWorkspace'
 import {
   AlertTriangle,
   ArrowRight,
@@ -1438,6 +1441,13 @@ function App() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [googleConnectionRevision, setGoogleConnectionRevision] = useState(0)
   const observedInboxIds = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    if (!firebaseAuthReady || !authSession) return
+    const refresh = () => { observedInboxIds.current = null; setGoogleConnectionRevision((value) => value + 1) }
+    void refreshDomainMail().then(refresh).catch(() => {})
+    window.addEventListener('flyflow-mail-changed', refresh)
+    return () => window.removeEventListener('flyflow-mail-changed', refresh)
+  }, [firebaseAuthReady, authSession])
   const googleRestoreAttempted = useRef('')
   const latestState = useRef(state)
   const firebaseSaveQueue = useRef<Promise<void>>(Promise.resolve())
@@ -1484,7 +1494,7 @@ function App() {
     if (!authSession) return
     let cancelled = false
     const checkInbox = async () => {
-      if (!getGoogleWorkspaceConnection().connected) return
+      if (!getEmailConnection().connected) return
       try {
         const messages = await listGoogleWorkspaceEmails({ box: 'inbox', maxResults: 10 })
         if (cancelled) return
@@ -2564,7 +2574,7 @@ Hero Drone`,
               id: createId('int'),
               leadId: associatedLead.id,
               interactionType: 'E-mail · Bot Lead Hunter',
-              description: `Assunto: ${message.subject}\nMensagem: ${message.body}\nGmail ID: ${result.id}\nChave: ${key}`,
+              description: `Assunto: ${message.subject}\nMensagem: ${message.body}\nID do e-mail: ${result.id}\nChave: ${key}`,
               interactionDate: sentAt,
               userId: activeUserId,
               createdAt: sentAt,
@@ -2661,18 +2671,22 @@ Hero Drone`,
       leadInteractions: associatedLead ? [{
         id: createId('int'),
         leadId: associatedLead.id,
-        interactionType: 'E-mail · Gmail',
-        description: `Assunto: ${repairTextEncoding(subject)}\nMensagem: ${body}${composer.attachment ? `\nAnexo: ${composer.attachment.fileName}` : ''}\nGmail ID: ${result.id}`,
+        interactionType: 'E-mail',
+        description: `Assunto: ${repairTextEncoding(subject)}\nMensagem: ${body}${composer.attachment ? `\nAnexo: ${composer.attachment.fileName}` : ''}\nID do e-mail: ${result.id}`,
         interactionDate: now,
         userId: activeUserId,
         createdAt: now,
       }, ...current.leadInteractions] : current.leadInteractions,
       statusHistory: composer.quote ? [
-        createStatusHistory('Proposta', composer.quote.id, 'Proposta enviada por e-mail', `${composer.quote.quoteNumber} enviada para ${composer.to} com PDF anexado. Gmail ID: ${result.id}.`, activeUserId, composer.quote.status, 'Enviada', now),
+        createStatusHistory('Proposta', composer.quote.id, 'Proposta enviada por e-mail', `${composer.quote.quoteNumber} enviada para ${composer.to} com PDF anexado. ID do e-mail: ${result.id}.`, activeUserId, composer.quote.status, 'Enviada', now),
         ...current.statusHistory,
       ] : current.statusHistory,
-    }), composer.quote ? 'Proposta enviada por e-mail com o PDF anexado.' : 'E-mail enviado pelo Gmail e registrado no histórico.')
+    }), composer.quote ? 'Proposta enviada por e-mail com o PDF anexado.' : 'E-mail enviado e registrado no histórico.')
     setEmailComposer(null)
+    if (result.warning) {
+      showNotice({ title: 'E-mail enviado com aviso', description: result.warning, buttonLabel: 'Entendi' })
+      return
+    }
     showNotice({
       title: composer.quote ? 'Proposta enviada com sucesso!' : 'E-mail enviado com sucesso!',
       description: composer.quote
@@ -6472,9 +6486,9 @@ Hero Drone`,
       })
       return
     }
-    setToast('Preparando PDF, link de aceite e envio pelo Gmail…')
+    setToast('Preparando PDF, link de aceite e envio por e-mail…')
     try {
-      const googleConnection = getGoogleWorkspaceConnection()
+      const googleConnection = getEmailConnection()
       const googleClientId = state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
       if (!googleConnection.connected) {
         if (!googleClientId) throw new Error('A conta Google ainda não está configurada. Abra Configurações → Google Workspace e informe o OAuth Client ID.')
@@ -6490,7 +6504,7 @@ Hero Drone`,
       updateState((current) => ({
         ...current,
         quotes: current.quotes.map((item) => item.id === quote.id ? { ...item, publicToken: token, publicUrl: link, updatedAt: new Date().toISOString() } : item),
-      }), 'Proposta pronta para envio pelo Gmail.')
+      }), 'Proposta pronta para envio por e-mail.')
       const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
       setEmailComposer({
         lead,
@@ -7479,7 +7493,11 @@ Hero Drone`,
                 setSelectedLeadId(lead.id)
                 setModal('leadDetail')
               }}
-              onComposeLead={sendCommercialEmail}
+              onReply={(message) => {
+                const counterpart = message.sent ? message.to : message.from
+                const to = counterpart.match(/<([^>]+)>/)?.[1] || counterpart.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0] || ''
+                setEmailComposer({ to, displayName: counterpart, subject: /^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`, body: `\n\nEm ${message.date ? new Date(message.date).toLocaleString('pt-BR') : 'mensagem anterior'}, ${message.from} escreveu:\n${message.body}`, lead: state.leads.find((lead) => lead.email.toLowerCase() === to.toLowerCase()) })
+              }}
               onComposeNew={() => setEmailComposer({
                 to: '',
                 displayName: 'novo destinatário',
@@ -8214,7 +8232,7 @@ function EmailComposer({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [attachment, setAttachment] = useState(composer.attachment)
-  const [gmailConnected, setGmailConnected] = useState(() => getGoogleWorkspaceConnection().connected)
+  const [gmailConnected, setGmailConnected] = useState(() => getEmailConnection().connected)
   const [connectingGmail, setConnectingGmail] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
   const canSend = Boolean(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()) && subject.trim() && body.trim() && !sending)
@@ -8314,7 +8332,7 @@ function EmailComposer({
               <span className="sr-only">Destinatário</span>
               <input className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400" type="email" value={to} onChange={(event) => setTo(event.target.value)} placeholder="destinatario@empresa.com" autoFocus={!composer.to} />
             </label>
-            <span className="ml-auto hidden rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.65rem] font-black text-emerald-700 sm:inline">Via Gmail</span>
+            <span className="ml-auto hidden rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.65rem] font-black text-emerald-700 sm:inline">{getEmailConnection().email || 'E-mail'}</span>
           </div>
 
           <label className="block">
@@ -8400,7 +8418,7 @@ function EmailComposer({
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs text-gray-500">{gmailConnected ? 'O envio será confirmado pelo Gmail e registrado automaticamente no CRM.' : 'Conecte o Gmail para enviar diretamente e receber a confirmação.'}</p>
+          <p className="text-xs text-gray-500">{gmailConnected ? 'O envio será confirmado pelo servidor de e-mail e registrado automaticamente no CRM.' : 'Conecte seu e-mail em Configurações para enviar diretamente.'}</p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
             {composer.whatsappUrl && gmailConnected ? (
@@ -11560,13 +11578,13 @@ function InboxPage({
   state,
   connectionRevision,
   onOpenLead,
-  onComposeLead,
+  onReply,
   onComposeNew,
 }: {
   state: AppState
   connectionRevision: number
   onOpenLead: (lead: Lead) => void
-  onComposeLead: (lead: Lead) => void
+  onReply: (message: GoogleMailboxMessage) => void
   onComposeNew: () => void
 }) {
   const [box, setBox] = useState<'inbox' | 'sent'>('inbox')
@@ -11575,7 +11593,7 @@ function InboxPage({
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const connection = getGoogleWorkspaceConnection()
+  const connection = getEmailConnection()
 
   const loadMessages = async (targetBox = box) => {
     setLoading(true)
@@ -11615,7 +11633,7 @@ function InboxPage({
   const senderInitials = (value: string) => senderLabel(value).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 
   if (!connection.connected) {
-    return <div className="inbox-page module-page space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="inbox-connect-state rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta Google</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → Google Workspace, conecte novamente o Gmail e autorize a leitura da caixa de entrada.</p></div></div>
+    return <div className="inbox-page module-page space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="inbox-connect-state rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta de e-mail</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → E-mail com domínio próprio para configurar SMTP e IMAP, ou conecte o Gmail na seção Google Workspace.</p></div></div>
   }
 
   return (
@@ -11669,7 +11687,7 @@ function InboxPage({
             {selected ? <>
               <div className="inbox-reader-header">
                 <div className="inbox-reader-subject"><span>{selected.sent ? 'E-MAIL ENVIADO' : 'CONVERSA RECEBIDA'}</span><h2>{selected.subject || 'Sem assunto'}</h2></div>
-                <div className="inbox-reader-actions">{selectedLead ? <><Button variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}><Users size={15} /> Ver contato</Button><Button type="button" onClick={() => onComposeLead(selectedLead)}><ArrowRight size={15} /> Responder</Button></> : <span>Contato não vinculado</span>}</div>
+                <div className="inbox-reader-actions">{selectedLead ? <Button variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}><Users size={15} /> Ver contato</Button> : <span>Contato não vinculado</span>}<Button type="button" onClick={() => onReply(selected)}><ArrowRight size={15} /> Responder</Button></div>
               </div>
               <div className="inbox-correspondent">
                 <span className="inbox-sender-avatar is-large">{senderInitials(selected.sent ? selected.to : selected.from)}</span>
@@ -11677,7 +11695,7 @@ function InboxPage({
                 <time>{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</time>
               </div>
               <article className="inbox-message-body">{selected.body || selected.snippet || 'Mensagem sem conteúdo textual disponível.'}</article>
-              {selected.hasAttachments ? <div className="inbox-attachment-note"><Paperclip size={15} /><span>Esta mensagem possui anexos. Abra no Gmail para visualizar os arquivos originais.</span></div> : null}
+              {selected.hasAttachments ? <div className="inbox-attachment-note"><Paperclip size={15} /><span>Esta mensagem possui anexos. Abra o webmail do seu provedor para visualizar os arquivos originais.</span></div> : null}
             </> : <div className="grid h-full place-items-center text-center"><div><Mail className="mx-auto text-gray-200" size={42} /><p className="mt-3 text-sm font-bold text-gray-400">Selecione uma mensagem para ler.</p></div></div>}
           </div>
         </div>
@@ -11822,6 +11840,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         </div>
 
         <div className="space-y-4">
+          <MailAccountSettings />
           <Panel id="settings-google" title="Google Workspace">
             <div className="space-y-3">
               <p className="text-sm leading-6 text-gray-500">Conecte Gmail e Google Calendar uma única vez. Depois disso, o FlyFlow renova a autorização automaticamente e a conexão fica disponível em todos os seus dispositivos.</p>
@@ -12556,7 +12575,7 @@ function TimeGridCalendar({
           </div>
 
           <div className="grid" style={{ gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(${view === 'diaria' ? '26rem' : '9rem'}, 1fr))` }}>
-            <div className="relative bg-gray-50" style={{ height: totalHeight }}>
+            <div className="calendar-hour-column relative bg-gray-50" style={{ height: totalHeight }}>
               {hours.map((hour, index) => (
                 <div
                   key={hour}

@@ -4,6 +4,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import OpenAI from 'openai'
+import { validateAccount, publicAccount, verifyAccount, listMail, sendMail } from './mail.js'
 
 initializeApp()
 
@@ -207,6 +208,40 @@ const authenticateWorkspace = async (request) => {
   }
   return { user, workspaceId: data.workspaceId }
 }
+
+export const mailApi = onRequest(
+  { region: 'southamerica-east1', timeoutSeconds: 120, memory: '512MiB', maxInstances: 5 },
+  async (request, response) => {
+    setCors(request, response)
+    response.set('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+    response.set('Cache-Control', 'no-store')
+    if (request.method === 'OPTIONS') return response.status(204).send('')
+    if (request.get('origin') && !allowedOrigins.has(request.get('origin'))) return response.status(403).json({ error: 'Origem não autorizada.' })
+    try {
+      const { user, workspaceId } = await authenticateWorkspace(request)
+      const reference = getFirestore().doc(`privateMailAccounts/${user.uid}`)
+      const stored = (await reference.get()).data()
+      const account = stored?.workspaceId === workspaceId ? stored.account : undefined
+      if (request.path === '/account' && request.method === 'GET') return response.json(publicAccount(account))
+      if (request.path === '/account' && request.method === 'DELETE') {
+        await reference.delete()
+        return response.json({ connected: false, email: '' })
+      }
+      if (request.path === '/account' && request.method === 'POST') {
+        const next = validateAccount(request.body, account)
+        await verifyAccount(next)
+        await reference.set({ workspaceId, account: next, updatedAt: FieldValue.serverTimestamp() })
+        return response.json(publicAccount(next))
+      }
+      if (!account) return response.status(409).json({ error: 'Configure sua conta SMTP e IMAP em Configurações.' })
+      if (request.path === '/messages' && request.method === 'GET') return response.json(await listMail(account, request.query.box, request.query.limit))
+      if (request.path === '/send' && request.method === 'POST') return response.json(await sendMail(account, request.body))
+      return response.status(404).json({ error: 'Rota não encontrada.' })
+    } catch (error) {
+      return response.status(error.status || 502).json({ error: error.status === 400 || error.status === 403 ? error.message : 'Não foi possível conectar ao e-mail. Confira servidores, portas, usuário e senha nas configurações.' })
+    }
+  },
+)
 
 const exchangeGoogleToken = async (parameters) => {
   const response = await fetch('https://oauth2.googleapis.com/token', {
