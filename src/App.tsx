@@ -10928,10 +10928,7 @@ function ProposalGenerator({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <InputField label="Contato">
-          <select className="field-input" value={recipientKey} onChange={(event) => chooseRecipient(event.target.value)}>
-            <option value="">Selecione um contato</option>
-            {contactOptions.map((contact) => <option key={contact.key} value={contact.key}>{contact.label} | {contact.detail}</option>)}
-          </select>
+          <SearchableSelect value={recipientKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, searchText: contact.label }))} onChange={chooseRecipient} />
         </InputField>
         <InputField label="Título">
           <input className="field-input" placeholder="Ex.: Filmagem aérea do imóvel" value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -12743,6 +12740,7 @@ function LeadForm({
     },
   })
   const leadAddress = watch('address') ?? ''
+  const contactId = watch('contactId') ?? ''
   const leadPhone = watch('phone') ?? ''
   const leadWhatsapp = watch('whatsapp') ?? ''
   const hasAdditionalErrors = Boolean(errors.email || errors.instagram || errors.source || errors.city || errors.neighborhood || errors.address || errors.notes)
@@ -12770,9 +12768,10 @@ function LeadForm({
           <div className="flex items-end gap-2">
             <div className="min-w-0 flex-1">
               <InputField label="Contato vinculado" error={getError(errors.contactId?.message)}>
-                <select className="field-input" {...register('contactId')} onChange={(event) => {
-                  register('contactId').onChange(event)
-                  const contact = contacts.find((item) => item.id === event.currentTarget.value)
+                <input type="hidden" {...register('contactId')} />
+                <SearchableSelect value={contactId} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contacts.map((contact) => ({ value: contact.id, label: `${contactDisplayName(contact)}${contact.companyName ? ` · ${contact.companyName}` : ''}`, searchText: `${contact.fullName} ${contact.companyName}` }))} onChange={(nextContactId) => {
+                  setValue('contactId', nextContactId, { shouldDirty: true, shouldValidate: true })
+                  const contact = contacts.find((item) => item.id === nextContactId)
                   if (!contact) return
                   setValue('fullName', contact.fullName)
                   setValue('companyName', contact.companyName)
@@ -12784,10 +12783,7 @@ function LeadForm({
                   setValue('neighborhood', contact.neighborhood)
                   setValue('address', contact.address)
                   setValue('source', contact.source)
-                }}>
-                  <option value="">Selecione um contato</option>
-                  {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contactDisplayName(contact)}{contact.companyName ? ` · ${contact.companyName}` : ''}</option>)}
-                </select>
+                }} />
               </InputField>
             </div>
             <Button className="shrink-0" variant="secondary" type="button" onClick={onCreateContact}><UserPlus size={16} /><span className="hidden sm:inline">Novo contato</span></Button>
@@ -13051,13 +13047,14 @@ function ClientForm({ client, companies, onSubmit, onCancel }: { client?: Client
     },
   })
   const clientAddress = watch('address') ?? ''
+  const companyId = watch('companyId') ?? ''
   const clientPhone = watch('phone') ?? ''
   const clientWhatsapp = watch('whatsapp') ?? ''
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Nome" error={getError(errors.fullName?.message)}><input className="field-input" {...register('fullName')} /></InputField>
-      <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}><select className="field-input" {...register('companyId')}><option value="">Sem empresa</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.tradeName}</option>)}</select></InputField>
+      <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}><input type="hidden" {...register('companyId')} /><SearchableSelect value={companyId} placeholder="Sem empresa" searchPlaceholder="Pesquisar empresa por nome..." options={companies.map((company) => ({ value: company.id, label: company.tradeName, searchText: company.legalName }))} onChange={(value) => setValue('companyId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
       <InputField label="Cargo ou função" error={getError(errors.jobTitle?.message)}><input className="field-input" {...register('jobTitle')} /></InputField>
       <InputField label="Empresa (texto livre)" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} placeholder="Use apenas se a empresa ainda não estiver cadastrada" /></InputField>
       <InputField label="CPF/CNPJ" error={getError(errors.document?.message)}><input className="field-input" {...register('document')} /></InputField>
@@ -13257,14 +13254,7 @@ function ProjectForm({
       <input type="hidden" {...register('leadId')} />
       <InputField label="Nome do projeto" error={getError(errors.name?.message)}><input className="field-input" {...register('name')} /></InputField>
       <InputField label="Contato no CRM" error={getError(errors.leadId?.message || errors.clientId?.message)}>
-        <select className="field-input" value={selectedContactKey} onChange={(event) => chooseProjectContact(event.target.value)}>
-          <option value="">Selecione um contato</option>
-          {contactOptions.map((contact) => (
-            <option key={contact.key} value={contact.key}>
-              {contact.label} | {contact.detail}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect value={selectedContactKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, searchText: contact.label }))} onChange={chooseProjectContact} />
       </InputField>
       <InputField label="Tipo de serviço" error={getError(errors.serviceName?.message)}><Select options={serviceTypes} register={register('serviceName')} /></InputField>
       <InputField label="Data de captação" error={getError(errors.captureDate?.message)}><input className="field-input" type="date" {...register('captureDate')} /></InputField>
@@ -13373,6 +13363,7 @@ function TaskForm({
     ...(initialValues?.leadIds || (initialValues?.leadId ? [initialValues.leadId] : [])).map((id) => `lead:${id}`),
     ...(initialValues?.clientIds || (initialValues?.clientId ? [initialValues.clientId] : [])).map((id) => `client:${id}`),
   ])
+  const [contactQuery, setContactQuery] = useState('')
   const [createGoogleCalendar, setCreateGoogleCalendar] = useState(initialValues?.createGoogleCalendar ?? false)
   const [error, setError] = useState('')
 
@@ -13435,7 +13426,7 @@ function TaskForm({
         <InputField label="Contatos do CRM">
           <details className="task-contact-picker">
             <summary>{contactKeys.length ? `${contactKeys.length} contato(s) selecionado(s)` : 'Selecionar contatos'}</summary>
-            <div>{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => { const key = `lead:${lead.id}`; return <label key={key}><input type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><strong>{contactDisplayName(lead)}</strong><small>Oportunidade</small></label> })}{state.clients.filter((client) => !client.archived).map((client) => { const key = `client:${client.id}`; return <label key={key}><input type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><strong>{contactDisplayName(client)}</strong><small>Cliente</small></label> })}</div>
+            <div><label className="searchable-select__search"><Search size={15} /><input value={contactQuery} onChange={(event) => setContactQuery(event.currentTarget.value)} placeholder="Pesquisar contato ou empresa por nome..." /></label>{state.leads.filter((lead) => !lead.archived && !lead.deletedAt && matches(`${lead.fullName} ${lead.companyName}`, contactQuery)).map((lead) => { const key = `lead:${lead.id}`; return <label key={key}><input type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><strong>{contactDisplayName(lead)}</strong><small>Oportunidade</small></label> })}{state.clients.filter((client) => !client.archived && matches(`${client.fullName} ${client.companyName}`, contactQuery)).map((client) => { const key = `client:${client.id}`; return <label key={key}><input type="checkbox" checked={contactKeys.includes(key)} onChange={() => toggleContact(key)} /><strong>{contactDisplayName(client)}</strong><small>Cliente</small></label> })}</div>
           </details>
         </InputField>
         <InputField label="Observações"><textarea className="field-input min-h-20 resize-y" value={description} onChange={(event) => setDescription(event.currentTarget.value)} placeholder="Contexto, links ou próximo passo…" /></InputField>
@@ -13577,10 +13568,7 @@ function AppointmentForm({
         </header>
         <div className="appointment-form__grid">
           <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
-            <select className="field-input" value={selectedContactKey} onChange={(event) => chooseContact(event.target.value)}>
-              <option value="">Sem contato vinculado</option>
-              {contactOptions.map((contact) => <option key={contact.key} value={contact.key}>{contact.label} · {contact.detail}</option>)}
-            </select>
+            <SearchableSelect value={selectedContactKey} placeholder="Sem contato vinculado" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} · ${contact.detail}`, searchText: contact.label }))} onChange={chooseContact} />
           </InputField>
           <InputField label="Projeto" error={getError(errors.projectId?.message)}>
             <select className="field-input" {...register('projectId')}><option value="">Sem projeto vinculado</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select>
@@ -13931,12 +13919,14 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
     },
   })
   const amount = Number(watch('amount') || 0)
+  const paymentClientId = watch('clientId') || ''
+  const paymentLeadId = watch('leadId') || ''
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Sem projeto</option>{state.projects.filter(isVisibleProject).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select></InputField>
-      <InputField label="Cliente" error={getError(errors.clientId?.message)}><select className="field-input" {...register('clientId')}><option value="">Selecione</option>{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={client.id}>{contactDisplayName(client)}</option>)}</select></InputField>
-      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><select className="field-input" {...register('leadId')}><option value="">Sem contato</option>{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={lead.id}>{contactDisplayName(lead)}</option>)}</select></InputField>
+      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><SearchableSelect value={paymentClientId} placeholder="Selecione" searchPlaceholder="Pesquisar cliente ou empresa por nome..." options={state.clients.filter((client) => !client.archived).map((client) => ({ value: client.id, label: contactDisplayName(client), searchText: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><SearchableSelect value={paymentLeadId} placeholder="Sem contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), searchText: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
       <InputField label="Proposta" error={getError(errors.quoteId?.message)}><select className="field-input" {...register('quoteId')}><option value="">Sem proposta</option>{state.quotes.filter((quote) => !quote.deletedAt).map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteNumber}</option>)}</select></InputField>
       <InputField label="Tipo" error={getError(errors.paymentType?.message)}><Select options={paymentTypes} register={register('paymentType')} /></InputField>
       <InputField label="Valor" error={getError(errors.amount?.message)}>
@@ -14079,11 +14069,13 @@ function QuoteForm({ state, onSubmit, onCancel }: { state: AppState; onSubmit: (
   const travelFee = Number(watch('travelFee') || 0)
   const urgencyFee = Number(watch('urgencyFee') || 0)
   const depositValue = Number(watch('depositValue') || 0)
+  const quoteClientId = watch('clientId') || ''
+  const quoteLeadId = watch('leadId') || ''
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-      <InputField label="Cliente" error={getError(errors.clientId?.message)}><select className="field-input" {...register('clientId')}><option value="">Nenhum</option>{state.clients.map((client) => <option key={client.id} value={client.id}>{contactDisplayName(client)}</option>)}</select></InputField>
-      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><select className="field-input" {...register('leadId')}><option value="">Nenhum</option>{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={lead.id}>{contactDisplayName(lead)}</option>)}</select></InputField>
+      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><SearchableSelect value={quoteClientId} placeholder="Nenhum" searchPlaceholder="Pesquisar cliente ou empresa por nome..." options={state.clients.map((client) => ({ value: client.id, label: contactDisplayName(client), searchText: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><SearchableSelect value={quoteLeadId} placeholder="Nenhum" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), searchText: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
       <InputField label="Item do orçamento" error={getError(errors.description?.message)}><input className="field-input" {...register('description')} /></InputField>
       <InputField label="Quantidade" error={getError(errors.quantity?.message)}><input className="field-input" type="number" {...register('quantity')} /></InputField>
       <InputField label="Valor unitário" error={getError(errors.unitPrice?.message)}>
@@ -14242,6 +14234,58 @@ function Select<T extends readonly string[]>({ options, register }: { options: T
       ))}
     </select>
   )
+}
+
+type SearchableOption = { value: string; label: string; searchText?: string }
+
+function SearchableSelect({ value, options, placeholder = 'Selecione', searchPlaceholder = 'Pesquisar por nome...', emptyLabel = 'Nenhum resultado encontrado', onChange }: {
+  value: string
+  options: SearchableOption[]
+  placeholder?: string
+  searchPlaceholder?: string
+  emptyLabel?: string
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const selected = options.find((option) => option.value === value)
+  const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR')
+  const filteredOptions = normalizedQuery
+    ? options.filter((option) => `${option.label} ${option.searchText || ''}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery))
+    : options
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const choose = (nextValue: string) => {
+    onChange(nextValue)
+    setQuery('')
+    setOpen(false)
+  }
+
+  return <div className="searchable-select" ref={containerRef}>
+    <button className="field-input searchable-select__trigger" type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setOpen((current) => !current); setQuery('') }}>
+      <span className={selected ? '' : 'text-gray-500'}>{selected?.label || placeholder}</span><ChevronDown size={16} />
+    </button>
+    {open ? <div className="searchable-select__panel">
+      <label className="searchable-select__search"><Search size={15} /><input autoFocus value={query} onChange={(event) => setQuery(event.currentTarget.value)} onKeyDown={(event) => {
+        if (event.key === 'Escape') setOpen(false)
+        if (event.key === 'Enter' && filteredOptions.length === 1) { event.preventDefault(); choose(filteredOptions[0].value) }
+      }} placeholder={searchPlaceholder} /></label>
+      <div className="searchable-select__options" role="listbox">
+        <button className={!value ? 'is-selected' : ''} type="button" role="option" aria-selected={!value} onClick={() => choose('')}>{placeholder}</button>
+        {filteredOptions.map((option) => <button className={option.value === value ? 'is-selected' : ''} key={option.value} type="button" role="option" aria-selected={option.value === value} onClick={() => choose(option.value)}><span>{option.label}</span>{option.value === value ? <Check size={15} /> : null}</button>)}
+        {!filteredOptions.length ? <p>{emptyLabel}</p> : null}
+      </div>
+    </div> : null}
+  </div>
 }
 
 function CurrencyInput({
