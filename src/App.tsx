@@ -2984,6 +2984,7 @@ Hero Drone`,
   }
 
   const saveLead = async (values: LeadFormValues) => {
+    const wasEditing = Boolean(selectedLeadId)
     setToast('Salvando oportunidade…')
     const now = new Date().toISOString()
     const normalizedValues = normalizeContactValues(values)
@@ -3091,6 +3092,9 @@ Hero Drone`,
     latestState.current = nextState
     setState(nextState)
     saveAppState(nextState)
+    setModal(null)
+    setSelectedLeadId('')
+    setToast(wasEditing ? 'Oportunidade salva.' : 'Oportunidade criada.')
     try {
       if (isFirebaseConfigured && authSession) {
         const cloudSave = firebaseSaveQueue.current
@@ -3103,20 +3107,15 @@ Hero Drone`,
         ])
         if (!confirmed) {
           setToast('Oportunidade salva. A sincronização com o Firebase continuará em segundo plano.')
-          setModal(null)
-          setSelectedLeadId('')
           return
         }
       } else if (isSupabaseConfigured && authSession) {
         await saveCloudAppState(nextState)
       }
     } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Não foi possível salvar a oportunidade.')
+      setToast(error instanceof Error ? `Oportunidade salva localmente. Falha na sincronização: ${error.message}` : 'Oportunidade salva localmente, mas ainda não foi sincronizada.')
       return
     }
-    setToast(selectedLeadId ? 'Oportunidade salva.' : 'Oportunidade criada.')
-    setModal(null)
-    setSelectedLeadId('')
   }
 
   const addClient = (values: ClientFormValues, forceCreate = false) => {
