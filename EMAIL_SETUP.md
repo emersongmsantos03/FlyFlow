@@ -18,7 +18,8 @@ verifica os dois serviços antes de persistir a conta. Não envia mensagem de te
 
 ## Publicação
 
-O frontend publicado pelo GitHub Pages precisa também do backend Firebase:
+O frontend publicado pelo GitHub Pages precisa também do backend Firebase
+com Node.js 22 (mesma versão usada nos testes e no CI):
 
 ```sh
 npm ci
