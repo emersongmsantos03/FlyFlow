@@ -62,7 +62,7 @@ import {
 } from 'lucide-react'
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useForm } from 'react-hook-form'
+import { useController, useForm, type Control, type FieldValues, type Path } from 'react-hook-form'
 import {
   Bar,
   BarChart,
@@ -78,7 +78,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Button, InputField, MetricCard, Modal, Panel, StatusBadge, Tag, Toast } from './components/ui'
+import { Button, InputField, MetricCard, Modal, Panel, Select, StatusBadge, Tag, Toast, type SelectOption } from './components/ui'
 import { CrmPage, type CrmView } from './components/crm/CrmPage'
 import { InternalProjectsPage } from './components/internalProjects/InternalProjectsPage'
 const LeadHunterPage = lazy(() => import('./components/leadHunter/LeadHunterPage').then((module) => ({ default: module.LeadHunterPage })))
@@ -6750,19 +6750,10 @@ Hero Drone`,
                 </span>
               </div>
               <div className={`w-28 shrink-0 ${['dashboard', 'finance', 'reports'].includes(page) ? 'hidden sm:block' : 'hidden'}`}>
-                <select className="field-input min-h-9 py-1.5 text-sm" aria-label="Período" value={period} onChange={(event) => setPeriod(event.target.value as PeriodPreset)}>
-                  {periodOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <Select size="sm" ariaLabel="Período" value={period} onChange={(next) => setPeriod(next as PeriodPreset)} options={periodOptions.map((option) => ({ value: option.value, label: option.label }))} />
               </div>
               <div className={`w-28 shrink-0 ${['dashboard', 'finance', 'reports'].includes(page) ? 'hidden md:block' : 'hidden'}`}>
-                <select className="field-input min-h-9 py-1.5 text-sm" aria-label="Regime financeiro" value={regime} onChange={(event) => setRegime(event.target.value as AccountingRegime)}>
-                  <option value="cash">Caixa</option>
-                  <option value="accrual">Competência</option>
-                </select>
+                <Select size="sm" ariaLabel="Regime financeiro" value={regime} onChange={(next) => setRegime(next as AccountingRegime)} options={[{ value: 'cash', label: 'Caixa' }, { value: 'accrual', label: 'Competência' }]} />
               </div>
               <button
                 className="app-header-icon focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
@@ -8186,7 +8177,7 @@ function ProposalCancelForm({ quote, onSubmit, onCancel }: {
   const [scheduleFuture, setScheduleFuture] = useState(false)
   return <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onSubmit({ reason, notes, createNew, scheduleFuture }) }}>
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm"><strong>{getQuoteDisplayTitle(quote)}</strong><p className="mt-1 text-gray-500">{quote.quoteNumber} · {formatCurrency(quote.totalValue)}</p></div>
-    <InputField label="Motivo do cancelamento (opcional)"><select className="field-input" value={reason} onChange={(event) => setReason(event.target.value)}><option value="">Sem motivo informado</option>{['Cliente desistiu', 'Valor alterado', 'Serviço alterado', 'Proposta substituída', 'Erro de preenchimento', 'Fora do prazo', 'Outro'].map((item) => <option key={item}>{item}</option>)}</select></InputField>
+    <InputField label="Motivo do cancelamento (opcional)"><Select placeholder="Sem motivo informado" clearable value={reason} onChange={setReason} options={['Cliente desistiu', 'Valor alterado', 'Serviço alterado', 'Proposta substituída', 'Erro de preenchimento', 'Fora do prazo', 'Outro'].map((item) => ({ value: item, label: item }))} /></InputField>
     <InputField label="Observações"><textarea className="field-input min-h-24" value={notes} onChange={(event) => setNotes(event.target.value)} /></InputField>
     <div className="grid gap-2 sm:grid-cols-2"><label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm font-bold text-gray-700"><input className="h-4 w-4 accent-[#d8a500]" type="checkbox" checked={createNew} onChange={(event) => setCreateNew(event.target.checked)} /> Criar uma nova proposta</label><label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm font-bold text-gray-700"><input className="h-4 w-4 accent-[#d8a500]" type="checkbox" checked={scheduleFuture} onChange={(event) => setScheduleFuture(event.target.checked)} /> Agendar retorno futuro</label></div>
     <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Pagamentos, comprovantes, projetos e versões antigas serão preservados.</p>
@@ -9864,10 +9855,19 @@ function AgendaPage({
 
       {filtersOpen ? <section className="agenda-filter-bar is-open" aria-label="Filtros da agenda">
         <label className="agenda-search-field"><Search size={15} /><input aria-label="Buscar na agenda" placeholder="Buscar evento, cliente ou local" value={calendarSearch} onChange={(event) => setCalendarSearch(event.currentTarget.value)} /></label>
-        <label><Users size={15} /><select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.currentTarget.value)}><option value="">Todos os responsáveis</option>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
-        <label><ContactRound size={15} /><select value={contactFilter} onChange={(event) => setContactFilter(event.currentTarget.value)}><option value="">Todos os contatos</option>{state.clients.filter((client) => !client.archived).map((client) => <option key={client.id} value={`client:${client.id}`}>{contactDisplayName(client)}</option>)}{state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => <option key={lead.id} value={`lead:${lead.id}`}>{contactDisplayName(lead)}</option>)}</select></label>
-        <label><List size={15} /><select value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)}><option value="">Todos os tipos</option>{appointmentTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-        <label><CheckCircle2 size={15} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as typeof statusFilter)}><option value="ativos">Somente ativos</option><option value="todos">Todos os status</option><option value="Agendado">Agendados</option><option value="Concluído">Concluídos</option><option value="Cancelado">Cancelados</option></select></label>
+        <Select leadingIcon={<Users size={15} />} placeholder="Todos os responsáveis" clearable value={responsibleFilter} onChange={setResponsibleFilter} options={state.users.filter((user) => user.active).map((user) => ({ value: user.id, label: user.name }))} />
+        <Select leadingIcon={<ContactRound size={15} />} placeholder="Todos os contatos" clearable value={contactFilter} onChange={setContactFilter} options={[
+          ...state.clients.filter((client) => !client.archived).map((client) => ({ value: `client:${client.id}`, label: contactDisplayName(client), group: 'Clientes' })),
+          ...state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: `lead:${lead.id}`, label: contactDisplayName(lead), group: 'Leads' })),
+        ]} />
+        <Select leadingIcon={<List size={15} />} placeholder="Todos os tipos" clearable value={typeFilter} onChange={setTypeFilter} options={appointmentTypes.map((type) => ({ value: type, label: type }))} />
+        <Select leadingIcon={<CheckCircle2 size={15} />} value={statusFilter} onChange={(next) => setStatusFilter(next as typeof statusFilter)} options={[
+          { value: 'ativos', label: 'Somente ativos' },
+          { value: 'todos', label: 'Todos os status' },
+          { value: 'Agendado', label: 'Agendados' },
+          { value: 'Concluído', label: 'Concluídos' },
+          { value: 'Cancelado', label: 'Cancelados' },
+        ]} />
         {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}
       </section> : null}
 
@@ -10470,9 +10470,9 @@ function FinancialDashboard({ state }: { state: AppState }) {
       <details className="progressive-section">
         <summary>Período e comparação <span>{periodLabel} · {reportRegime === 'cash' ? 'Caixa' : 'Competência'}</span></summary>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <InputField label="Período principal"><select className="field-input" value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></InputField>
-          <InputField label="Comparar com"><select className="field-input" value={comparisonPeriod} onChange={(event) => setComparisonPeriod(event.target.value as PeriodPreset)}>{periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></InputField>
-          <InputField label="Regime"><select className="field-input" value={reportRegime} onChange={(event) => setReportRegime(event.target.value as AccountingRegime)}><option value="cash">Caixa (quando pagou/recebeu)</option><option value="accrual">Competência (quando ocorreu)</option></select></InputField>
+          <InputField label="Período principal"><Select value={reportPeriod} onChange={(next) => setReportPeriod(next as PeriodPreset)} options={periodOptions.map((option) => ({ value: option.value, label: option.label }))} /></InputField>
+          <InputField label="Comparar com"><Select value={comparisonPeriod} onChange={(next) => setComparisonPeriod(next as PeriodPreset)} options={periodOptions.map((option) => ({ value: option.value, label: option.label }))} /></InputField>
+          <InputField label="Regime"><Select value={reportRegime} onChange={(next) => setReportRegime(next as AccountingRegime)} options={[{ value: 'cash', label: 'Caixa (quando pagou/recebeu)' }, { value: 'accrual', label: 'Competência (quando ocorreu)' }]} /></InputField>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs text-gray-500">Comparando <strong>{periodLabel}</strong> com <strong>{comparisonLabel}</strong>.</p><Button className="min-h-8 px-2.5 py-1 text-xs" variant="secondary" type="button" onClick={exportReport}><Download size={13} /> Exportar</Button></div>
       </details>
@@ -10939,7 +10939,7 @@ function ProposalGenerator({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <InputField label="Contato">
-          <SearchableSelect value={recipientKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, searchText: contact.label }))} onChange={chooseRecipient} />
+          <Select value={recipientKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, keywords: contact.label }))} onChange={chooseRecipient} />
         </InputField>
         <InputField label="Título">
           <input className="field-input" placeholder="Ex.: Filmagem aérea do imóvel" value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -10958,7 +10958,7 @@ function ProposalGenerator({
               <InputField label="Serviço"><input className="field-input" list="proposal-service-options" placeholder="Digite o serviço" value={item.description} onChange={(event) => updateItem(index, { description: event.target.value })} /></InputField>
               <InputField label="Qtd."><input className="field-input text-center" min="1" type="number" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Number(event.target.value) })} /></InputField>
               <InputField label="Valor unitário"><CurrencyInput value={item.unitPrice} onChange={(value) => updateItem(index, { unitPrice: value })} /></InputField>
-              <InputField label="Exibição"><select className="field-input" value={item.pricingLabel || 'Cobrado'} onChange={(event) => { const value = event.target.value; updateItem(index, value === 'Cobrado' ? { pricingLabel: undefined } : { pricingLabel: value as 'Incluso' | 'Gratuito', unitPrice: 0 }) }}><option>Cobrado</option><option>Incluso</option><option>Gratuito</option></select></InputField>
+              <InputField label="Exibição"><Select value={item.pricingLabel || 'Cobrado'} onChange={(value) => updateItem(index, value === 'Cobrado' ? { pricingLabel: undefined } : { pricingLabel: value as 'Incluso' | 'Gratuito', unitPrice: 0 })} options={[{ value: 'Cobrado', label: 'Cobrado' }, { value: 'Incluso', label: 'Incluso' }, { value: 'Gratuito', label: 'Gratuito' }]} /></InputField>
               <button aria-label="Remover item" className="focus-ring flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 bg-white text-red-600" disabled={items.length === 1} type="button" onClick={() => removeItem(index)}><Trash2 size={16} /></button>
             </div>
           ))}
@@ -11055,16 +11055,13 @@ function EquipmentPage({
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
           <input className="field-input field-input-with-leading-icon" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar equipamento, marca, modelo ou série…" />
         </label>
-        <select className="field-input" aria-label="Categoria" value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option value="all">Todas as categorias</option>
-          {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-        <select className="field-input" aria-label="Disponibilidade" value={availability} onChange={(event) => setAvailability(event.target.value as typeof availability)}>
-          <option value="all">Todos os status</option>
-          <option value="active">Disponíveis</option>
-          <option value="maintenance">Manutenção vencida</option>
-          <option value="inactive">Inativos</option>
-        </select>
+        <Select className="max-w-[12.5rem]" ariaLabel="Categoria" value={category} onChange={setCategory} options={[{ value: 'all', label: 'Todas as categorias' }, ...categories.map((item) => ({ value: item, label: item }))]} />
+        <Select className="max-w-[12.5rem]" ariaLabel="Disponibilidade" value={availability} onChange={(next) => setAvailability(next as typeof availability)} options={[
+          { value: 'all', label: 'Todos os status' },
+          { value: 'active', label: 'Disponíveis' },
+          { value: 'maintenance', label: 'Manutenção vencida' },
+          { value: 'inactive', label: 'Inativos' },
+        ]} />
       </section>
 
       {state.equipment.length === 0 ? (
@@ -11108,7 +11105,7 @@ function EquipmentForm({
   onSubmit: (values: EquipmentFormValues) => void
   onCancel: () => void
 }) {
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<EquipmentFormInput, unknown, EquipmentFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<EquipmentFormInput, unknown, EquipmentFormValues>({
     resolver: zodResolver(equipmentFormSchema),
     defaultValues: {
       name: equipment?.name ?? '',
@@ -11145,7 +11142,7 @@ function EquipmentForm({
         <input className="field-input" {...register('serialNumber')} />
       </InputField>
       <InputField label="Condição" error={getError(errors.condition?.message)}>
-        <Select options={equipmentConditions} register={register('condition')} />
+        <EnumSelect name="condition" control={control} options={equipmentConditions} />
       </InputField>
       <InputField label="Data da compra" error={getError(errors.purchaseDate?.message)}>
         <input className="field-input" type="date" {...register('purchaseDate')} />
@@ -12731,7 +12728,7 @@ function LeadForm({
   const [moreOpen, setMoreOpen] = useState(false)
   const [validationMessage, setValidationMessage] = useState('')
   const initialContact = contacts.find((contact) => contact.id === (lead?.contactId || initialContactId))
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<LeadFormInput, unknown, LeadFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<LeadFormInput, unknown, LeadFormValues>({
     resolver: zodResolver(leadFormSchema),
     defaultValues: {
       contactId: lead?.contactId ?? initialContactId ?? '',
@@ -12784,7 +12781,7 @@ function LeadForm({
             <div className="min-w-0 flex-1">
               <InputField label="Contato vinculado" error={getError(errors.contactId?.message)}>
                 <input type="hidden" {...register('contactId')} />
-                <SearchableSelect value={contactId} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contacts.map((contact) => ({ value: contact.id, label: `${contactDisplayName(contact)}${contact.companyName ? ` · ${contact.companyName}` : ''}`, searchText: `${contact.fullName} ${contact.companyName}` }))} onChange={(nextContactId) => {
+                <Select value={contactId} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contacts.map((contact) => ({ value: contact.id, label: `${contactDisplayName(contact)}${contact.companyName ? ` · ${contact.companyName}` : ''}`, keywords: `${contact.fullName} ${contact.companyName}` }))} onChange={(nextContactId) => {
                   setValue('contactId', nextContactId, { shouldDirty: true, shouldValidate: true })
                   const contact = contacts.find((item) => item.id === nextContactId)
                   if (!contact) return
@@ -12815,7 +12812,7 @@ function LeadForm({
           <input type="hidden" {...register('phone')} />
           <PhoneInput value={leadPhone} onChange={(nextValue) => setValue('phone', nextValue, { shouldDirty: true, shouldValidate: true })} />
         </InputField>
-        <InputField label="Temperatura" error={getError(errors.temperature?.message)}><Select options={leadTemperatures} register={register('temperature')} /></InputField>
+        <InputField label="Temperatura" error={getError(errors.temperature?.message)}><EnumSelect name="temperature" control={control} options={leadTemperatures} /></InputField>
       </div>
 
       <details className="group rounded-lg border border-gray-200 bg-gray-50" open={moreOpen || hasAdditionalErrors} onToggle={(event) => { if (!hasAdditionalErrors) setMoreOpen(event.currentTarget.open) }}>
@@ -12827,7 +12824,7 @@ function LeadForm({
         <div className="grid gap-3 border-t border-gray-200 p-4 sm:grid-cols-2">
           <InputField label="E-mail" error={getError(errors.email?.message)}><input className="field-input" type="email" {...register('email')} /></InputField>
           <InputField label="Instagram" error={getError(errors.instagram?.message)}><input className="field-input" {...register('instagram')} /></InputField>
-          <InputField label="Origem" error={getError(errors.source?.message)}><Select options={leadSources} register={register('source')} /></InputField>
+          <InputField label="Origem" error={getError(errors.source?.message)}><EnumSelect name="source" control={control} options={leadSources} /></InputField>
           <InputField label="Cidade" error={getError(errors.city?.message)}><input className="field-input" {...register('city')} /></InputField>
           <InputField label="Bairro" error={getError(errors.neighborhood?.message)}><input className="field-input" {...register('neighborhood')} /></InputField>
           <div className="sm:col-span-2">
@@ -12870,6 +12867,8 @@ function ClosedServiceForm({
     ? (initialQuote.depositValue / initialQuote.totalValue) * 100
     : state.companySettings.defaultDepositPercentage
   const defaultServiceName = initialQuote ? getQuoteServiceName(lead, initialQuoteItems) : lead.serviceInterest
+  const [serviceName, setServiceName] = useState(defaultServiceName)
+  const [paymentMethod, setPaymentMethod] = useState<Payment['paymentMethod']>('PIX')
   const [totalValue, setTotalValue] = useState(defaultTotal)
   const [depositPercentage, setDepositPercentage] = useState(defaultDepositPercentage)
   const [depositValue, setDepositValue] = useState(defaultTotal * (defaultDepositPercentage / 100))
@@ -12937,13 +12936,13 @@ function ClosedServiceForm({
       leadId: lead.id,
       quoteId: initialQuote?.id,
       projectName,
-      serviceName: String(formData.get('serviceName') || defaultServiceName) as Project['serviceName'],
+      serviceName: serviceName as Project['serviceName'],
       totalValue,
       depositPercentage,
       depositValue,
       depositPaid,
       depositPaidAt: String(formData.get('depositPaidAt') || dateInput()),
-      paymentMethod: String(formData.get('paymentMethod') || 'PIX') as Payment['paymentMethod'],
+      paymentMethod,
       captureDate,
       captureStartTime,
       captureEndTime: String(formData.get('captureEndTime') || captureStartTime),
@@ -12973,7 +12972,7 @@ function ClosedServiceForm({
         <h3 className="text-sm font-black text-gray-950">Projeto</h3>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <InputField label="Nome do projeto"><input className="field-input" name="projectName" defaultValue={defaultProjectName} required /></InputField>
-          <InputField label="Serviço"><select className="field-input" name="serviceName" defaultValue={defaultServiceName}>{serviceTypes.map((service) => <option key={service} value={service}>{service}</option>)}</select></InputField>
+          <InputField label="Serviço"><Select value={serviceName} onChange={(next) => setServiceName(next as typeof serviceName)} options={serviceTypes.map((service) => ({ value: service, label: service }))} /></InputField>
           <InputField label="Cidade"><input className="field-input" name="city" defaultValue={lead.city} required /></InputField>
           <MapsAddressField
             label="Endereço da captação"
@@ -12999,7 +12998,7 @@ function ClosedServiceForm({
           <InputField label="Valor da entrada">
             <CurrencyInput value={depositValue} onChange={updateDepositValue} />
           </InputField>
-          <InputField label="Forma de pagamento"><select className="field-input" name="paymentMethod" defaultValue="PIX">{paymentMethods.map((method) => <option key={method} value={method}>{method}</option>)}</select></InputField>
+          <InputField label="Forma de pagamento"><Select value={paymentMethod} onChange={(next) => setPaymentMethod(next as Payment['paymentMethod'])} options={paymentMethods.map((method) => ({ value: method, label: method }))} /></InputField>
           <label className="flex min-h-11 items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700">
             <input className="h-4 w-4 accent-[#d4af37]" type="checkbox" checked={depositPaid} onChange={(event) => setDepositPaid(event.currentTarget.checked)} />
             Entrada já foi paga
@@ -13041,7 +13040,7 @@ function ClosedServiceForm({
 }
 
 function ClientForm({ client, companies, onSubmit, onCancel }: { client?: Client; companies: Company[]; onSubmit: (values: ClientFormValues) => void; onCancel: () => void }) {
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ClientFormInput, unknown, ClientFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<ClientFormInput, unknown, ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
     defaultValues: {
       companyId: client?.companyId ?? '',
@@ -13069,7 +13068,7 @@ function ClientForm({ client, companies, onSubmit, onCancel }: { client?: Client
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Nome" error={getError(errors.fullName?.message)}><input className="field-input" {...register('fullName')} /></InputField>
-      <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}><input type="hidden" {...register('companyId')} /><SearchableSelect value={companyId} placeholder="Sem empresa" searchPlaceholder="Pesquisar empresa por nome..." options={companies.map((company) => ({ value: company.id, label: company.tradeName, searchText: company.legalName }))} onChange={(value) => setValue('companyId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}><input type="hidden" {...register('companyId')} /><Select value={companyId} placeholder="Sem empresa" searchPlaceholder="Pesquisar empresa por nome..." clearable options={companies.map((company) => ({ value: company.id, label: company.tradeName, keywords: company.legalName }))} onChange={(value) => setValue('companyId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
       <InputField label="Cargo ou função" error={getError(errors.jobTitle?.message)}><input className="field-input" {...register('jobTitle')} /></InputField>
       <InputField label="Empresa (texto livre)" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} placeholder="Use apenas se a empresa ainda não estiver cadastrada" /></InputField>
       <InputField label="CPF/CNPJ" error={getError(errors.document?.message)}><input className="field-input" {...register('document')} /></InputField>
@@ -13086,7 +13085,7 @@ function ClientForm({ client, companies, onSubmit, onCancel }: { client?: Client
       <InputField label="Cidade" error={getError(errors.city?.message)}><input className="field-input" {...register('city')} /></InputField>
       <InputField label="Bairro" error={getError(errors.neighborhood?.message)}><input className="field-input" {...register('neighborhood')} /></InputField>
       <InputField label="CEP" error={getError(errors.postalCode?.message)}><input className="field-input" {...register('postalCode')} /></InputField>
-      <InputField label="Origem" error={getError(errors.source?.message)}><Select options={leadSources} register={register('source')} /></InputField>
+      <InputField label="Origem" error={getError(errors.source?.message)}><EnumSelect name="source" control={control} options={leadSources} /></InputField>
       <div>
         <input type="hidden" {...register('address')} />
         <MapsAddressField
@@ -13154,7 +13153,7 @@ function ProjectForm({
       ? Math.max(calendarDaysBetween(initialCaptureDate, initialDeliveryDeadline), 0)
       : defaultDeliveryDays
   )
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProjectFormInput, unknown, ProjectFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProjectFormInput, unknown, ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
     defaultValues: {
       name: project?.name ?? '',
@@ -13269,9 +13268,9 @@ function ProjectForm({
       <input type="hidden" {...register('leadId')} />
       <InputField label="Nome do projeto" error={getError(errors.name?.message)}><input className="field-input" {...register('name')} /></InputField>
       <InputField label="Contato no CRM" error={getError(errors.leadId?.message || errors.clientId?.message)}>
-        <SearchableSelect value={selectedContactKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, searchText: contact.label }))} onChange={chooseProjectContact} />
+        <Select value={selectedContactKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, keywords: contact.label }))} onChange={chooseProjectContact} />
       </InputField>
-      <InputField label="Tipo de serviço" error={getError(errors.serviceName?.message)}><Select options={serviceTypes} register={register('serviceName')} /></InputField>
+      <InputField label="Tipo de serviço" error={getError(errors.serviceName?.message)}><EnumSelect name="serviceName" control={control} options={serviceTypes} /></InputField>
       <InputField label="Data de captação" error={getError(errors.captureDate?.message)}><input className="field-input" type="date" {...register('captureDate')} /></InputField>
       <InputField label="Horário inicial" error={getError(errors.captureStartTime?.message)}><input className="field-input" type="time" {...register('captureStartTime')} /></InputField>
       <InputField label="Horário final" error={getError(errors.captureEndTime?.message)}><input className="field-input" type="time" {...register('captureEndTime')} /></InputField>
@@ -13332,7 +13331,7 @@ function ProjectForm({
       <InputField label="Horas trabalhadas" error={getError(errors.workedHours?.message)}><input className="field-input" min="0" step="0.5" type="number" {...register('workedHours')} /></InputField>
       <div><input type="hidden" {...register('projectStatus')} /><SmallStat label="Status do projeto" value={project?.projectStatus ?? 'Confirmado'} /></div>
       <div><input type="hidden" {...register('financialStatus')} /><SmallStat label="Status financeiro" value={project?.financialStatus ?? 'Aguardando sinal'} /></div>
-      <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
+      <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><EnumSelect name="paymentMethod" control={control} options={paymentMethods} /></InputField>
       <div className="md:col-span-2">
         <InputField label="Descrição e observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24" {...register('notes')} /></InputField>
       </div>
@@ -13431,8 +13430,8 @@ function TaskForm({
     </section>
 
     <div className="task-quick-grid">
-      <InputField label="Prioridade"><select className="field-input" value={priority} onChange={(event) => setPriority(event.currentTarget.value as TaskItem['priority'])}>{['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => <option key={value}>{value}</option>)}</select></InputField>
-      <InputField label="Responsável"><select className="field-input" value={responsibleUserId} onChange={(event) => setResponsibleUserId(event.currentTarget.value)}>{state.users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
+      <InputField label="Prioridade"><Select value={priority} onChange={(next) => setPriority(next as TaskItem['priority'])} options={['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => ({ value, label: value }))} /></InputField>
+      <InputField label="Responsável"><Select value={responsibleUserId} onChange={setResponsibleUserId} options={state.users.filter((user) => user.active).map((user) => ({ value: user.id, label: user.name }))} /></InputField>
     </div>
 
     <details className="task-optional-details" open={Boolean(description || contactKeys.length)}>
@@ -13469,7 +13468,7 @@ function AppointmentForm({
   onCancel: () => void
   onDelete?: () => void
 }) {
-  const { register, handleSubmit, watch, setValue, getValues, formState: { errors } } = useForm<AppointmentFormInput, unknown, AppointmentFormValues>({
+  const { register, control, handleSubmit, watch, setValue, getValues, formState: { errors } } = useForm<AppointmentFormInput, unknown, AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
     defaultValues: {
       title: initialValues?.title ?? '',
@@ -13571,8 +13570,8 @@ function AppointmentForm({
         </header>
         <div className="appointment-form__grid">
           <div className="md:col-span-2"><InputField label={isEditing ? 'Título' : 'Título do agendamento'} error={getError(errors.title?.message)}><input autoFocus={!isEditing} className="field-input" placeholder="Ex.: Reunião de alinhamento com cliente" {...register('title')} /></InputField></div>
-          <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><Select options={appointmentTypes} register={register('appointmentType')} /></InputField>
-          <InputField label="Status" error={getError(errors.status?.message)}><Select options={appointmentStatuses} register={register('status')} /></InputField>
+          <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><EnumSelect name="appointmentType" control={control} options={appointmentTypes} /></InputField>
+          <InputField label="Status" error={getError(errors.status?.message)}><EnumSelect name="status" control={control} options={appointmentStatuses} /></InputField>
         </div>
       </section>
 
@@ -13583,10 +13582,10 @@ function AppointmentForm({
         </header>
         <div className="appointment-form__grid">
           <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
-            <SearchableSelect value={selectedContactKey} placeholder="Sem contato vinculado" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} · ${contact.detail}`, searchText: contact.label }))} onChange={chooseContact} />
+            <Select value={selectedContactKey} placeholder="Sem contato vinculado" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} · ${contact.detail}`, keywords: contact.label }))} onChange={chooseContact} />
           </InputField>
           <InputField label="Projeto" error={getError(errors.projectId?.message)}>
-            <select className="field-input" {...register('projectId')}><option value="">Sem projeto vinculado</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select>
+            <FormSelect name="projectId" control={control} placeholder="Sem projeto vinculado" clearable options={state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => ({ value: project.id, label: projectOptionLabel(state, project) }))} />
           </InputField>
         </div>
       </section>
@@ -13729,12 +13728,9 @@ function QuoteDepositForm({
       <div className="grid gap-4 md:grid-cols-2">
         <InputField label="Valor recebido"><CurrencyInput value={amount} onChange={setAmount} /></InputField>
         <InputField label="Data do pagamento"><input className="field-input" required type="datetime-local" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} /></InputField>
-        <InputField label="Forma de pagamento"><select className="field-input" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as Payment['paymentMethod'])}>{paymentMethods.map((method) => <option key={method}>{method}</option>)}</select></InputField>
+        <InputField label="Forma de pagamento"><Select value={paymentMethod} onChange={(next) => setPaymentMethod(next as Payment['paymentMethod'])} options={paymentMethods.map((method) => ({ value: method, label: method }))} /></InputField>
         <InputField label="Conta de destino">
-          <select className="field-input" required value={bankAccountId} onChange={(event) => setBankAccountId(event.target.value)}>
-            <option value="">Selecione a conta</option>
-            {activeAccounts.map((bankAccount) => <option key={bankAccount.id} value={bankAccount.id}>{bankAccount.name} · {bankAccount.bankName}</option>)}
-          </select>
+          <Select placeholder="Selecione a conta" clearable value={bankAccountId} onChange={setBankAccountId} options={activeAccounts.map((bankAccount) => ({ value: bankAccount.id, label: `${bankAccount.name} · ${bankAccount.bankName}` }))} />
         </InputField>
         <InputField label="Número da transação"><input className="field-input" value={transactionNumber} onChange={(event) => setTransactionNumber(event.target.value)} /></InputField>
         <InputField label="Comprovante">
@@ -13747,7 +13743,7 @@ function QuoteDepositForm({
         <input className="mt-0.5 h-5 w-5 accent-emerald-600" required type="checkbox" checked={confirmedReceived} onChange={(event) => setConfirmedReceived(event.target.checked)} />
         Pagamento recebido e conferido. O comprovante anexado sozinho não confirma o recebimento.
       </label>
-      <FormActions onCancel={onCancel} submitLabel="Confirmar entrada" />
+      <FormActions onCancel={onCancel} submitLabel="Confirmar entrada" submitDisabled={!bankAccountId} />
     </form>
   )
 }
@@ -13852,7 +13848,7 @@ function BankAccountForm({ account, onSubmit, onCancel }: { account?: BankAccoun
         <div className="grid gap-4 sm:grid-cols-2">
           <InputField label="Apelido da conta"><input className="field-input" required value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Conta principal" /></InputField>
           <InputField label="Banco ou instituição"><input className="field-input" required value={bankName} onChange={(event) => setBankName(event.target.value)} placeholder="Ex.: Nubank, Itaú ou Caixa" /></InputField>
-          <InputField label="Tipo de conta"><select className="field-input" value={accountType} onChange={(event) => setAccountType(event.target.value as BankAccount['accountType'])}>{bankAccountTypes.map((type) => <option key={type}>{type}</option>)}</select></InputField>
+          <InputField label="Tipo de conta"><Select value={accountType} onChange={(next) => setAccountType(next as BankAccount['accountType'])} options={bankAccountTypes.map((type) => ({ value: type, label: type }))} /></InputField>
           <InputField label="Saldo inicial"><CurrencyInput value={openingBalance} onChange={setOpeningBalance} /></InputField>
         </div>
         <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-500"><strong className="text-gray-700">Sobre o saldo inicial:</strong> informe quanto já existia na conta antes de começar a registrar movimentações no FlyFlow.</p>
@@ -13891,14 +13887,14 @@ function BankTransferForm({ state, transfer, onSubmit, onCancel }: { state: AppS
       onSubmit({ fromAccountId, toAccountId, amount, transferredAt, description })
     }}>
       <div className="grid gap-4 sm:grid-cols-2">
-        <InputField label="Conta de origem"><select className="field-input" required value={fromAccountId} onChange={(event) => setFromAccountId(event.target.value)}><option value="">Selecione</option>{activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></InputField>
-        <InputField label="Conta de destino"><select className="field-input" required value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}><option value="">Selecione</option>{activeAccounts.map((account) => <option key={account.id} value={account.id} disabled={account.id === fromAccountId}>{account.name}</option>)}</select></InputField>
+        <InputField label="Conta de origem"><Select placeholder="Selecione" clearable value={fromAccountId} onChange={setFromAccountId} options={activeAccounts.map((account) => ({ value: account.id, label: account.name }))} /></InputField>
+        <InputField label="Conta de destino"><Select placeholder="Selecione" clearable value={toAccountId} onChange={setToAccountId} options={activeAccounts.map((account) => ({ value: account.id, label: account.name, disabled: account.id === fromAccountId }))} /></InputField>
         <InputField label="Valor"><CurrencyInput value={amount} onChange={setAmount} /></InputField>
         <InputField label="Data da transferência"><input className="field-input" required type="datetime-local" value={transferredAt} onChange={(event) => setTransferredAt(event.target.value)} /></InputField>
       </div>
       <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">Saldo disponível em <strong>{source?.name ?? 'origem'}</strong>: <strong>{formatCurrency(sourceBalance)}</strong></p>
       <InputField label="Descrição"><input className="field-input" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Opcional" /></InputField>
-      <FormActions onCancel={onCancel} submitLabel={transfer ? 'Salvar transferência' : 'Transferir'} />
+      <FormActions onCancel={onCancel} submitLabel={transfer ? 'Salvar transferência' : 'Transferir'} submitDisabled={!fromAccountId || !toAccountId} />
     </form>
   )
 }
@@ -13910,7 +13906,7 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
     || state.bankAccounts.find((bankAccount) => bankAccount.name === payment?.account)?.id
     || activeAccounts[0]?.id
     || ''
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<PaymentFormInput, unknown, PaymentFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<PaymentFormInput, unknown, PaymentFormValues>({
     resolver: zodResolver(paymentFormSchema),
     defaultValues: {
       projectId: payment?.projectId || initialProjectId || '',
@@ -13939,11 +13935,11 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-      <InputField label="Projeto" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Sem projeto</option>{state.projects.filter(isVisibleProject).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select></InputField>
-      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><SearchableSelect value={paymentClientId} placeholder="Selecione" searchPlaceholder="Pesquisar cliente ou empresa por nome..." options={state.clients.filter((client) => !client.archived).map((client) => ({ value: client.id, label: contactDisplayName(client), searchText: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
-      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><SearchableSelect value={paymentLeadId} placeholder="Sem contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), searchText: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
-      <InputField label="Proposta" error={getError(errors.quoteId?.message)}><select className="field-input" {...register('quoteId')}><option value="">Sem proposta</option>{state.quotes.filter((quote) => !quote.deletedAt).map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteNumber}</option>)}</select></InputField>
-      <InputField label="Tipo" error={getError(errors.paymentType?.message)}><Select options={paymentTypes} register={register('paymentType')} /></InputField>
+      <InputField label="Projeto" error={getError(errors.projectId?.message)}><FormSelect name="projectId" control={control} placeholder="Sem projeto" clearable options={state.projects.filter(isVisibleProject).map((project) => ({ value: project.id, label: projectOptionLabel(state, project) }))} /></InputField>
+      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><Select value={paymentClientId} placeholder="Selecione" searchPlaceholder="Pesquisar cliente ou empresa por nome..." clearable options={state.clients.filter((client) => !client.archived).map((client) => ({ value: client.id, label: contactDisplayName(client), keywords: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><Select value={paymentLeadId} placeholder="Sem contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), keywords: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Proposta" error={getError(errors.quoteId?.message)}><FormSelect name="quoteId" control={control} placeholder="Sem proposta" clearable options={state.quotes.filter((quote) => !quote.deletedAt).map((quote) => ({ value: quote.id, label: quote.quoteNumber }))} /></InputField>
+      <InputField label="Tipo" error={getError(errors.paymentType?.message)}><EnumSelect name="paymentType" control={control} options={paymentTypes} /></InputField>
       <InputField label="Valor" error={getError(errors.amount?.message)}>
         <input type="hidden" {...register('amount')} />
         <CurrencyInput
@@ -13957,15 +13953,12 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
         <span className="mt-1 block text-xs text-gray-500">No pagamento final, informe a data combinada para receber após a entrega. Esta data não controla o alerta vermelho do projeto.</span>
       </InputField>
       <InputField label="Data do recebimento" error={getError(errors.paidAt?.message)}><input className="field-input" type="datetime-local" {...register('paidAt')} /></InputField>
-      <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
-      <InputField label="Status" error={getError(errors.status?.message)}><Select options={paymentStatuses} register={register('status')} /></InputField>
+      <InputField label="Forma de pagamento" error={getError(errors.paymentMethod?.message)}><EnumSelect name="paymentMethod" control={control} options={paymentMethods} /></InputField>
+      <InputField label="Status" error={getError(errors.status?.message)}><EnumSelect name="status" control={control} options={paymentStatuses} /></InputField>
       <InputField label="Link do comprovante" error={getError(errors.receiptUrl?.message)}><input className="field-input" placeholder="https://..." {...register('receiptUrl')} /></InputField>
       <input type="hidden" {...register('account')} />
       <InputField label="Conta de destino" error={getError(errors.bankAccountId?.message)}>
-        <select className="field-input" {...register('bankAccountId')}>
-          <option value="">Selecione quando receber</option>
-          {activeAccounts.map((bankAccount) => <option key={bankAccount.id} value={bankAccount.id}>{bankAccount.name} · {bankAccount.bankName}</option>)}
-        </select>
+        <FormSelect name="bankAccountId" control={control} placeholder="Selecione quando receber" clearable options={activeAccounts.map((bankAccount) => ({ value: bankAccount.id, label: `${bankAccount.name} · ${bankAccount.bankName}` }))} />
       </InputField>
       <InputField label="Número da transação" error={getError(errors.transactionNumber?.message)}><input className="field-input" {...register('transactionNumber')} /></InputField>
       <label className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-900 md:col-span-2">
@@ -13983,7 +13976,7 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
     || state.bankAccounts.find((bankAccount) => bankAccount.name === expense?.account)?.id
     || activeAccounts[0]?.id
     || ''
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ExpenseFormInput, unknown, ExpenseFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<ExpenseFormInput, unknown, ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
     defaultValues: {
       projectId: expense?.projectId || '',
@@ -14016,9 +14009,9 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Descrição" error={getError(errors.description?.message)}><input className="field-input" {...register('description')} /></InputField>
-      <InputField label="Projeto relacionado" error={getError(errors.projectId?.message)}><select className="field-input" {...register('projectId')}><option value="">Sem projeto</option>{state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => <option key={project.id} value={project.id}>{projectOptionLabel(state, project)}</option>)}</select></InputField>
-      <InputField label="Categoria" error={getError(errors.category?.message)}><Select options={expenseCategories} register={register('category')} /></InputField>
-      <InputField label="Tipo de despesa" error={getError(errors.expenseType?.message)}><Select options={expenseTypes} register={register('expenseType')} /></InputField>
+      <InputField label="Projeto relacionado" error={getError(errors.projectId?.message)}><FormSelect name="projectId" control={control} placeholder="Sem projeto" clearable options={state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => ({ value: project.id, label: projectOptionLabel(state, project) }))} /></InputField>
+      <InputField label="Categoria" error={getError(errors.category?.message)}><EnumSelect name="category" control={control} options={expenseCategories} /></InputField>
+      <InputField label="Tipo de despesa" error={getError(errors.expenseType?.message)}><EnumSelect name="expenseType" control={control} options={expenseTypes} /></InputField>
       <InputField label="Valor" error={getError(errors.amount?.message)}>
         <input type="hidden" {...register('amount')} />
         <CurrencyInput
@@ -14030,15 +14023,12 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
       <InputField label="Data" error={getError(errors.expenseDate?.message)}><input className="field-input" type="date" {...register('expenseDate')} /></InputField>
       <InputField label="Vencimento" error={getError(errors.dueDate?.message)}><input className="field-input" type="date" {...register('dueDate')} /></InputField>
       <InputField label="Data do pagamento" error={getError(errors.paidAt?.message)}><input className="field-input" disabled={!paymentDateEnabled} type="datetime-local" {...register('paidAt')} /></InputField>
-      <InputField label="Forma" error={getError(errors.paymentMethod?.message)}><Select options={paymentMethods} register={register('paymentMethod')} /></InputField>
-      <InputField label="Situação da despesa" error={getError(errors.status?.message)}><Select options={expenseStatuses} register={register('status')} /></InputField>
+      <InputField label="Forma" error={getError(errors.paymentMethod?.message)}><EnumSelect name="paymentMethod" control={control} options={paymentMethods} /></InputField>
+      <InputField label="Situação da despesa" error={getError(errors.status?.message)}><EnumSelect name="status" control={control} options={expenseStatuses} /></InputField>
       <InputField label="Fornecedor" error={getError(errors.supplier?.message)}><input className="field-input" {...register('supplier')} /></InputField>
       <input type="hidden" {...register('account')} />
       <InputField label="Conta de saída" error={getError(errors.bankAccountId?.message)}>
-        <select className="field-input" {...register('bankAccountId')}>
-          <option value="">Selecione quando pagar</option>
-          {activeAccounts.map((bankAccount) => <option key={bankAccount.id} value={bankAccount.id}>{bankAccount.name} · {bankAccount.bankName}</option>)}
-        </select>
+        <FormSelect name="bankAccountId" control={control} placeholder="Selecione quando pagar" clearable options={activeAccounts.map((bankAccount) => ({ value: bankAccount.id, label: `${bankAccount.name} · ${bankAccount.bankName}` }))} />
       </InputField>
       <InputField label="Número da transação" error={getError(errors.transactionNumber?.message)}><input className="field-input" {...register('transactionNumber')} /></InputField>
       <div className="expense-recurrence md:col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -14048,7 +14038,7 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
         </label>
         {recurring ? (
           <div className="mt-3 grid gap-3 border-t border-gray-200 pt-3 sm:grid-cols-2">
-            <InputField label="Periodicidade" error={getError(errors.recurrenceFrequency?.message)}><Select options={expenseRecurrenceFrequencies} register={register('recurrenceFrequency')} /></InputField>
+            <InputField label="Periodicidade" error={getError(errors.recurrenceFrequency?.message)}><EnumSelect name="recurrenceFrequency" control={control} options={expenseRecurrenceFrequencies} /></InputField>
             <InputField label="Repetir até (opcional)" error={getError(errors.recurrenceEndDate?.message)}><input className="field-input" min={watch('expenseDate')} type="date" {...register('recurrenceEndDate')} /></InputField>
           </div>
         ) : null}
@@ -14060,7 +14050,7 @@ function ExpenseForm({ state, expense, onSubmit, onCancel }: { state: AppState; 
 }
 
 function QuoteForm({ state, onSubmit, onCancel }: { state: AppState; onSubmit: (values: QuoteFormValues) => void; onCancel: () => void }) {
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuoteFormInput, unknown, QuoteFormValues>({
+  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuoteFormInput, unknown, QuoteFormValues>({
     resolver: zodResolver(quoteFormSchema),
     defaultValues: {
       leadId: '',
@@ -14089,8 +14079,8 @@ function QuoteForm({ state, onSubmit, onCancel }: { state: AppState; onSubmit: (
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><SearchableSelect value={quoteClientId} placeholder="Nenhum" searchPlaceholder="Pesquisar cliente ou empresa por nome..." options={state.clients.map((client) => ({ value: client.id, label: contactDisplayName(client), searchText: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
-      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><SearchableSelect value={quoteLeadId} placeholder="Nenhum" searchPlaceholder="Pesquisar contato ou empresa por nome..." options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), searchText: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><Select value={quoteClientId} placeholder="Nenhum" searchPlaceholder="Pesquisar cliente ou empresa por nome..." clearable options={state.clients.map((client) => ({ value: client.id, label: contactDisplayName(client), keywords: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><Select value={quoteLeadId} placeholder="Nenhum" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), keywords: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
       <InputField label="Item do orçamento" error={getError(errors.description?.message)}><input className="field-input" {...register('description')} /></InputField>
       <InputField label="Quantidade" error={getError(errors.quantity?.message)}><input className="field-input" type="number" {...register('quantity')} /></InputField>
       <InputField label="Valor unitário" error={getError(errors.unitPrice?.message)}>
@@ -14115,7 +14105,7 @@ function QuoteForm({ state, onSubmit, onCancel }: { state: AppState; onSubmit: (
       </InputField>
       <InputField label="Validade" error={getError(errors.expirationDate?.message)}><input className="field-input" type="date" {...register('expirationDate')} /></InputField>
       <InputField label="Prazo de entrega" error={getError(errors.deliveryDeadline?.message)}><input className="field-input" type="date" {...register('deliveryDeadline')} /></InputField>
-      <InputField label="Status" error={getError(errors.status?.message)}><Select options={quoteStatuses.filter((status) => !['Arquivada', 'Excluída logicamente'].includes(status))} register={register('status')} /></InputField>
+      <InputField label="Status" error={getError(errors.status?.message)}><EnumSelect name="status" control={control} options={quoteStatuses.filter((status) => !['Arquivada', 'Excluída logicamente'].includes(status))} /></InputField>
       <div className="md:col-span-2"><InputField label="Condições de pagamento" error={getError(errors.paymentTerms?.message)}><textarea className="field-input min-h-20" {...register('paymentTerms')} /></InputField></div>
       <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-20" {...register('notes')} /></InputField></div>
       <FormActions onCancel={onCancel} />
@@ -14207,11 +14197,7 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
           <input autoComplete="new-password" className="field-input" inputMode="numeric" pattern="[0-9]*" type="password" value={password} onChange={(event) => setPassword(event.target.value.replace(/\D/g, '').slice(0, 12))} placeholder="6 a 12 números" />
         </InputField>
         <InputField label="Perfil de acesso">
-          <select className="field-input" value={role} onChange={(event) => changeRole(event.target.value as UserRole)}>
-            {Object.keys(rolePermissionPresets).map((roleName) => (
-              <option key={roleName} value={roleName}>{roleName}</option>
-            ))}
-          </select>
+          <Select value={role} onChange={(next) => changeRole(next as UserRole)} options={Object.keys(rolePermissionPresets).map((roleName) => ({ value: roleName, label: roleName }))} />
         </InputField>
         </div>
       </section>
@@ -14241,66 +14227,21 @@ function UserForm({ onSubmit, onCancel }: { onSubmit: (values: UserFormValues) =
   )
 }
 
-function Select<T extends readonly string[]>({ options, register }: { options: T; register: Record<string, unknown> }) {
-  return (
-    <select className="field-input" {...register}>
-      {options.map((option) => (
-        <option key={option} value={option}>{option}</option>
-      ))}
-    </select>
-  )
+function EnumSelect<TFieldValues extends FieldValues, T extends readonly string[]>({ name, control, options }: { name: Path<TFieldValues>; control: Control<TFieldValues>; options: T }) {
+  const { field } = useController({ name, control })
+  return <Select value={(field.value as string) ?? ''} onChange={field.onChange} options={options.map((option) => ({ value: option, label: option }))} />
 }
 
-type SearchableOption = { value: string; label: string; searchText?: string }
-
-function SearchableSelect({ value, options, placeholder = 'Selecione', searchPlaceholder = 'Pesquisar por nome...', emptyLabel = 'Nenhum resultado encontrado', onChange }: {
-  value: string
-  options: SearchableOption[]
+function FormSelect<TFieldValues extends FieldValues>({ name, control, options, placeholder, clearable, searchable }: {
+  name: Path<TFieldValues>
+  control: Control<TFieldValues>
+  options: SelectOption[]
   placeholder?: string
-  searchPlaceholder?: string
-  emptyLabel?: string
-  onChange: (value: string) => void
+  clearable?: boolean
+  searchable?: boolean
 }) {
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
-  const containerRef = useRef<HTMLDivElement>(null)
-  const selected = options.find((option) => option.value === value)
-  const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR')
-  const filteredOptions = normalizedQuery
-    ? options.filter((option) => `${option.label} ${option.searchText || ''}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery))
-    : options
-
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
-  const choose = (nextValue: string) => {
-    onChange(nextValue)
-    setQuery('')
-    setOpen(false)
-  }
-
-  return <div className="searchable-select" ref={containerRef}>
-    <button className="field-input searchable-select__trigger" type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setOpen((current) => !current); setQuery('') }}>
-      <span className={selected ? '' : 'text-gray-500'}>{selected?.label || placeholder}</span><ChevronDown size={16} />
-    </button>
-    {open ? <div className="searchable-select__panel">
-      <label className="searchable-select__search"><Search size={15} /><input autoFocus value={query} onChange={(event) => setQuery(event.currentTarget.value)} onKeyDown={(event) => {
-        if (event.key === 'Escape') setOpen(false)
-        if (event.key === 'Enter' && filteredOptions.length === 1) { event.preventDefault(); choose(filteredOptions[0].value) }
-      }} placeholder={searchPlaceholder} /></label>
-      <div className="searchable-select__options" role="listbox">
-        <button className={!value ? 'is-selected' : ''} type="button" role="option" aria-selected={!value} onClick={() => choose('')}>{placeholder}</button>
-        {filteredOptions.map((option) => <button className={option.value === value ? 'is-selected' : ''} key={option.value} type="button" role="option" aria-selected={option.value === value} onClick={() => choose(option.value)}><span>{option.label}</span>{option.value === value ? <Check size={15} /> : null}</button>)}
-        {!filteredOptions.length ? <p>{emptyLabel}</p> : null}
-      </div>
-    </div> : null}
-  </div>
+  const { field } = useController({ name, control })
+  return <Select value={(field.value as string) ?? ''} onChange={field.onChange} options={options} placeholder={placeholder} clearable={clearable} searchable={searchable} />
 }
 
 function CurrencyInput({

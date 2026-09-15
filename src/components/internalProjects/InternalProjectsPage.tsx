@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import { Button, InputField, Modal } from '../ui'
+import { Button, InputField, Modal, Select } from '../ui'
 import {
   internalProjectCategories,
   internalProjectStatuses,
@@ -293,7 +293,7 @@ export function InternalProjectsPage({
           </div>
           <div className="flex flex-1 gap-2 lg:max-w-xl">
             <label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} /><input className="field-input w-full pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar projetos, categorias ou tags..." /></label>
-            <label className="relative"><ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><select className="field-input pl-8 pr-7 text-xs" value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}><option value="updated">Recentes</option><option value="due">Prazo</option><option value="priority">Prioridade</option></select></label>
+            <Select size="sm" leadingIcon={<ArrowUpDown size={14} />} value={sortBy} onChange={(next) => setSortBy(next as typeof sortBy)} options={[{ value: 'updated', label: 'Recentes' }, { value: 'due', label: 'Prazo' }, { value: 'priority', label: 'Prioridade' }]} />
           </div>
         </div>
         <div className="internal-project-summary mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs font-bold text-gray-500">
@@ -348,21 +348,15 @@ export function InternalProjectsPage({
                             <span className="customer-project-color" style={{ backgroundColor: color }} />
                             <span className="min-w-0"><strong className="block truncate text-sm font-semibold text-gray-950">{project.name}</strong><small className="mt-0.5 block truncate text-[0.68rem] text-gray-500">{project.description || 'Sem descrição'}</small></span>
                           </button>
-                          <label className="customer-project-cell owner-cell">
-                            <select aria-label={`Responsável por ${project.name}`} className="internal-project-board-select w-full cursor-pointer bg-transparent py-2 text-center font-semibold text-gray-700 outline-none" value={project.responsibleUserId || ''} onChange={(event) => patch(project.id, { responsibleUserId: event.target.value || undefined })}>
-                              <option value="">Não atribuído</option>{users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-                            </select>
-                          </label>
-                          <label className="customer-project-cell internal-project-status-cell">
-                            <select aria-label={`Status de ${project.name}`} className={`internal-project-board-select w-full cursor-pointer rounded-md border-0 text-center font-bold outline-none ${statusStyle[project.status].soft}`} value={project.status} onChange={(event) => patch(project.id, { status: event.target.value as InternalProjectStatus, progress: event.target.value === 'Concluído' ? 100 : project.progress })}>
-                              {internalProjectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
-                            </select>
-                          </label>
-                          <label className="customer-project-cell internal-project-status-cell">
-                            <select aria-label={`Prioridade de ${project.name}`} className={`internal-project-board-select w-full cursor-pointer rounded-md border-0 text-center font-bold outline-none ${priorityStyle[project.priority]}`} value={project.priority} onChange={(event) => patch(project.id, { priority: event.target.value as InternalProject['priority'] })}>
-                              <option>Baixa</option><option>Média</option><option>Alta</option><option>Urgente</option>
-                            </select>
-                          </label>
+                          <div className="customer-project-cell owner-cell">
+                            <Select ariaLabel={`Responsável por ${project.name}`} triggerClassName="internal-project-board-select w-full cursor-pointer bg-transparent text-center font-semibold text-gray-700" placeholder="Não atribuído" clearable value={project.responsibleUserId || ''} onChange={(value) => patch(project.id, { responsibleUserId: value || undefined })} options={users.filter((user) => user.active).map((user) => ({ value: user.id, label: user.name }))} />
+                          </div>
+                          <div className="customer-project-cell internal-project-status-cell">
+                            <Select ariaLabel={`Status de ${project.name}`} triggerClassName={`internal-project-board-select w-full cursor-pointer text-center font-bold ${statusStyle[project.status].soft}`} value={project.status} onChange={(value) => patch(project.id, { status: value as InternalProjectStatus, progress: value === 'Concluído' ? 100 : project.progress })} options={internalProjectStatuses.map((status) => ({ value: status, label: status }))} />
+                          </div>
+                          <div className="customer-project-cell internal-project-status-cell">
+                            <Select ariaLabel={`Prioridade de ${project.name}`} triggerClassName={`internal-project-board-select w-full cursor-pointer text-center font-bold ${priorityStyle[project.priority]}`} value={project.priority} onChange={(value) => patch(project.id, { priority: value as InternalProject['priority'] })} options={['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => ({ value, label: value }))} />
+                          </div>
                           <button className={`customer-project-cell timeline-cell ${late ? 'text-red-600' : 'text-gray-600'}`} type="button" onClick={() => setEditing({ ...project })}>
                             <CalendarDays size={14} /><span>{project.startDate ? formatDate(project.startDate) : 'Início'} — {formatDate(project.dueDate)}</span>
                           </button>
@@ -423,14 +417,12 @@ function ProjectEditor({ project, users, onClose, onSave }: { project: InternalP
           <InputField label="Nome do projeto"><input autoFocus className="field-input" required value={draft.name} onChange={(event) => set('name', event.target.value)} placeholder="Ex.: Novo site da Hero Drone" /></InputField>
           <InputField label="Objetivo / descrição"><textarea className="field-input min-h-24 resize-y" value={draft.description} onChange={(event) => set('description', event.target.value)} placeholder="Qual problema vamos resolver e qual resultado esperamos?" /></InputField>
           <div className="grid gap-4 sm:grid-cols-2">
-          <InputField label="Status"><select className="field-input" value={draft.status} onChange={(event) => set('status', event.target.value as InternalProjectStatus)}>{internalProjectStatuses.map((status) => <option key={status}>{status}</option>)}</select></InputField>
-          <InputField label="Prioridade"><select className="field-input" value={draft.priority} onChange={(event) => set('priority', event.target.value as InternalProject['priority'])}><option>Baixa</option><option>Média</option><option>Alta</option><option>Urgente</option></select></InputField>
+          <InputField label="Status"><Select value={draft.status} onChange={(next) => set('status', next as InternalProjectStatus)} options={internalProjectStatuses.map((status) => ({ value: status, label: status }))} /></InputField>
+          <InputField label="Prioridade"><Select value={draft.priority} onChange={(next) => set('priority', next as InternalProject['priority'])} options={['Baixa', 'Média', 'Alta', 'Urgente'].map((value) => ({ value, label: value }))} /></InputField>
           <InputField label="Categoria">
-            <select className="field-input" value={draft.category} onChange={(event) => set('category', event.target.value)}>
-              {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
-            </select>
+            <Select value={draft.category} onChange={(value) => set('category', value)} options={categoryOptions.map((category) => ({ value: category, label: category }))} />
           </InputField>
-          <InputField label="Responsável"><select className="field-input" value={draft.responsibleUserId || ''} onChange={(event) => set('responsibleUserId', event.target.value || undefined)}><option value="">Não atribuído</option>{users.filter((user) => user.active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></InputField>
+          <InputField label="Responsável"><Select placeholder="Não atribuído" clearable value={draft.responsibleUserId || ''} onChange={(value) => set('responsibleUserId', value || undefined)} options={users.filter((user) => user.active).map((user) => ({ value: user.id, label: user.name }))} /></InputField>
           <InputField label="Data de início"><input className="field-input" type="date" value={draft.startDate || ''} onChange={(event) => set('startDate', event.target.value || undefined)} /></InputField>
           <InputField label="Prazo"><input className="field-input" type="date" value={draft.dueDate || ''} onChange={(event) => set('dueDate', event.target.value || undefined)} /></InputField>
           </div>

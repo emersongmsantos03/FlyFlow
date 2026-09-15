@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { disconnectDomainMail, refreshDomainMail, saveDomainMail, MailServiceUnavailableError, type MailAccount } from '../services/domainMail'
-import { Button, Panel } from './ui'
+import { Button, Panel, Select } from './ui'
 
 const empty: MailAccount = { connected: false, email: '', name: '', smtp: { host: '', port: 465, user: '', pass: '' }, imap: { host: '', port: 993, user: '', pass: '' } }
 export function MailAccountSettings() {
@@ -45,7 +45,7 @@ export function MailAccountSettings() {
       {(['smtp', 'imap'] as const).map((protocol) => <fieldset key={protocol} disabled={busy} className="grid gap-3 rounded-xl border border-gray-200 p-3 sm:grid-cols-2">
         <legend className="px-1 text-sm font-bold">{protocol === 'smtp' ? 'SMTP — envio' : 'IMAP — caixa de entrada'}</legend>
         <label className="text-sm">Servidor<input className="field-input" value={account[protocol]?.host || ''} onChange={(event) => setAccount({ ...account, [protocol]: { ...account[protocol], host: event.target.value } })} placeholder={`${protocol}.seuprovedor.com`} /></label>
-        <label className="text-sm">Porta / segurança<select className="field-input" value={account[protocol]?.port || (protocol === 'smtp' ? 465 : 993)} onChange={(event) => setAccount({ ...account, [protocol]: { ...account[protocol], port: Number(event.target.value) } })}>{(protocol === 'smtp' ? [465, 587] : [993, 143]).map((port) => <option key={port} value={port}>{port} — {port === 465 || port === 993 ? 'TLS' : 'STARTTLS'}</option>)}</select></label>
+        <label className="text-sm">Porta / segurança<Select value={String(account[protocol]?.port || (protocol === 'smtp' ? 465 : 993))} onChange={(value) => setAccount({ ...account, [protocol]: { ...account[protocol], port: Number(value) } })} options={(protocol === 'smtp' ? [465, 587] : [993, 143]).map((port) => ({ value: String(port), label: `${port} — ${port === 465 || port === 993 ? 'TLS' : 'STARTTLS'}` }))} /></label>
         <label className="text-sm">Usuário<input className="field-input" autoComplete="username" value={account[protocol]?.user || ''} placeholder={account.email || 'Seu e-mail completo'} onChange={(event) => setAccount({ ...account, [protocol]: { ...account[protocol], user: event.target.value } })} /></label>
         <label className="text-sm">Senha<input className="field-input" type="password" autoComplete="new-password" value={account[protocol]?.pass || ''} placeholder={account.connected ? 'Vazio mantém a senha salva' : 'Senha do e-mail ou de aplicativo'} onChange={(event) => setAccount({ ...account, [protocol]: { ...account[protocol], pass: event.target.value } })} /></label>
       </fieldset>)}

@@ -37,7 +37,7 @@ import { buildCommercialActionQueue, buildCommercialInsights } from '../../servi
 import { averageOpportunityAge, opportunityHealth, stageProbability, weightedPipelineValue } from '../../lib/crmIntelligence'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
-import { Button, StatusBadge } from '../ui'
+import { Button, Select, StatusBadge } from '../ui'
 
 export type CrmView = 'kanban' | 'table' | 'tasks' | 'lost'
 
@@ -337,19 +337,19 @@ export function CrmPage({
               <Search className="pointer-events-none absolute left-3 top-3 text-gray-400" size={17} />
               <input className="field-input field-input-with-leading-icon" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, telefone, cidade, proposta ou projeto…" />
             </label>
-            <select className="field-input sm:max-w-[15rem]" aria-label="Filtro rápido" value={quickFilter} onChange={(event) => setQuickFilter(event.target.value as QuickFilter)}>
-              <option value="all">Todos</option>
-              <option value="action">Precisa de ação</option>
-              <option value="overdue">Atrasados</option>
-              <option value="no-activity">Sem próxima atividade</option>
-              <option value="with-quote">Com proposta</option>
-              <option value="waiting-deposit">Aguardando entrada</option>
-              <option value="paid">Entrada paga</option>
-              <option value="no-receipt">Sem comprovante</option>
-              <option value="with-project">Com projeto</option>
-              <option value="stalled">Oportunidades paradas</option>
-              <option value="confirmed-no-project">Confirmado sem projeto</option>
-            </select>
+            <Select className="sm:max-w-[15rem]" ariaLabel="Filtro rápido" value={quickFilter} onChange={(next) => setQuickFilter(next as QuickFilter)} options={[
+              { value: 'all', label: 'Todos' },
+              { value: 'action', label: 'Precisa de ação' },
+              { value: 'overdue', label: 'Atrasados' },
+              { value: 'no-activity', label: 'Sem próxima atividade' },
+              { value: 'with-quote', label: 'Com proposta' },
+              { value: 'waiting-deposit', label: 'Aguardando entrada' },
+              { value: 'paid', label: 'Entrada paga' },
+              { value: 'no-receipt', label: 'Sem comprovante' },
+              { value: 'with-project', label: 'Com projeto' },
+              { value: 'stalled', label: 'Oportunidades paradas' },
+              { value: 'confirmed-no-project', label: 'Confirmado sem projeto' },
+            ]} />
           </div>
         </div>
       </section>
@@ -357,9 +357,7 @@ export function CrmPage({
       {view === 'kanban' ? (
         <section className="crm-board-shell relative">
           <div className="mb-2 flex items-center justify-between gap-3 lg:hidden">
-            <select className="field-input" value={mobileColumn} onChange={(event) => setMobileColumn(event.target.value)}>
-              {columns.map((column) => <option key={column.id} value={column.id}>{column.title}</option>)}
-            </select>
+            <Select value={mobileColumn} onChange={setMobileColumn} options={columns.map((column) => ({ value: column.id, label: column.title }))} />
           </div>
           <button aria-label="Rolar quadro para a esquerda" className="crm-scroll-button left-2" type="button" onClick={() => scrollBoard(-1)}><ArrowLeft size={19} /></button>
           <button aria-label="Rolar quadro para a direita" className="crm-scroll-button right-2" type="button" onClick={() => scrollBoard(1)}><ArrowRight size={19} /></button>
@@ -469,9 +467,7 @@ export function CrmPage({
                 <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Inteligência</p><p className="mt-1 line-clamp-3 text-xs font-bold text-gray-800">{priorityLead.leadHunterData?.aiSummary || priorityLead.leadHunterData?.aiContactHook || 'Contato acessível e com ação comercial pendente.'}</p></div>
               </div>
               <label className="block text-xs font-bold text-gray-700">Momento da conversa
-                <select className="field-input mt-1" value={whatsAppContext} onChange={(event) => { const context = event.target.value as WhatsAppContext; setWhatsAppContext(context); setWhatsAppMessage(buildContextualWhatsAppMessage(priorityLead, context)) }}>
-                  {whatsappContexts.map((context) => <option key={context}>{context}</option>)}
-                </select>
+                <div className="mt-1"><Select value={whatsAppContext} onChange={(value) => { const context = value as WhatsAppContext; setWhatsAppContext(context); setWhatsAppMessage(buildContextualWhatsAppMessage(priorityLead, context)) }} options={whatsappContexts.map((context) => ({ value: context, label: context }))} /></div>
               </label>
               <label className="block text-xs font-bold text-gray-700">Mensagem personalizada
                 <textarea className="field-input mt-1 min-h-36 resize-y leading-6" value={whatsAppMessage} onChange={(event) => setWhatsAppMessage(event.target.value)} />
@@ -821,8 +817,8 @@ function TaskWorkspace({ state, onOpenLead, onCreate, onEdit, onComplete, onReop
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="min-w-0 flex-1"><h2 className="font-black text-gray-950">Tarefas</h2><p className="text-xs text-gray-500">Organize retornos, ligações e atividades comerciais.</p></div>
         <label className="relative min-w-0 flex-1 lg:max-w-sm"><Search className="pointer-events-none absolute left-3 top-3 text-gray-400" size={16} /><input className="field-input field-input-with-leading-icon" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Buscar tarefa ou contato" /></label>
-        <select className="field-input lg:max-w-44" value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as typeof statusFilter)}><option>Ativas</option><option>Todas</option><option>Pendente</option><option>Em andamento</option><option>Concluída</option><option>Cancelada</option></select>
-        <select className="field-input lg:max-w-40" value={typeFilter} onChange={(event) => setTypeFilter(event.currentTarget.value)}><option value="">Todos os tipos</option>{taskTypes.map((type) => <option key={type}>{type}</option>)}</select>
+        <Select className="lg:max-w-44" value={statusFilter} onChange={(next) => setStatusFilter(next as typeof statusFilter)} options={['Ativas', 'Todas', 'Pendente', 'Em andamento', 'Concluída', 'Cancelada'].map((value) => ({ value, label: value }))} />
+        <Select className="lg:max-w-40" placeholder="Todos os tipos" clearable value={typeFilter} onChange={setTypeFilter} options={taskTypes.map((type) => ({ value: type, label: type }))} />
         <Button type="button" onClick={() => onCreate()}><Plus size={15} /> Nova tarefa</Button>
       </div>
     </section>

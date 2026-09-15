@@ -36,7 +36,7 @@ import type {
   LeadHunterRoute,
   LeadHunterSettings,
 } from "../../types";
-import { Button, Modal, Panel, StatusBadge } from "../ui";
+import { Button, Modal, Panel, Select, StatusBadge } from "../ui";
 import { leadScoreLabel } from "../../services/leadHunter/LeadScoringService";
 import {
   buildInstagramUrl,
@@ -367,73 +367,58 @@ export function LeadHunterPage({
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="text-xs font-medium text-gray-600">
                 Modo
-                <select
-                  className="field-input mt-1"
-                  value={mode}
-                  onChange={(event) =>
-                    setMode(event.target.value as typeof mode)
-                  }
-                >
-                  <option>Rotação automática</option>
-                  <option>Manual</option>
-                </select>
+                <div className="mt-1">
+                  <Select
+                    value={mode}
+                    onChange={(next) => setMode(next as typeof mode)}
+                    options={[{ value: "Rotação automática", label: "Rotação automática" }, { value: "Manual", label: "Manual" }]}
+                  />
+                </div>
               </label>
               <label className="text-xs font-medium text-gray-600">
                 Cidade
-                <select
-                  className="field-input mt-1"
-                  value={cityId}
-                  onChange={(event) => setCityId(event.target.value)}
-                  disabled={mode === "Rotação automática"}
-                >
-                  <option value="">Todas as cidades ativas</option>
-                  {cities
-                    .filter((city) => city.active)
-                    .map((city) => (
-                      <option key={city.id} value={city.id}>
-                        {city.name} · {city.distanceFromBaseKm} km
-                      </option>
-                    ))}
-                </select>
+                <div className="mt-1">
+                  <Select
+                    value={cityId}
+                    onChange={setCityId}
+                    disabled={mode === "Rotação automática"}
+                    placeholder="Todas as cidades ativas"
+                    clearable
+                    options={cities
+                      .filter((city) => city.active)
+                      .map((city) => ({ value: city.id, label: `${city.name} · ${city.distanceFromBaseKm} km` }))}
+                  />
+                </div>
               </label>
               <label className="text-xs font-medium text-gray-600">
                 Categoria
-                <select
-                  className="field-input mt-1"
-                  value={categoryId}
-                  onChange={(event) => setCategoryId(event.target.value)}
-                >
-                  <option value="">Distribuição automática</option>
-                  {categories
-                    .filter((category) => category.active && isEligibleLeadSegment(category.name))
-                    .map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name} · {category.priority}
-                      </option>
-                    ))}
-                </select>
+                <div className="mt-1">
+                  <Select
+                    value={categoryId}
+                    onChange={setCategoryId}
+                    placeholder="Distribuição automática"
+                    clearable
+                    options={categories
+                      .filter((category) => category.active && isEligibleLeadSegment(category.name))
+                      .map((category) => ({ value: category.id, label: `${category.name} · ${category.priority}` }))}
+                  />
+                </div>
               </label>
               <label className="text-xs font-medium text-gray-600">
                 Raio da busca
-                <select className="field-input mt-1" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))}>
-                  {[10, 25, 30, 40, 50].map((distance) => <option key={distance} value={distance}>{distance} km</option>)}
-                </select>
+                <div className="mt-1">
+                  <Select value={String(radiusKm)} onChange={(next) => setRadiusKm(Number(next))} options={[10, 25, 30, 40, 50].map((distance) => ({ value: String(distance), label: `${distance} km` }))} />
+                </div>
               </label>
               <label className="text-xs font-medium text-gray-600">
                 Score mínimo
-                <select
-                  className="field-input mt-1"
-                  value={minimumScore}
-                  onChange={(event) =>
-                    setMinimumScore(Number(event.target.value))
-                  }
-                >
-                  {[0, 40, 60, 75, 90].map((score) => (
-                    <option key={score} value={score}>
-                      {score}+
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <Select
+                    value={String(minimumScore)}
+                    onChange={(next) => setMinimumScore(Number(next))}
+                    options={[0, 40, 60, 75, 90].map((score) => ({ value: String(score), label: `${score}+` }))}
+                  />
+                </div>
               </label>
               <label className="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 text-sm">
                 <input
@@ -558,25 +543,35 @@ export function LeadHunterPage({
                 onChange={(event) => setResultQuery(event.target.value)}
                 placeholder="Buscar empresa, cidade ou categoria"
               />
-              <select aria-label="Canal disponível" className="field-input min-w-0" value={contactFilter} onChange={(event) => setContactFilter(event.target.value as typeof contactFilter)}>
-                <option value="all">Todos os contatos</option>
-                <option value="whatsapp">Com WhatsApp</option>
-                <option value="instagram">Com Instagram</option>
-                <option value="website">Com website</option>
-                <option value="email">Com e-mail</option>
-                <option value="contactable">Com algum contato</option>
-                <option value="never-contacted">Nunca contatados</option>
-                <option value="contacted">Já contatados</option>
-                <option value="ai">Enriquecidos por IA</option>
-              </select>
-              <select aria-label="Rodada da busca" className="field-input min-w-0" value={searchBatchId} onChange={(event) => setSearchBatchId(event.target.value)}>
-                <option value="">Todas as rodadas</option>
-                {searches.filter((search) => search.totalFound > 0).slice(0, 12).map((search, index) => (
-                  <option key={search.id} value={search.id}>
-                    {index === 0 ? "Última busca" : new Date(search.createdAt).toLocaleDateString("pt-BR")} · {search.totalFound}
-                  </option>
-                ))}
-              </select>
+              <Select
+                className="min-w-0"
+                ariaLabel="Canal disponível"
+                value={contactFilter}
+                onChange={(next) => setContactFilter(next as typeof contactFilter)}
+                options={[
+                  { value: "all", label: "Todos os contatos" },
+                  { value: "whatsapp", label: "Com WhatsApp" },
+                  { value: "instagram", label: "Com Instagram" },
+                  { value: "website", label: "Com website" },
+                  { value: "email", label: "Com e-mail" },
+                  { value: "contactable", label: "Com algum contato" },
+                  { value: "never-contacted", label: "Nunca contatados" },
+                  { value: "contacted", label: "Já contatados" },
+                  { value: "ai", label: "Enriquecidos por IA" },
+                ]}
+              />
+              <Select
+                className="min-w-0"
+                ariaLabel="Rodada da busca"
+                placeholder="Todas as rodadas"
+                clearable
+                value={searchBatchId}
+                onChange={setSearchBatchId}
+                options={searches.filter((search) => search.totalFound > 0).slice(0, 12).map((search, index) => ({
+                  value: search.id,
+                  label: `${index === 0 ? "Última busca" : new Date(search.createdAt).toLocaleDateString("pt-BR")} · ${search.totalFound}`,
+                }))}
+              />
               <div className="field-input flex min-w-0 items-center text-sm font-medium text-gray-600">Ordenado por maior score</div>
             </div>
             <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
@@ -1230,15 +1225,11 @@ function ManualLeadModal({
           </label>
           <label className="text-xs font-semibold text-gray-600">
             Categoria *
-            <select className="field-input mt-1 w-full" required value={form.categoryId} onChange={(event) => update("categoryId", event.currentTarget.value)}>
-              {activeCategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+            <div className="mt-1"><Select value={form.categoryId} onChange={(value) => update("categoryId", value)} options={activeCategories.map((item) => ({ value: item.id, label: item.name }))} /></div>
           </label>
           <label className="text-xs font-semibold text-gray-600">
             Cidade *
-            <select className="field-input mt-1 w-full" required value={form.cityId} onChange={(event) => update("cityId", event.currentTarget.value)}>
-              {activeCities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+            <div className="mt-1"><Select value={form.cityId} onChange={(value) => update("cityId", value)} options={activeCities.map((item) => ({ value: item.id, label: item.name }))} /></div>
           </label>
           <label className="text-xs font-semibold text-gray-600">
             WhatsApp
@@ -2287,29 +2278,25 @@ function LeadHunterSettingsPanel({
                   )
                 }
               />
-              <select
-                className="field-input min-h-8 px-2 py-1 text-xs"
+              <Select
+                size="sm"
+                className="min-w-0"
                 value={category.priority}
-                onChange={(event) =>
+                onChange={(next) =>
                   onSaveCategories(
                     categories.map((item) =>
                       item.id === category.id
                         ? {
                             ...item,
-                            priority: event.target
-                              .value as LeadHunterCategory["priority"],
+                            priority: next as LeadHunterCategory["priority"],
                             updatedAt: timestamp(),
                           }
                         : item,
                     ),
                   )
                 }
-              >
-                <option>Máxima</option>
-                <option>Alta</option>
-                <option>Média</option>
-                <option>Baixa</option>
-              </select>
+                options={["Máxima", "Alta", "Média", "Baixa"].map((value) => ({ value, label: value }))}
+              />
               <button
                 className={`rounded-full px-2 py-1 text-xs font-semibold ${category.active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}
                 type="button"
