@@ -13188,13 +13188,16 @@ function ClientForm({ client, companies, initialCompanyId, onCreateCompany, onSu
       <InputField label="Nome" error={getError(errors.fullName?.message)}><input className="field-input" {...register('fullName')} /></InputField>
       <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}>
         <input type="hidden" {...register('companyId')} />
+        <input type="hidden" {...register('companyName')} />
         <div className="flex items-end gap-2">
-          <div className="min-w-0 flex-1"><Select value={companyId} placeholder="Sem empresa" searchable searchPlaceholder="Pesquisar empresa por nome..." clearable options={companies.map((company) => ({ value: company.id, label: company.tradeName, keywords: company.legalName }))} onChange={(value) => setValue('companyId', value, { shouldDirty: true, shouldValidate: true })} /></div>
+          <div className="min-w-0 flex-1"><Select value={companyId} placeholder="Sem empresa" searchable searchPlaceholder="Pesquisar empresa por nome..." clearable options={companies.map((company) => ({ value: company.id, label: company.tradeName, keywords: company.legalName }))} onChange={(value) => {
+            setValue('companyId', value, { shouldDirty: true, shouldValidate: true })
+            setValue('companyName', companies.find((company) => company.id === value)?.tradeName || '', { shouldDirty: true })
+          }} /></div>
           <Button className="shrink-0" variant="secondary" type="button" onClick={onCreateCompany}><Building2 size={16} /><span className="hidden sm:inline">Nova empresa</span></Button>
         </div>
       </InputField>
       <InputField label="Cargo ou função" error={getError(errors.jobTitle?.message)}><input className="field-input" {...register('jobTitle')} /></InputField>
-      <InputField label="Empresa (texto livre)" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} placeholder="Use apenas se a empresa ainda não estiver cadastrada" /></InputField>
       <InputField label="CPF/CNPJ" error={getError(errors.document?.message)}><input className="field-input" {...register('document')} /></InputField>
       <InputField label="Telefone" error={getError(errors.phone?.message)}>
         <input type="hidden" {...register('phone')} />
