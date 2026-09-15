@@ -712,6 +712,16 @@ const appointmentColorOptions = [
   { label: 'Preto', value: '#171717' },
 ] as const
 
+function readableEventTextColor(hex: string) {
+  const value = hex.replace('#', '')
+  if (value.length !== 6) return '#ffffff'
+  const r = parseInt(value.slice(0, 2), 16)
+  const g = parseInt(value.slice(2, 4), 16)
+  const b = parseInt(value.slice(4, 6), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.6 ? '#22261f' : '#ffffff'
+}
+
 const loadGoogleMapsPlaces = () => {
   if (typeof window === 'undefined' || !googleMapsApiKey) return Promise.resolve(false)
   if (window.google?.maps?.places?.AutocompleteService) return Promise.resolve(true)
@@ -9901,8 +9911,8 @@ function AgendaPage({
       ) : null}
 
       {calendarView === 'lista' ? (
-      <Panel title="Lista da agenda">
-        <div className="space-y-3">
+      <Panel className="agenda-list-panel" title="Lista da agenda">
+        <div className="agenda-list">
           {visibleAppointments.map((appointment) => {
             const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
             const project = appointment.projectId ? state.projects.find((item) => item.id === appointment.projectId) : undefined
@@ -9914,7 +9924,7 @@ function AgendaPage({
             return (
               <article
                 key={appointment.id}
-                className="agenda-list-row cursor-pointer rounded-lg border border-gray-200 p-3 transition"
+                className={`agenda-list-row ${completed ? 'is-completed' : ''}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => openCalendarItem(appointment)}
@@ -9922,34 +9932,36 @@ function AgendaPage({
                   if (event.key === 'Enter' || event.key === ' ') openCalendarItem(appointment)
                 }}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    {client || lead ? <p className="mb-1 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-[#866800]"><ContactRound size={14} /> {contactName}</p> : null}
-                    <div className="flex items-start gap-2">
-                      {task ? <button className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 bg-white text-transparent hover:border-emerald-400'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={14} /></button> : null}
-                      <h3 className={`font-black ${completed ? 'text-gray-500 line-through' : 'text-gray-950'}`}>{appointment.title}</h3>
-                    </div>
-                    <p className="text-sm text-gray-500">{formatDateTime(appointment.startAt)} até {formatDateTime(appointment.endAt)}</p>
-                    <p className="text-sm text-gray-500">{project?.projectCode ?? appointment.appointmentType}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {appointment.address ? (
-                        <a className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-bold text-gray-700" href={mapsLink(appointment.address)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                          <MapPin size={15} /> Mapa
-                        </a>
-                      ) : null}
-                      {whatsapp ? (
-                        <a className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-bold text-gray-700" href={whatsappLink(whatsapp)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                          <MessageCircle size={15} /> WhatsApp
-                        </a>
-                      ) : null}
-                      {appointment.calendarUrl ? (
-                        <a className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-bold text-gray-700" href={appointment.calendarUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                          <CalendarDays size={15} /> Google Calendar
-                        </a>
-                      ) : null}
-                    </div>
+                <span className="agenda-list-row__accent" style={{ '--calendar-item-color': appointment.color || '#2563eb' } as CSSProperties} />
+                <div className="agenda-list-row__body">
+                  {client || lead ? <p className="agenda-list-row__contact"><ContactRound size={13} /> {contactName}</p> : null}
+                  <div className="agenda-list-row__title-row">
+                    {task ? <button className={`agenda-list-check ${completed ? 'is-done' : ''}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={13} /></button> : null}
+                    <h3 className="agenda-list-row__title">{appointment.title}</h3>
                   </div>
-                  <div className="flex flex-col items-end gap-2"><StatusBadge>{appointment.status}</StatusBadge>{appointment.appointmentType === 'Captação' && appointment.confirmationStatus !== 'Confirmado' ? <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-700">Confirmação pendente</span> : null}</div>
+                  <p className="agenda-list-row__time">{formatDateTime(appointment.startAt)} até {formatDateTime(appointment.endAt)}</p>
+                  <p className="agenda-list-row__type">{project?.projectCode ?? appointment.appointmentType}</p>
+                  <div className="agenda-list-row__actions">
+                    {appointment.address ? (
+                      <a href={mapsLink(appointment.address)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                        <MapPin size={14} /> Mapa
+                      </a>
+                    ) : null}
+                    {whatsapp ? (
+                      <a href={whatsappLink(whatsapp)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                        <MessageCircle size={14} /> WhatsApp
+                      </a>
+                    ) : null}
+                    {appointment.calendarUrl ? (
+                      <a href={appointment.calendarUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                        <CalendarDays size={14} /> Google Calendar
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="agenda-list-row__meta">
+                  <StatusBadge>{appointment.status}</StatusBadge>
+                  {appointment.appointmentType === 'Captação' && appointment.confirmationStatus !== 'Confirmado' ? <span className="agenda-list-row__pending">Confirmação pendente</span> : null}
                 </div>
               </article>
             )
@@ -12323,7 +12335,7 @@ function MonthCalendar({
                   const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
                   const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
                   const contactName = client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : ''
-                  return <div key={appointment.id} className="calendar-month-event" style={{ '--calendar-item-color': appointment.color || '#3b82f6' } as CSSProperties}>
+                  return <div key={appointment.id} className="calendar-month-event" style={{ '--calendar-item-color': appointment.color || '#2563eb' } as CSSProperties}>
                     <div className="flex items-center gap-1">
                       {task ? <button className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 text-transparent'}`} type="button" aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={11} /></button> : null}
                       <button className={`min-w-0 flex-1 truncate text-left ${completed ? 'is-completed' : ''}`} title={`${formatDateTime(appointment.startAt)} · ${appointment.title}${contactName ? ` · ${contactName}` : ''}`} type="button" onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment) }}><time>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time> {appointment.title}</button>
@@ -12538,14 +12550,17 @@ function TimeGridCalendar({
         <div className={view === 'diaria' ? 'min-w-[620px]' : 'min-w-[980px]'}>
           <div className="grid border-b border-gray-200" style={{ gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` }}>
             <div className="p-2 text-xs font-bold uppercase text-gray-500">Hora</div>
-            {days.map((day) => (
-              <div key={day.toISOString()} className="border-l border-gray-200 p-2">
-                <p className="text-xs font-bold uppercase text-gray-500">
-                  {day.toLocaleDateString('pt-BR', { weekday: 'short' })}
-                </p>
-                <p className="text-lg font-black text-gray-950">{day.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</p>
-              </div>
-            ))}
+            {days.map((day) => {
+              const headerIsToday = dateInputFromDate(day) === dateInput()
+              return (
+                <div key={day.toISOString()} className={`time-grid-day-header border-l border-gray-200 p-2 ${headerIsToday ? 'is-today' : ''}`}>
+                  <p className="time-grid-day-header__weekday">
+                    {day.toLocaleDateString('pt-BR', { weekday: 'short' })}
+                  </p>
+                  <p className="time-grid-day-header__number"><span>{day.toLocaleDateString('pt-BR', { day: 'numeric' })}</span></p>
+                </div>
+              )
+            })}
           </div>
 
           <div className="grid" style={{ gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(${view === 'diaria' ? '26rem' : '9rem'}, 1fr))` }}>
@@ -12621,7 +12636,8 @@ function TimeGridCalendar({
                         data-appointment-id={appointment.id}
                         className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${conflictIds.has(appointment.id) ? 'is-conflict' : ''} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
                         style={{
-                          '--calendar-item-color': appointment.color || '#d8a500',
+                          '--calendar-item-color': appointment.color || '#2563eb',
+                          '--calendar-item-text': readableEventTextColor(appointment.color || '#2563eb'),
                           ...block,
                           left: `calc(${layout.column * columnWidth}% + 4px)`,
                           right: `calc(${(layout.columns - layout.column - 1) * columnWidth}% + 4px)`,
