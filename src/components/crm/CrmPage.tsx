@@ -37,7 +37,7 @@ import { buildCommercialActionQueue, buildCommercialInsights } from '../../servi
 import { averageOpportunityAge, opportunityHealth, stageProbability, weightedPipelineValue } from '../../lib/crmIntelligence'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
-import { Button, Select, StatusBadge } from '../ui'
+import { Button, Modal, Select, StatusBadge } from '../ui'
 
 export type CrmView = 'kanban' | 'table' | 'tasks' | 'lost'
 
@@ -133,6 +133,31 @@ const currentProject = (state: AppState, leadId: string) =>
 
 const relatedPayments = (state: AppState, leadId: string, project?: Project) =>
   state.payments.filter((payment) => !payment.deletedAt && (payment.leadId === leadId || (project && payment.projectId === project.id)))
+
+const priorityTone: Record<TaskItem['priority'], string> = {
+  Urgente: 'bg-red-50 text-red-700',
+  Alta: 'bg-amber-50 text-amber-700',
+  Média: 'bg-blue-50 text-blue-700',
+  Baixa: 'bg-gray-100 text-gray-600',
+}
+
+const PriorityTag = ({ priority }: { priority: TaskItem['priority'] }) => (
+  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-black ${priorityTone[priority]}`}>{priority}</span>
+)
+
+const taskContact = (task: TaskItem, state: AppState) => {
+  const lead = task.leadId
+    ? state.leads.find((item) => item.id === task.leadId)
+    : task.leadIds?.length
+      ? state.leads.find((item) => task.leadIds!.includes(item.id))
+      : undefined
+  const client = !lead && task.clientId
+    ? state.clients.find((item) => item.id === task.clientId)
+    : !lead && task.clientIds?.length
+      ? state.clients.find((item) => task.clientIds!.includes(item.id))
+      : undefined
+  return { lead, client }
+}
 
 const taskBucket = (task: TaskItem) => {
   if (task.status === 'Concluída') return 'Concluídas recentemente'
@@ -448,41 +473,30 @@ export function CrmPage({
         />
       ) : null}
 
-      {priorityLead ? createPortal(
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-3">
-          <button className="absolute inset-0 cursor-default" type="button" aria-label="Fechar mensagem" onClick={() => setPriorityLead(undefined)} />
-          <section className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <header className="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4">
-              <div className="min-w-0">
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.15em] text-[#8a6c00]">Próxima abordagem</p>
-                <h2 className="mt-1 truncate text-xl font-black text-gray-950">{displayName(priorityLead)}</h2>
-                <p className="mt-1 text-xs text-gray-500">{priorityLead.leadHunterData?.categoryName || priorityLead.serviceInterest} · {selectedPriority?.score || 0} pontos</p>
-              </div>
-              <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" type="button" aria-label="Fechar" onClick={() => setPriorityLead(undefined)}><X size={19} /></button>
-            </header>
-            <div className="space-y-4 p-5">
-              <div className="grid gap-2 sm:grid-cols-3">
-                <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Por que agora</p><p className="mt-1 text-xs font-bold text-gray-800">{selectedPriority?.reason || 'Acompanhamento comercial recomendado'}</p></div>
-                <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Serviço indicado</p><p className="mt-1 text-xs font-bold text-gray-800">{priorityLead.leadHunterData?.recommendedService || priorityLead.serviceInterest}</p></div>
-                <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Inteligência</p><p className="mt-1 line-clamp-3 text-xs font-bold text-gray-800">{priorityLead.leadHunterData?.aiSummary || priorityLead.leadHunterData?.aiContactHook || 'Contato acessível e com ação comercial pendente.'}</p></div>
-              </div>
-              <label className="block text-xs font-bold text-gray-700">Momento da conversa
-                <div className="mt-1"><Select value={whatsAppContext} onChange={(value) => { const context = value as WhatsAppContext; setWhatsAppContext(context); setWhatsAppMessage(buildContextualWhatsAppMessage(priorityLead, context)) }} options={whatsappContexts.map((context) => ({ value: context, label: context }))} /></div>
-              </label>
-              <label className="block text-xs font-bold text-gray-700">Mensagem personalizada
-                <textarea className="field-input mt-1 min-h-36 resize-y leading-6" value={whatsAppMessage} onChange={(event) => setWhatsAppMessage(event.target.value)} />
-              </label>
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
-                Ao abrir o WhatsApp, o FlyFlow registrará a mensagem, moverá o contato no funil quando necessário e criará o próximo acompanhamento da cadência.
-              </div>
+      {priorityLead ? (
+        <Modal title={displayName(priorityLead)} size="md" onClose={() => setPriorityLead(undefined)}>
+          <div className="space-y-4">
+            <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#8a6c00]">Próxima abordagem · {priorityLead.leadHunterData?.categoryName || priorityLead.serviceInterest} · {selectedPriority?.score || 0} pontos</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Por que agora</p><p className="mt-1 text-xs font-bold text-gray-800">{selectedPriority?.reason || 'Acompanhamento comercial recomendado'}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Serviço indicado</p><p className="mt-1 text-xs font-bold text-gray-800">{priorityLead.leadHunterData?.recommendedService || priorityLead.serviceInterest}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Inteligência</p><p className="mt-1 line-clamp-3 text-xs font-bold text-gray-800">{priorityLead.leadHunterData?.aiSummary || priorityLead.leadHunterData?.aiContactHook || 'Contato acessível e com ação comercial pendente.'}</p></div>
             </div>
-            <footer className="flex flex-col-reverse gap-2 border-t border-gray-200 px-5 py-4 sm:flex-row sm:justify-end">
+            <label className="block text-xs font-bold text-gray-700">Momento da conversa
+              <div className="mt-1"><Select value={whatsAppContext} onChange={(value) => { const context = value as WhatsAppContext; setWhatsAppContext(context); setWhatsAppMessage(buildContextualWhatsAppMessage(priorityLead, context)) }} options={whatsappContexts.map((context) => ({ value: context, label: context }))} /></div>
+            </label>
+            <label className="block text-xs font-bold text-gray-700">Mensagem personalizada
+              <textarea className="field-input mt-1 min-h-36 resize-y leading-6" value={whatsAppMessage} onChange={(event) => setWhatsAppMessage(event.target.value)} />
+            </label>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
+              Ao abrir o WhatsApp, o FlyFlow registrará a mensagem, moverá o contato no funil quando necessário e criará o próximo acompanhamento da cadência.
+            </div>
+            <div className="flex flex-col-reverse gap-2 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end">
               <Button variant="secondary" type="button" onClick={() => setPriorityLead(undefined)}>Cancelar</Button>
               <Button type="button" disabled={!whatsAppMessage.trim()} onClick={() => { onSendWhatsAppApproach(priorityLead, whatsAppMessage.trim(), whatsAppContext); setPriorityLead(undefined) }}><MessageCircle size={16} /> Abrir WhatsApp e registrar</Button>
-            </footer>
-          </section>
-        </div>,
-        document.body,
+            </div>
+          </div>
+        </Modal>
       ) : null}
 
       {selectedLead ? (
@@ -621,7 +635,7 @@ function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGe
     setOpen(false)
     action()
   }
-  const shortcutClass = 'flex min-h-9 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-100'
+  const shortcutClass = 'flex min-h-9 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-bold text-[color:var(--text-secondary)] hover:bg-[var(--surface-soft)] hover:text-[color:var(--text-primary)]'
 
   useEffect(() => {
     if (!open) return
@@ -671,13 +685,13 @@ function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGe
       className="relative"
       onClick={(event) => event.stopPropagation()}
     >
-      <button ref={triggerRef} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100" type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+      <button ref={triggerRef} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-[color:var(--text-secondary)] hover:bg-[var(--surface-soft)]" type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
         Atalhos <ChevronDown className={`transition ${open ? 'rotate-180' : ''}`} size={13} />
       </button>
       {open ? createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[100] w-48 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl"
+          className="fixed z-[100] w-48 rounded-lg border border-[color:var(--border)] bg-[var(--surface)] p-1.5 shadow-xl"
           role="menu"
           style={{ left: menuPosition.left, top: menuPosition.top }}
           onClick={(event) => event.stopPropagation()}
@@ -798,8 +812,7 @@ function TaskWorkspace({ state, onOpenLead, onCreate, onEdit, onComplete, onReop
   const [typeFilter, setTypeFilter] = useState('')
   const taskTypes = [...new Set(state.tasks.map((task) => task.taskType || 'Tarefa'))]
   const filteredTasks = state.tasks.filter((task) => {
-    const lead = task.leadId ? state.leads.find((item) => item.id === task.leadId) : undefined
-    const client = task.clientId ? state.clients.find((item) => item.id === task.clientId) : undefined
+    const { lead, client } = taskContact(task, state)
     const contact = lead ? displayName(lead) : client?.companyName || client?.fullName || ''
     const haystack = `${task.title} ${task.description} ${task.taskType} ${contact}`.toLocaleLowerCase('pt-BR')
     if (query.trim() && !haystack.includes(query.trim().toLocaleLowerCase('pt-BR'))) return false
@@ -829,12 +842,11 @@ function TaskWorkspace({ state, onOpenLead, onCreate, onEdit, onComplete, onReop
         return <section key={bucket} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between"><h3 className="font-black text-gray-950">{bucket}</h3><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{tasks.length}</span></div>
           <div className="mt-3 space-y-2">{tasks.map((task) => {
-            const lead = task.leadId ? state.leads.find((item) => item.id === task.leadId) : undefined
-            const client = task.clientId ? state.clients.find((item) => item.id === task.clientId) : undefined
+            const { lead, client } = taskContact(task, state)
             const responsible = task.responsibleUserId ? state.users.find((item) => item.id === task.responsibleUserId) : undefined
             return <article key={task.id} className="rounded-lg border border-gray-200 p-3 transition hover:border-amber-300">
               <button className="block w-full text-left" type="button" onClick={() => onEdit(task)}>
-                <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-gray-950">{task.title}</strong><StatusBadge>{task.status}</StatusBadge></div><p className="mt-1 text-xs text-gray-500">{task.taskType || 'Tarefa'} · {task.dueAt ? formatDateTime(task.dueAt) : 'Sem data'} · {task.priority}</p>{task.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-600">{task.description}</p> : null}<p className="mt-1 text-[0.68rem] text-gray-400">{lead ? displayName(lead) : client?.companyName || client?.fullName || 'Sem contato'} · {responsible?.name || 'Sem responsável'} · {task.durationMinutes || 30} min</p></div><SlidersHorizontal className="shrink-0 text-gray-400" size={16} /></div>
+                <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-gray-950">{task.title}</strong><StatusBadge>{task.status}</StatusBadge><PriorityTag priority={task.priority} /></div><p className="mt-1 text-xs text-gray-500">{task.taskType || 'Tarefa'} · {task.dueAt ? formatDateTime(task.dueAt) : 'Sem data'}</p>{task.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-600">{task.description}</p> : null}<p className="mt-1 text-[0.68rem] text-gray-400">{lead ? displayName(lead) : client?.companyName || client?.fullName || 'Sem contato'} · {responsible?.name || 'Sem responsável'} · {task.durationMinutes || 30} min</p></div><SlidersHorizontal className="shrink-0 text-gray-400" size={16} /></div>
               </button>
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
                 {task.status !== 'Concluída' ? <button className="text-xs font-bold text-emerald-700" type="button" onClick={() => onComplete(task)}><Check size={14} className="mr-1 inline" />Concluir</button> : <button className="text-xs font-bold text-blue-700" type="button" onClick={() => onReopen(task)}><Clock3 size={14} className="mr-1 inline" />Voltar para pendente</button>}
@@ -848,19 +860,6 @@ function TaskWorkspace({ state, onOpenLead, onCreate, onEdit, onComplete, onReop
       })}
     </div>
   </div>
-}
-
-export function TaskView({ state, onOpenLead, onCreate, onEdit: _onEdit, onComplete, onReopen: _onReopen, onCancel, onDelete: _onDelete }: { state: AppState; onOpenLead: (lead: Lead) => void; onCreate: (lead?: Lead) => void; onEdit: (task: TaskItem) => void; onComplete: (task: TaskItem) => void; onReopen: (task: TaskItem) => void; onCancel: (task: TaskItem) => void; onDelete: (task: TaskItem) => void }) {
-  const buckets = ['Atrasadas', 'Hoje', 'Amanhã', 'Próximos sete dias', 'Sem data', 'Concluídas recentemente']
-  return <div className="space-y-3"><div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"><div><h2 className="font-black text-gray-950">Tarefas dos contatos</h2><p className="text-xs text-gray-500">Próximas ações avulsas e operacionais.</p></div><Button className="min-h-9 px-3 py-1 text-xs" type="button" onClick={() => onCreate()}><Plus size={15} /> Nova tarefa</Button></div><div className="grid gap-3 xl:grid-cols-2">{buckets.map((bucket) => {
-    const tasks = state.tasks.filter((task) => task.status !== 'Cancelada' && taskBucket(task) === bucket).slice(0, bucket === 'Concluídas recentemente' ? 8 : undefined)
-    return <section key={bucket} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><h2 className="font-black text-gray-950">{bucket}</h2><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-bold text-gray-600">{tasks.length}</span></div><div className="mt-3 space-y-2">{tasks.map((task) => {
-      const lead = task.leadId ? state.leads.find((item) => item.id === task.leadId) : undefined
-      const client = task.clientId ? state.clients.find((item) => item.id === task.clientId) : undefined
-      const responsible = task.responsibleUserId ? state.users.find((item) => item.id === task.responsibleUserId) : undefined
-      return <article key={task.id} className="rounded-lg border border-gray-200 p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-gray-950">{task.title}</strong><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[0.65rem] font-black text-gray-600">{task.taskType || 'Tarefa'}</span><span className="rounded-full bg-amber-50 px-2 py-0.5 text-[0.65rem] font-black text-amber-700">{task.priority}</span></div><p className="mt-1 text-xs text-gray-500">{lead ? displayName(lead) : client ? client.companyName || client.fullName : 'Sem contato'} · {task.dueAt ? formatDateTime(task.dueAt) : 'Sem data'}</p>{task.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-600">{task.description}</p> : null}<p className="mt-1 text-[0.68rem] text-gray-400">{responsible?.name || 'Sem responsável'} · {task.durationMinutes || 30} min</p></div>{task.status === 'Concluída' ? <CheckCircle2 className="shrink-0 text-emerald-600" size={18} /> : <div className="flex shrink-0 gap-1"><button className="focus-ring rounded-lg bg-emerald-50 p-2 text-emerald-700" aria-label="Concluir tarefa" type="button" onClick={() => onComplete(task)}><Check size={17} /></button><button className="focus-ring rounded-lg bg-gray-100 p-2 text-gray-500" aria-label="Cancelar tarefa" type="button" onClick={() => onCancel(task)}><X size={17} /></button></div>}</div><div className="mt-2 flex gap-3">{lead ? <button className="text-xs font-bold text-[#866800]" type="button" onClick={() => onOpenLead(lead)}>Abrir contato</button> : null}{lead?.whatsapp ? <a className="text-xs font-bold text-emerald-700" href={whatsappLink(lead.whatsapp)} target="_blank" rel="noreferrer">WhatsApp</a> : null}</div></article>
-    })}{!tasks.length ? <p className="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">Nada por aqui.</p> : null}</div></section>
-  })}</div></div>
 }
 
 function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onSendWhatsAppApproach, onSendEmail, onEmailQuote, onScheduleReturn, onRegisterDeposit, onDownloadQuote, onApproveQuote, onMarkPaymentPaid, onCreateProject, onCreateTask, onEditTask, onCompleteTask, onReopenTask, onDeleteTask }: {
@@ -979,8 +978,9 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
                       <div className="flex flex-wrap items-center gap-2">
                         <strong className={`text-sm ${completed ? 'text-gray-500 line-through' : 'text-gray-950'}`}>{task.title}</strong>
                         <StatusBadge>{task.status}</StatusBadge>
+                        <PriorityTag priority={task.priority} />
                       </div>
-                      <p className="mt-1 truncate text-xs text-gray-500">{task.taskType || 'Tarefa'} · {formatDateTime(task.dueAt)} · {task.priority}</p>
+                      <p className="mt-1 truncate text-xs text-gray-500">{task.taskType || 'Tarefa'} · {formatDateTime(task.dueAt)}</p>
                       {task.description ? <p className="mt-1 line-clamp-2 text-xs text-gray-600">{task.description}</p> : null}
                     </button>
                     <div className="flex shrink-0 items-center gap-1">
@@ -1075,21 +1075,14 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
         })}</DrawerList> : null}
       </div>
     </aside>
-    {previewFile ? createPortal(
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-3">
-        <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Arquivo</p>
-              <p className="truncate text-base font-black text-gray-950">{previewFile.fileName}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" type="button" onClick={() => openUrlInNewTab(previewFile.url)}><ArrowRight size={15} /> Abrir em nova aba</Button>
-              <Button variant="secondary" type="button" onClick={() => downloadUrl(previewFile.url, previewFile.fileName)}><Download size={15} /> Baixar</Button>
-              <Button variant="ghost" type="button" onClick={() => setPreviewFile(null)}>Fechar</Button>
-            </div>
+    {previewFile ? (
+      <Modal title={previewFile.fileName} size="lg" onClose={() => setPreviewFile(null)}>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" type="button" onClick={() => openUrlInNewTab(previewFile.url)}><ArrowRight size={15} /> Abrir em nova aba</Button>
+            <Button variant="secondary" type="button" onClick={() => downloadUrl(previewFile.url, previewFile.fileName)}><Download size={15} /> Baixar</Button>
           </div>
-          <div className="bg-gray-100 p-3">
+          <div className="rounded-xl bg-gray-100 p-3">
             {previewFile.mode === 'image' ? (
               <img className="max-h-[75vh] w-full object-contain" src={previewFile.url} alt={previewFile.fileName} />
             ) : previewFile.mode === 'pdf' ? (
@@ -1102,8 +1095,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
             )}
           </div>
         </div>
-      </div>,
-      document.body,
+      </Modal>
     ) : null}
   </>
 }
@@ -1166,39 +1158,6 @@ function LeadHunterDossier({ data, notes, hideWhatsApp = false }: { data: NonNul
 
 function InsightBlock({ title, text }: { title: string; text: string }) {
   return <div><p className="text-[0.65rem] font-black uppercase text-gray-500">{title}</p><p className="mt-1 leading-relaxed text-gray-700">{text}</p></div>
-}
-
-export function LeadHunterIntelligence({ data }: { data: NonNullable<Lead['leadHunterData']> }) {
-  return <details className="group overflow-hidden rounded-xl border border-amber-200 bg-amber-50">
-    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3">
-      <span className="flex items-center gap-2 text-sm font-black text-amber-950"><Sparkles size={17} /> Inteligência do Lead Hunter</span>
-      <span className="text-xs font-bold text-amber-800">Score {data.score} · clique para abrir</span>
-    </summary>
-    <div className="space-y-4 border-t border-amber-200 bg-white p-3 text-sm">
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">Categoria</p><strong className="mt-1 block">{data.categoryName}</strong></div>
-        <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.68rem] font-bold uppercase text-gray-500">Serviço indicado</p><strong className="mt-1 block">{data.recommendedService || 'Não definido'}</strong></div>
-      </div>
-      {data.aiSummary || data.aiApproach ? <div className="space-y-3 rounded-lg border border-amber-100 bg-amber-50/60 p-3">
-        {data.aiSummary ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Análise da IA</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiSummary}</p></div> : null}
-        {data.aiApproach ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Abordagem sugerida</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiApproach}</p></div> : null}
-        {data.aiSocialInsight ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Leitura das redes</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiSocialInsight}</p></div> : null}
-        {data.aiContactHook ? <div><p className="text-[0.68rem] font-black uppercase text-amber-800">Gancho personalizado</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiContactHook}</p></div> : null}
-        {data.aiFirstMessage ? <div className="rounded-lg border border-amber-200 bg-white p-2"><p className="text-[0.68rem] font-black uppercase text-amber-800">Mensagem pronta</p><p className="mt-1 leading-relaxed text-gray-700">{data.aiFirstMessage}</p><button className="mt-2 text-xs font-bold text-amber-800 hover:underline" type="button" onClick={() => void navigator.clipboard.writeText(data.aiFirstMessage || '')}>Copiar mensagem</button></div> : null}
-      </div> : null}
-      <div className="flex flex-wrap gap-2">
-        {data.whatsapp ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white" href={whatsappLink(data.whatsapp)} target="_blank" rel="noreferrer"><MessageCircle size={14} /> WhatsApp</a> : null}
-        {data.instagram ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-fuchsia-200 px-3 text-xs font-bold text-fuchsia-700" href={buildInstagramUrl(data.instagram)} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Instagram</a> : null}
-        {data.website ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={data.website} target="_blank" rel="noreferrer"><Globe2 size={14} /> Site</a> : null}
-        {data.googleMapsUrl ? <a className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={data.googleMapsUrl} target="_blank" rel="noreferrer"><MapPin size={14} /> Google Maps</a> : null}
-      </div>
-      <dl className="space-y-2 rounded-lg border border-gray-200 p-3">
-        {[['Responsável', data.contactName], ['Telefone', data.phone], ['WhatsApp', data.whatsapp], ['E-mail', data.email], ['Instagram', data.instagram], ['Endereço', data.address], ['Avaliação', data.googleRating ? `${data.googleRating} (${data.googleReviewCount || 0} avaliações)` : 'Não encontrada'], ['Encontrado em', new Date(data.firstDiscoveredAt).toLocaleDateString('pt-BR')]].map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-gray-500">{label}</dt><dd className="break-all text-right font-bold text-gray-900">{value || 'Não informado'}</dd></div>)}
-      </dl>
-      {data.scoreReasons.length ? <div><h4 className="text-xs font-black uppercase text-gray-500">Motivos do score</h4><div className="mt-2 space-y-2">{data.scoreReasons.map((reason) => <div key={reason.id} className="rounded-lg bg-gray-50 p-2"><div className="flex justify-between gap-3"><span>{reason.label}</span><strong className={reason.points >= 0 ? 'text-emerald-700' : 'text-red-700'}>{reason.points > 0 ? '+' : ''}{reason.points}</strong></div>{reason.evidence ? <p className="mt-1 text-xs text-gray-500">{reason.evidence}</p> : null}</div>)}</div></div> : null}
-      <div><h4 className="text-xs font-black uppercase text-gray-500">Fontes verificáveis</h4><div className="mt-2 space-y-2">{data.sourceUrls.length ? data.sourceUrls.map((url, index) => <a key={`${url}-${index}`} className="flex items-center gap-2 break-all rounded-lg border border-gray-200 p-2 text-xs font-bold text-blue-700 hover:bg-blue-50" href={url} target="_blank" rel="noreferrer"><ExternalLink className="shrink-0" size={14} /> {url}</a>) : <p className="text-xs text-gray-500">{data.sources.join(', ') || 'Nenhuma fonte registrada.'}</p>}</div></div>
-    </div>
-  </details>
 }
 
 function DrawerList({ children, empty }: { children: ReactNode; empty: string }) {

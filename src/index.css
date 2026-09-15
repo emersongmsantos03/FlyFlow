@@ -472,7 +472,13 @@ html[data-theme='dark'] {
   --accent: var(--primary);
   --accent-strong: var(--primary-hover);
   --success: #22c55e;
+  --success-soft: rgb(34 197 94 / 0.16);
+  --warning: #f0b429;
+  --warning-soft: rgb(197 130 30 / 0.22);
   --danger: #f87171;
+  --danger-soft: rgb(248 113 113 / 0.16);
+  --info: #7fb3e0;
+  --info-soft: rgb(78 120 160 / 0.22);
   color-scheme: dark;
 }
 
@@ -8079,27 +8085,27 @@ html[data-theme='dark'] .month-calendar-grid > div:nth-child(-n + 7) {
 .module-page .app-button-secondary{background:#f7f9f6!important;color:#4f5951!important;box-shadow:none!important}
 .module-page .app-button-ghost{border-color:transparent!important;background:transparent!important;box-shadow:none!important}
 
-.commercial-page .crm-commercial-header{overflow:hidden;min-height:8.25rem;padding:1.5rem 1.75rem!important;border-color:#dce2dc!important;border-radius:1rem!important;background:#fff!important;box-shadow:0 14px 34px rgb(20 29 22/.08)!important}
+.commercial-page .crm-commercial-header{overflow:hidden;min-height:8.25rem;padding:1.5rem 1.75rem!important;border-color:var(--border)!important;border-radius:1rem!important;background:var(--surface)!important;box-shadow:0 14px 34px rgb(20 29 22/.08)!important}
 .crm-commercial-header-layout{display:flex;min-height:5.25rem;align-items:center;justify-content:space-between;gap:2rem}
 .crm-commercial-header-copy{display:flex;min-width:0;flex-direction:column;align-items:flex-start;gap:.55rem}
-.commercial-page .crm-commercial-header .crm-commercial-eyebrow{margin:0;color:#8a6800!important;font-size:.7rem;font-weight:850;letter-spacing:.18em;line-height:1.2;text-transform:uppercase}
-.commercial-page .crm-commercial-header h1{margin:0;color:#151a16!important;font-size:clamp(1.75rem,2.5vw,2.25rem);font-weight:900;letter-spacing:-.035em;line-height:1.05}
-.commercial-page .crm-commercial-header .crm-commercial-summary{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;margin:.1rem 0 0;color:#687169!important;font-size:.82rem;line-height:1.5}
-.commercial-page .crm-commercial-header .crm-commercial-summary strong{color:#303832!important;font-weight:800}
-.commercial-page .crm-commercial-header .crm-commercial-summary span{color:#c39a25!important}
+.commercial-page .crm-commercial-header .crm-commercial-eyebrow{margin:0;color:var(--primary)!important;font-size:.7rem;font-weight:850;letter-spacing:.18em;line-height:1.2;text-transform:uppercase}
+.commercial-page .crm-commercial-header h1{margin:0;color:var(--text-primary)!important;font-size:clamp(1.75rem,2.5vw,2.25rem);font-weight:900;letter-spacing:-.035em;line-height:1.05}
+.commercial-page .crm-commercial-header .crm-commercial-summary{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;margin:.1rem 0 0;color:var(--text-secondary)!important;font-size:.82rem;line-height:1.5}
+.commercial-page .crm-commercial-header .crm-commercial-summary strong{color:var(--text-primary)!important;font-weight:800}
+.commercial-page .crm-commercial-header .crm-commercial-summary span{color:var(--primary)!important}
 .crm-commercial-header-actions{display:flex;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;gap:.65rem;padding-left:1rem}
 .crm-commercial-header-actions .app-button{min-height:2.75rem;padding-inline:1rem!important}
 @media(max-width:760px){.commercial-page .crm-commercial-header{padding:1.2rem!important}.crm-commercial-header-layout{align-items:stretch;flex-direction:column;gap:1.25rem}.crm-commercial-header-actions{justify-content:flex-start;padding-left:0}.crm-commercial-header-actions .app-button{flex:1}}
-.commercial-page .crm-intelligence{overflow:hidden;border-color:var(--module-line)!important;border-radius:1rem!important;background:#fff;box-shadow:0 13px 34px rgb(20 29 22/.045)}
-.commercial-page .crm-intelligence>summary{min-height:4.4rem;background:linear-gradient(100deg,#fdfefd,#f4f6f3)}
+.commercial-page .crm-intelligence{overflow:hidden;border-color:var(--module-line)!important;border-radius:1rem!important;background:var(--surface);box-shadow:0 13px 34px rgb(20 29 22/.045)}
+.commercial-page .crm-intelligence>summary{min-height:4.4rem;background:linear-gradient(100deg,var(--surface),var(--surface-soft))}
 .commercial-page .crm-board{gap:.85rem;padding:.25rem .1rem 1rem;scroll-snap-type:x proximity}
-.commercial-page .crm-pipeline-column{scroll-snap-align:start;border-color:var(--module-line);border-radius:.9rem;background:#f3f5f2}
-.commercial-page .crm-column-header{background:linear-gradient(180deg,#fff,#f8faf7)}
-.commercial-page .crm-opportunity-card{border-color:#e0e5e0;box-shadow:0 2px 8px rgb(20 29 22/.04);transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease}
+.commercial-page .crm-pipeline-column{scroll-snap-align:start;border-color:var(--module-line);border-radius:.9rem;background:var(--surface-soft)}
+.commercial-page .crm-column-header{background:linear-gradient(180deg,var(--surface),var(--surface-soft))}
+.commercial-page .crm-opportunity-card{border-color:var(--border);box-shadow:0 2px 8px rgb(20 29 22/.04);transition:transform .17s ease,box-shadow .17s ease,border-color .17s ease}
 .commercial-page .crm-opportunity-card:hover{border-color:rgb(216 174 55/.52);box-shadow:0 12px 24px rgb(20 29 22/.1);transform:translateY(-3px)}
 .crm-next-action{border:1px solid transparent;transition:border-color .15s ease,background-color .15s ease,box-shadow .15s ease}
-.crm-next-action:hover{border-color:#d5dbd5;background:#fff!important;box-shadow:0 3px 10px rgb(20 29 22/.06)}
-.crm-next-action.is-overdue:hover{border-color:#f0a6a6;background:#fff7f7!important}
+.crm-next-action:hover{border-color:var(--border);background:var(--surface)!important;box-shadow:0 3px 10px rgb(20 29 22/.06)}
+.crm-next-action.is-overdue:hover{border-color:color-mix(in srgb, var(--danger) 45%, var(--border));background:var(--danger-soft)!important}
 .crm-next-action-label{flex-shrink:0;font-size:.62rem;font-weight:850;letter-spacing:.02em;opacity:0;transform:translateX(3px);transition:opacity .15s ease,transform .15s ease}
 .crm-next-action:hover .crm-next-action-label,.crm-next-action:focus-visible .crm-next-action-label{opacity:1;transform:translateX(0)}
 
@@ -10216,3 +10222,53 @@ html[data-theme='dark'] .time-grid-panel .border-gray-200 {
 .agenda-page .agenda-task-rail article > button:last-child { color: var(--agenda-text) !important; }
 .agenda-page .agenda-task-rail > button,
 .agenda-page .agenda-task-rail > span svg { color: var(--agenda-blue) !important; }
+
+/* ============================================================================
+   CRM Comercial — dark mode completion + polish (authoritative layer)
+   CrmPage.tsx predates the CSS custom-property system: its JSX is styled with
+   raw Tailwind gray/white utilities that never adapt to the dark theme. Full
+   rewrite of ~250 className strings isn't worth the risk, so this remaps
+   those utilities to the app tokens wherever they render inside .crm-page —
+   the same technique already used for .internal-project-table above. New CRM
+   markup should reach for the tokens directly instead of raw Tailwind grays.
+   ============================================================================ */
+
+.crm-page .text-gray-950,
+.crm-page .text-gray-900 { color: var(--text-primary) !important; }
+.crm-page .text-gray-800,
+.crm-page .text-gray-700 { color: var(--text-secondary) !important; }
+.crm-page .text-gray-600,
+.crm-page .text-gray-500 { color: var(--text-muted) !important; }
+.crm-page .text-gray-400,
+.crm-page .text-gray-300 { color: var(--text-muted) !important; }
+.crm-page .text-amber-950 { color: var(--warning) !important; }
+
+.crm-page .bg-white { background-color: var(--surface) !important; }
+.crm-page .bg-gray-50,
+.crm-page .bg-gray-100 { background-color: var(--surface-soft) !important; }
+
+.crm-page .border-gray-100,
+.crm-page .border-gray-200,
+.crm-page .border-gray-300 { border-color: var(--border) !important; }
+
+.crm-page .hover\:bg-gray-50:hover,
+.crm-page .hover\:bg-gray-100:hover,
+.crm-page .hover\:bg-white:hover { background-color: var(--surface-soft) !important; }
+.crm-page .hover\:text-gray-800:hover,
+.crm-page .hover\:text-gray-900:hover,
+.crm-page .hover\:text-gray-950:hover { color: var(--text-primary) !important; }
+
+/* Priority-queue cards, metric tiles and other bg-gray-50 boxes read as flat
+   panels-on-a-panel in dark mode without a border to separate them. */
+.crm-page .bg-gray-50 { border: 1px solid var(--border-subtle); }
+
+/* Kanban per-stage accent bars: keep them vivid but a shade softer on dark
+   surfaces so they read as an accent, not a clashing highlighter stripe. */
+html[data-theme='dark'] .crm-pipeline-column[data-stage='entry'] .crm-column-accent { background: #6ba6ff; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='contact'] .crm-column-accent { background: #2bb8d6; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='negotiation'] .crm-column-accent { background: #b3a4f5; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='sent'] .crm-column-accent { background: #e6c454; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='approval'] .crm-column-accent { background: #f5a877; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='deposit'] .crm-column-accent { background: #ef8cc7; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='confirmed'] .crm-column-accent { background: #6adfab; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='future'] .crm-column-accent { background: #9aa5b8; }

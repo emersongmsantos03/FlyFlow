@@ -1424,6 +1424,8 @@ function App() {
   const [selectedLeadId, setSelectedLeadId] = useState<string>('')
   const [newOpportunityContactId, setNewOpportunityContactId] = useState('')
   const [creatingContactForOpportunity, setCreatingContactForOpportunity] = useState(false)
+  const [newContactCompanyId, setNewContactCompanyId] = useState('')
+  const [creatingCompanyForContact, setCreatingCompanyForContact] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState<string>('')
   const [selectedCloseDealLeadId, setSelectedCloseDealLeadId] = useState<string>('')
   const [selectedCloseDealQuoteId, setSelectedCloseDealQuoteId] = useState<string>('')
@@ -3167,6 +3169,7 @@ Hero Drone`,
       setModal(null)
     }
     setSelectedClientId('')
+    setNewContactCompanyId('')
   }
 
   const addCompany = (values: CompanyFormValues) => {
@@ -3180,7 +3183,13 @@ Hero Drone`,
       updatedAt: now,
     }
     updateState((current) => ({ ...current, companies: [company, ...(current.companies || [])] }), 'Empresa cadastrada e disponível para vincular aos contatos.')
-    setModal(null)
+    if (creatingCompanyForContact) {
+      setNewContactCompanyId(company.id)
+      setCreatingCompanyForContact(false)
+      setModal('client')
+    } else {
+      setModal(null)
+    }
   }
 
   const importLeadHunterProspects = (prospectIds: string[]) => {
@@ -7876,13 +7885,21 @@ Hero Drone`,
         </Modal>
       ) : null}
       {modal === 'client' ? (
-        <Modal title={selectedClient ? 'Editar contato' : creatingContactForOpportunity ? 'Novo contato para a oportunidade' : 'Novo contato'} onClose={() => { setModal(creatingContactForOpportunity ? 'lead' : null); setCreatingContactForOpportunity(false); setSelectedClientId('') }}>
-          <ClientForm client={selectedClient} companies={(state.companies || []).filter((company) => !company.archived)} onCancel={() => { setModal(creatingContactForOpportunity ? 'lead' : null); setCreatingContactForOpportunity(false); setSelectedClientId('') }} onSubmit={addClient} />
+        <Modal title={selectedClient ? 'Editar contato' : creatingContactForOpportunity ? 'Novo contato para a oportunidade' : 'Novo contato'} onClose={() => { setModal(creatingContactForOpportunity ? 'lead' : null); setCreatingContactForOpportunity(false); setSelectedClientId(''); setNewContactCompanyId('') }}>
+          <ClientForm
+            key={`${selectedClient?.id ?? 'new-client'}-${newContactCompanyId}`}
+            client={selectedClient}
+            companies={(state.companies || []).filter((company) => !company.archived)}
+            initialCompanyId={newContactCompanyId}
+            onCreateCompany={() => { setCreatingCompanyForContact(true); setModal('company') }}
+            onCancel={() => { setModal(creatingContactForOpportunity ? 'lead' : null); setCreatingContactForOpportunity(false); setSelectedClientId(''); setNewContactCompanyId('') }}
+            onSubmit={addClient}
+          />
         </Modal>
       ) : null}
       {modal === 'company' ? (
-        <Modal title="Nova empresa" onClose={() => setModal(null)}>
-          <CompanyForm onCancel={() => setModal(null)} onSubmit={addCompany} />
+        <Modal title="Nova empresa" onClose={() => { setModal(creatingCompanyForContact ? 'client' : null); setCreatingCompanyForContact(false) }}>
+          <CompanyForm onCancel={() => { setModal(creatingCompanyForContact ? 'client' : null); setCreatingCompanyForContact(false) }} onSubmit={addCompany} />
         </Modal>
       ) : null}
       {modal === 'project' ? (
@@ -10939,7 +10956,7 @@ function ProposalGenerator({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <InputField label="Contato">
-          <Select value={recipientKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, keywords: contact.label }))} onChange={chooseRecipient} />
+          <Select value={recipientKey} placeholder="Selecione um contato" searchable searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, keywords: contact.label }))} onChange={chooseRecipient} />
         </InputField>
         <InputField label="Título">
           <input className="field-input" placeholder="Ex.: Filmagem aérea do imóvel" value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -12781,7 +12798,7 @@ function LeadForm({
             <div className="min-w-0 flex-1">
               <InputField label="Contato vinculado" error={getError(errors.contactId?.message)}>
                 <input type="hidden" {...register('contactId')} />
-                <Select value={contactId} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contacts.map((contact) => ({ value: contact.id, label: `${contactDisplayName(contact)}${contact.companyName ? ` · ${contact.companyName}` : ''}`, keywords: `${contact.fullName} ${contact.companyName}` }))} onChange={(nextContactId) => {
+                <Select value={contactId} placeholder="Selecione um contato" searchable searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contacts.map((contact) => ({ value: contact.id, label: `${contactDisplayName(contact)}${contact.companyName ? ` · ${contact.companyName}` : ''}`, keywords: `${contact.fullName} ${contact.companyName}` }))} onChange={(nextContactId) => {
                   setValue('contactId', nextContactId, { shouldDirty: true, shouldValidate: true })
                   const contact = contacts.find((item) => item.id === nextContactId)
                   if (!contact) return
@@ -13039,11 +13056,11 @@ function ClosedServiceForm({
   )
 }
 
-function ClientForm({ client, companies, onSubmit, onCancel }: { client?: Client; companies: Company[]; onSubmit: (values: ClientFormValues) => void; onCancel: () => void }) {
+function ClientForm({ client, companies, initialCompanyId, onCreateCompany, onSubmit, onCancel }: { client?: Client; companies: Company[]; initialCompanyId?: string; onCreateCompany: () => void; onSubmit: (values: ClientFormValues) => void; onCancel: () => void }) {
   const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<ClientFormInput, unknown, ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
     defaultValues: {
-      companyId: client?.companyId ?? '',
+      companyId: client?.companyId ?? initialCompanyId ?? '',
       fullName: client?.fullName ?? '',
       jobTitle: client?.jobTitle ?? '',
       companyName: client?.companyName ?? '',
@@ -13068,7 +13085,13 @@ function ClientForm({ client, companies, onSubmit, onCancel }: { client?: Client
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Nome" error={getError(errors.fullName?.message)}><input className="field-input" {...register('fullName')} /></InputField>
-      <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}><input type="hidden" {...register('companyId')} /><Select value={companyId} placeholder="Sem empresa" searchPlaceholder="Pesquisar empresa por nome..." clearable options={companies.map((company) => ({ value: company.id, label: company.tradeName, keywords: company.legalName }))} onChange={(value) => setValue('companyId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Empresa vinculada" error={getError(errors.companyId?.message)}>
+        <input type="hidden" {...register('companyId')} />
+        <div className="flex items-end gap-2">
+          <div className="min-w-0 flex-1"><Select value={companyId} placeholder="Sem empresa" searchable searchPlaceholder="Pesquisar empresa por nome..." clearable options={companies.map((company) => ({ value: company.id, label: company.tradeName, keywords: company.legalName }))} onChange={(value) => setValue('companyId', value, { shouldDirty: true, shouldValidate: true })} /></div>
+          <Button className="shrink-0" variant="secondary" type="button" onClick={onCreateCompany}><Building2 size={16} /><span className="hidden sm:inline">Nova empresa</span></Button>
+        </div>
+      </InputField>
       <InputField label="Cargo ou função" error={getError(errors.jobTitle?.message)}><input className="field-input" {...register('jobTitle')} /></InputField>
       <InputField label="Empresa (texto livre)" error={getError(errors.companyName?.message)}><input className="field-input" {...register('companyName')} placeholder="Use apenas se a empresa ainda não estiver cadastrada" /></InputField>
       <InputField label="CPF/CNPJ" error={getError(errors.document?.message)}><input className="field-input" {...register('document')} /></InputField>
@@ -13268,7 +13291,7 @@ function ProjectForm({
       <input type="hidden" {...register('leadId')} />
       <InputField label="Nome do projeto" error={getError(errors.name?.message)}><input className="field-input" {...register('name')} /></InputField>
       <InputField label="Contato no CRM" error={getError(errors.leadId?.message || errors.clientId?.message)}>
-        <Select value={selectedContactKey} placeholder="Selecione um contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, keywords: contact.label }))} onChange={chooseProjectContact} />
+        <Select value={selectedContactKey} placeholder="Selecione um contato" searchable searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} | ${contact.detail}`, keywords: contact.label }))} onChange={chooseProjectContact} />
       </InputField>
       <InputField label="Tipo de serviço" error={getError(errors.serviceName?.message)}><EnumSelect name="serviceName" control={control} options={serviceTypes} /></InputField>
       <InputField label="Data de captação" error={getError(errors.captureDate?.message)}><input className="field-input" type="date" {...register('captureDate')} /></InputField>
@@ -13582,7 +13605,7 @@ function AppointmentForm({
         </header>
         <div className="appointment-form__grid">
           <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
-            <Select value={selectedContactKey} placeholder="Sem contato vinculado" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} · ${contact.detail}`, keywords: contact.label }))} onChange={chooseContact} />
+            <Select value={selectedContactKey} placeholder="Sem contato vinculado" searchable searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} · ${contact.detail}`, keywords: contact.label }))} onChange={chooseContact} />
           </InputField>
           <InputField label="Projeto" error={getError(errors.projectId?.message)}>
             <FormSelect name="projectId" control={control} placeholder="Sem projeto vinculado" clearable options={state.projects.filter((project) => !project.deletedAt && !project.archivedAt).map((project) => ({ value: project.id, label: projectOptionLabel(state, project) }))} />
@@ -13936,8 +13959,8 @@ function PaymentForm({ state, initialProjectId = '', payment, onSubmit, onCancel
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
       <InputField label="Projeto" error={getError(errors.projectId?.message)}><FormSelect name="projectId" control={control} placeholder="Sem projeto" clearable options={state.projects.filter(isVisibleProject).map((project) => ({ value: project.id, label: projectOptionLabel(state, project) }))} /></InputField>
-      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><Select value={paymentClientId} placeholder="Selecione" searchPlaceholder="Pesquisar cliente ou empresa por nome..." clearable options={state.clients.filter((client) => !client.archived).map((client) => ({ value: client.id, label: contactDisplayName(client), keywords: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
-      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><Select value={paymentLeadId} placeholder="Sem contato" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), keywords: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><Select value={paymentClientId} placeholder="Selecione" searchable searchPlaceholder="Pesquisar cliente ou empresa por nome..." clearable options={state.clients.filter((client) => !client.archived).map((client) => ({ value: client.id, label: contactDisplayName(client), keywords: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><Select value={paymentLeadId} placeholder="Sem contato" searchable searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), keywords: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
       <InputField label="Proposta" error={getError(errors.quoteId?.message)}><FormSelect name="quoteId" control={control} placeholder="Sem proposta" clearable options={state.quotes.filter((quote) => !quote.deletedAt).map((quote) => ({ value: quote.id, label: quote.quoteNumber }))} /></InputField>
       <InputField label="Tipo" error={getError(errors.paymentType?.message)}><EnumSelect name="paymentType" control={control} options={paymentTypes} /></InputField>
       <InputField label="Valor" error={getError(errors.amount?.message)}>
@@ -14079,8 +14102,8 @@ function QuoteForm({ state, onSubmit, onCancel }: { state: AppState; onSubmit: (
 
   return (
     <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit(onSubmit)}>
-      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><Select value={quoteClientId} placeholder="Nenhum" searchPlaceholder="Pesquisar cliente ou empresa por nome..." clearable options={state.clients.map((client) => ({ value: client.id, label: contactDisplayName(client), keywords: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
-      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><Select value={quoteLeadId} placeholder="Nenhum" searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), keywords: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Cliente" error={getError(errors.clientId?.message)}><input type="hidden" {...register('clientId')} /><Select value={quoteClientId} placeholder="Nenhum" searchable searchPlaceholder="Pesquisar cliente ou empresa por nome..." clearable options={state.clients.map((client) => ({ value: client.id, label: contactDisplayName(client), keywords: `${client.fullName} ${client.companyName}` }))} onChange={(value) => setValue('clientId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
+      <InputField label="Contato no CRM" error={getError(errors.leadId?.message)}><input type="hidden" {...register('leadId')} /><Select value={quoteLeadId} placeholder="Nenhum" searchable searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: lead.id, label: contactDisplayName(lead), keywords: `${lead.fullName} ${lead.companyName}` }))} onChange={(value) => setValue('leadId', value, { shouldDirty: true, shouldValidate: true })} /></InputField>
       <InputField label="Item do orçamento" error={getError(errors.description?.message)}><input className="field-input" {...register('description')} /></InputField>
       <InputField label="Quantidade" error={getError(errors.quantity?.message)}><input className="field-input" type="number" {...register('quantity')} /></InputField>
       <InputField label="Valor unitário" error={getError(errors.unitPrice?.message)}>
