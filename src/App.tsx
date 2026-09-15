@@ -5,6 +5,7 @@ import { refreshDomainMail } from './services/domainMail'
 import { getEmailConnection } from './services/googleWorkspace'
 import {
   AlertTriangle,
+  Archive,
   ArrowRight,
   ArrowRightLeft,
   BarChart3,
@@ -78,7 +79,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Button, InputField, MetricCard, Modal, Panel, Select, StatusBadge, Tag, Toast, type SelectOption } from './components/ui'
+import { Button, EmptyState, InputField, MetricCard, Modal, Panel, Select, StatusBadge, Tag, Toast, type SelectOption } from './components/ui'
 import { CrmPage, type CrmView } from './components/crm/CrmPage'
 import { InternalProjectsPage } from './components/internalProjects/InternalProjectsPage'
 const LeadHunterPage = lazy(() => import('./components/leadHunter/LeadHunterPage').then((module) => ({ default: module.LeadHunterPage })))
@@ -1427,6 +1428,7 @@ function App() {
   const [newContactCompanyId, setNewContactCompanyId] = useState('')
   const [creatingCompanyForContact, setCreatingCompanyForContact] = useState(false)
   const [selectedClientId, setSelectedClientId] = useState<string>('')
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('')
   const [selectedCloseDealLeadId, setSelectedCloseDealLeadId] = useState<string>('')
   const [selectedCloseDealQuoteId, setSelectedCloseDealQuoteId] = useState<string>('')
   const [selectedReceiptPaymentId, setSelectedReceiptPaymentId] = useState<string>('')
@@ -1891,6 +1893,7 @@ function App() {
     [selectedLeadId, state.leads],
   )
   const selectedClient = useMemo(() => state.clients.find((client) => client.id === selectedClientId), [selectedClientId, state.clients])
+  const selectedCompany = useMemo(() => (state.companies || []).find((company) => company.id === selectedCompanyId), [selectedCompanyId, state.companies])
   const selectedProposalQuote = useMemo(
     () => state.quotes.find((quote) => quote.id === selectedProposalQuoteId),
     [selectedProposalQuoteId, state.quotes],
@@ -3174,6 +3177,15 @@ Hero Drone`,
 
   const addCompany = (values: CompanyFormValues) => {
     const now = new Date().toISOString()
+    if (selectedCompanyId) {
+      updateState((current) => ({
+        ...current,
+        companies: (current.companies || []).map((company) => company.id === selectedCompanyId ? { ...company, ...values, updatedAt: now } : company),
+      }), 'Empresa atualizada.')
+      setModal(null)
+      setSelectedCompanyId('')
+      return
+    }
     const company: Company = {
       id: createId('company'),
       ...values,
@@ -3190,6 +3202,13 @@ Hero Drone`,
     } else {
       setModal(null)
     }
+  }
+
+  const toggleCompanyArchived = (company: Company) => {
+    updateState((current) => ({
+      ...current,
+      companies: (current.companies || []).map((item) => item.id === company.id ? { ...item, archived: !item.archived, updatedAt: new Date().toISOString() } : item),
+    }), company.archived ? 'Empresa reativada.' : 'Empresa arquivada. Os contatos vinculados são mantidos.')
   }
 
   const importLeadHunterProspects = (prospectIds: string[]) => {
@@ -6897,6 +6916,8 @@ Hero Drone`,
               onGenerateProposal={openProposalGenerator}
               onEditContact={(client) => { setSelectedClientId(client.id); setModal('client') }}
               onDeleteContact={(client) => deleteConnectedContact({ client })}
+              onEditCompany={(company) => { setSelectedCompanyId(company.id); setModal('company') }}
+              onArchiveCompany={toggleCompanyArchived}
             />
           ) : null}
           {page === 'leadHunter' && state.leadHunterSettings ? (
@@ -7898,8 +7919,8 @@ Hero Drone`,
         </Modal>
       ) : null}
       {modal === 'company' ? (
-        <Modal title="Nova empresa" onClose={() => { setModal(creatingCompanyForContact ? 'client' : null); setCreatingCompanyForContact(false) }}>
-          <CompanyForm onCancel={() => { setModal(creatingCompanyForContact ? 'client' : null); setCreatingCompanyForContact(false) }} onSubmit={addCompany} />
+        <Modal title={selectedCompany ? 'Editar empresa' : 'Nova empresa'} onClose={() => { setModal(creatingCompanyForContact ? 'client' : null); setCreatingCompanyForContact(false); setSelectedCompanyId('') }}>
+          <CompanyForm company={selectedCompany} onCancel={() => { setModal(creatingCompanyForContact ? 'client' : null); setCreatingCompanyForContact(false); setSelectedCompanyId('') }} onSubmit={addCompany} />
         </Modal>
       ) : null}
       {modal === 'project' ? (
@@ -9299,6 +9320,8 @@ function ClientsPage({
   onGenerateProposal,
   onEditContact,
   onDeleteContact,
+  onEditCompany,
+  onArchiveCompany,
 }: {
   clients: Client[]
   state: AppState
@@ -9306,119 +9329,197 @@ function ClientsPage({
   onGenerateProposal: (clientId: string) => void
   onEditContact: (client: Client) => void
   onDeleteContact: (client: Client) => void
+  onEditCompany: (company: Company) => void
+  onArchiveCompany: (company: Company) => void
 }) {
+  const [view, setView] = useState<'contacts' | 'companies'>('contacts')
+  const [search, setSearch] = useState('')
+  const [companyFilter, setCompanyFilter] = useState('')
+  const [showArchivedCompanies, setShowArchivedCompanies] = useState(false)
+
+  const companies = state.companies || []
+  const activeCompanies = companies.filter((company) => !company.archived)
+
+  const clientTotals = (client: Client) => {
+    const projects = state.projects.filter((project) => isVisibleProject(project) && project.clientId === client.id)
+    const total = projects.reduce((sum, project) => sum + project.totalValue, 0)
+    const received = state.payments
+      .filter((payment) => payment.clientId === client.id && payment.status === 'Recebida')
+      .reduce((sum, payment) => sum + payment.amount, 0)
+    return { projects, total, received }
+  }
+
+  const filteredContacts = clients.filter((client) => {
+    if (companyFilter && client.companyId !== companyFilter) return false
+    if (!search.trim()) return true
+    const company = companies.find((item) => item.id === client.companyId)
+    return matches(`${contactDisplayName(client)} ${client.city} ${client.phone} ${client.email} ${company?.tradeName ?? client.companyName ?? ''}`, search)
+  })
+
+  const companyContacts = (company: Company) => state.clients.filter((client) => !client.archived && client.companyId === company.id)
+
+  const filteredCompanies = companies
+    .filter((company) => showArchivedCompanies || !company.archived)
+    .filter((company) => !search.trim() || matches(`${company.tradeName} ${company.legalName} ${company.document} ${company.city}`, search))
+
   return (
     <div className="contacts-page module-page space-y-4">
       <PageToolbar
         title="Contatos"
-        description="Base central conectada ao comercial, propostas, projetos e financeiro."
+        description="Base central de contatos e empresas, conectada ao comercial, propostas, projetos e financeiro."
         action={
           <>
-            <details className="action-menu">
-              <summary className="app-button app-button-secondary focus-ring inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[0.82rem] font-semibold">Mais ações <ChevronDown size={14} /></summary>
-              <div className="action-menu-popover">
-                <button type="button" onClick={() => onOpenModal('company')}><Building2 size={15} /> Nova empresa</button>
-                <button type="button" onClick={() => onGenerateProposal(clients[0]?.id ?? '')}><Wand2 size={15} /> Gerar proposta</button>
-              </div>
-            </details>
+            <Button variant="secondary" type="button" onClick={() => onOpenModal('company')}><Building2 size={16} /> Nova empresa</Button>
             <Button type="button" onClick={() => onOpenModal('client')}><Plus size={16} /> Novo contato</Button>
           </>
         }
       />
-      <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-        <Panel title="Base de contatos">
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Contato</th>
-                  <th>Canais</th>
-                  <th>Empresa</th>
-                  <th>Cidade</th>
-                  <th>Total faturado</th>
-                  <th>Recebido</th>
-                  <th>Projetos</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clients.map((client) => {
-                  const company = (state.companies || []).find((item) => item.id === client.companyId)
-                  const projects = state.projects.filter((project) => isVisibleProject(project) && project.clientId === client.id)
-                  const total = projects.reduce((sum, project) => sum + project.totalValue, 0)
-                  const received = state.payments
-                    .filter((payment) => payment.clientId === client.id && payment.status === 'Recebida')
-                    .reduce((sum, payment) => sum + payment.amount, 0)
-                  return (
-                    <tr key={client.id}>
-                      <td data-label="Contato">
-                        <div className="font-black text-gray-950">{contactDisplayName(client)}</div>
-                        <div className="text-sm text-gray-500">{contactDisplayDetail(client)}</div>
-                      </td>
-                      <td data-label="Canais">
-                        <div className="flex gap-2">
-                          {client.whatsapp || client.phone ? (
-                            <a className="rounded-lg border border-gray-200 p-2" href={whatsappLink(client.whatsapp || client.phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /></a>
-                          ) : null}
-                          {client.email ? <a className="rounded-lg border border-gray-200 p-2" href={`mailto:${client.email}`}><Mail size={16} /></a> : null}
-                          {!client.whatsapp && !client.phone && !client.email ? <span className="text-sm font-bold text-gray-400">Sem contato</span> : null}
-                        </div>
-                      </td>
-                      <td data-label="Empresa">{company?.tradeName || client.companyName || '-'}</td>
-                      <td data-label="Cidade">{client.city}</td>
-                      <td data-label="Total">{formatCurrency(total)}</td>
-                      <td data-label="Recebido">{formatCurrency(received)}</td>
-                      <td data-label="Projetos">{projects.length}</td>
-                      <td data-label="Ações">
-                        <div className="flex gap-2"><Button variant="secondary" type="button" onClick={() => onEditContact(client)}><Pencil size={16} /> Editar</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal(client.id)}><Wand2 size={16} /> Proposta</Button><IconActionButton label="Excluir contato" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDeleteContact(client)} /></div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
 
-        <Panel title="Detalhes rápidos">
-          <div className="space-y-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs font-bold uppercase text-gray-500">Empresas cadastradas</p>
-              <p className="mt-1 text-2xl font-black text-gray-950">{(state.companies || []).filter((company) => !company.archived).length}</p>
-              <div className="mt-2 space-y-1 text-sm">{(state.companies || []).filter((company) => !company.archived).slice(0, 4).map((company) => <div key={company.id} className="flex justify-between gap-3"><strong className="truncate">{company.tradeName}</strong><span className="text-gray-500">{company.document || company.city}</span></div>)}</div>
-            </div>
-            {clients.slice(0, 4).map((client) => {
-              const projects = state.projects.filter((project) => isVisibleProject(project) && project.clientId === client.id)
-              const total = projects.reduce((sum, project) => sum + project.totalValue, 0)
-              const received = state.payments
-                .filter((payment) => payment.clientId === client.id && payment.status === 'Recebida')
-                .reduce((sum, payment) => sum + payment.amount, 0)
-              const pending = Math.max(total - received, 0)
-              return (
-                <article key={client.id} className="rounded-lg border border-gray-200 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-black text-gray-950">{contactDisplayName(client)}</h3>
-                      <p className="text-sm text-gray-500">{contactDisplayDetail(client)}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {client.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
-                    </div>
-                  </div>
-                  <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                    <div><dt className="text-gray-500">Gerado</dt><dd className="font-black">{formatCurrency(total)}</dd></div>
-                    <div><dt className="text-gray-500">Pendente</dt><dd className="font-black">{formatCurrency(pending)}</dd></div>
-                    <div><dt className="text-gray-500">Ticket</dt><dd className="font-black">{formatCurrency(projects.length ? total / projects.length : 0)}</dd></div>
-                  </dl>
-                  <Button className="mt-3 w-full" variant="secondary" type="button" onClick={() => onGenerateProposal(client.id)}>
-                    <Wand2 size={16} /> Gerar proposta rápida
-                  </Button>
-                </article>
-              )
-            })}
+      <section className="contacts-toolbar rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="erp-segmented-control" aria-label="Visualização">
+            <button className={`inline-flex items-center gap-1.5 ${view === 'contacts' ? 'is-active' : ''}`} type="button" onClick={() => setView('contacts')}><ContactRound size={15} /> Contatos <span className="contacts-view-count">{clients.length}</span></button>
+            <button className={`inline-flex items-center gap-1.5 ${view === 'companies' ? 'is-active' : ''}`} type="button" onClick={() => setView('companies')}><Building2 size={15} /> Empresas <span className="contacts-view-count">{activeCompanies.length}</span></button>
           </div>
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row lg:max-w-xl">
+            <label className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input className="field-input field-input-with-leading-icon" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={view === 'contacts' ? 'Nome, telefone, e-mail, cidade ou empresa…' : 'Nome, CNPJ ou cidade…'} />
+            </label>
+            {view === 'contacts' ? (
+              <Select className="sm:max-w-[13rem]" placeholder="Todas as empresas" clearable searchable value={companyFilter} onChange={setCompanyFilter} options={activeCompanies.map((company) => ({ value: company.id, label: company.tradeName }))} />
+            ) : (
+              <button className={`contacts-archive-toggle ${showArchivedCompanies ? 'is-active' : ''}`} type="button" onClick={() => setShowArchivedCompanies((value) => !value)}>
+                <Archive size={15} /> {showArchivedCompanies ? 'Ocultar arquivadas' : 'Ver arquivadas'}
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {view === 'contacts' ? (
+        <Panel title={`Contatos (${filteredContacts.length})`}>
+          {filteredContacts.length ? (
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Contato</th>
+                    <th>Canais</th>
+                    <th>Empresa</th>
+                    <th>Cidade</th>
+                    <th>Total faturado</th>
+                    <th>Recebido</th>
+                    <th>Projetos</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredContacts.map((client) => {
+                    const company = companies.find((item) => item.id === client.companyId)
+                    const { projects, total, received } = clientTotals(client)
+                    return (
+                      <tr key={client.id}>
+                        <td data-label="Contato">
+                          <div className="font-black text-gray-950">{contactDisplayName(client)}</div>
+                          <div className="text-sm text-gray-500">{contactDisplayDetail(client)}</div>
+                        </td>
+                        <td data-label="Canais">
+                          <div className="flex gap-2">
+                            {client.whatsapp || client.phone ? (
+                              <a className="rounded-lg border border-gray-200 p-2" href={whatsappLink(client.whatsapp || client.phone)} target="_blank" rel="noreferrer"><MessageCircle size={16} /></a>
+                            ) : null}
+                            {client.email ? <a className="rounded-lg border border-gray-200 p-2" href={`mailto:${client.email}`}><Mail size={16} /></a> : null}
+                            {!client.whatsapp && !client.phone && !client.email ? <span className="text-sm font-bold text-gray-400">Sem contato</span> : null}
+                          </div>
+                        </td>
+                        <td data-label="Empresa">{company ? <button className="contacts-company-link" type="button" onClick={() => { setView('companies'); setSearch(company.tradeName) }}>{company.tradeName}</button> : (client.companyName || '-')}</td>
+                        <td data-label="Cidade">{client.city}</td>
+                        <td data-label="Total">{formatCurrency(total)}</td>
+                        <td data-label="Recebido">{formatCurrency(received)}</td>
+                        <td data-label="Projetos">{projects.length}</td>
+                        <td data-label="Ações">
+                          <div className="flex gap-2"><Button variant="secondary" type="button" onClick={() => onEditContact(client)}><Pencil size={16} /> Editar</Button><Button variant="secondary" type="button" onClick={() => onGenerateProposal(client.id)}><Wand2 size={16} /> Proposta</Button><IconActionButton label="Excluir contato" icon={<Trash2 size={15} />} tone="danger" onClick={() => onDeleteContact(client)} /></div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              title={search || companyFilter ? 'Nenhum contato encontrado' : 'Nenhum contato ainda'}
+              description={search || companyFilter ? 'Ajuste a busca ou o filtro de empresa.' : 'Cadastre o primeiro contato para começar a organizar sua base.'}
+              action={<Button type="button" onClick={() => onOpenModal('client')}><Plus size={16} /> Novo contato</Button>}
+            />
+          )}
         </Panel>
-      </div>
+      ) : (
+        <Panel title={`Empresas (${filteredCompanies.length})`}>
+          {filteredCompanies.length ? (
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Empresa</th>
+                    <th>CNPJ</th>
+                    <th>Cidade</th>
+                    <th>Contatos</th>
+                    <th>Total faturado</th>
+                    <th>Recebido</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCompanies.map((company) => {
+                    const contacts = companyContacts(company)
+                    const totals = contacts.reduce((sum, client) => {
+                      const clientTotal = clientTotals(client)
+                      return { total: sum.total + clientTotal.total, received: sum.received + clientTotal.received }
+                    }, { total: 0, received: 0 })
+                    return (
+                      <tr key={company.id} className={company.archived ? 'opacity-60' : ''}>
+                        <td data-label="Empresa">
+                          <div className="font-black text-gray-950">{company.tradeName}</div>
+                          {company.legalName && company.legalName !== company.tradeName ? <div className="text-sm text-gray-500">{company.legalName}</div> : null}
+                        </td>
+                        <td data-label="CNPJ">{company.document || '-'}</td>
+                        <td data-label="Cidade">{company.city || '-'}</td>
+                        <td data-label="Contatos">
+                          {contacts.length ? (
+                            <button className="contacts-company-link" type="button" onClick={() => { setView('contacts'); setCompanyFilter(company.id); setSearch('') }}>{contacts.length} contato{contacts.length === 1 ? '' : 's'}</button>
+                          ) : <span className="text-sm font-bold text-gray-400">Nenhum</span>}
+                        </td>
+                        <td data-label="Total">{formatCurrency(totals.total)}</td>
+                        <td data-label="Recebido">{formatCurrency(totals.received)}</td>
+                        <td data-label="Status"><StatusBadge>{company.archived ? 'Arquivada' : 'Ativa'}</StatusBadge></td>
+                        <td data-label="Ações">
+                          <div className="flex gap-2">
+                            <Button variant="secondary" type="button" onClick={() => onEditCompany(company)}><Pencil size={16} /> Editar</Button>
+                            <IconActionButton
+                              label={company.archived ? 'Reativar empresa' : 'Arquivar empresa'}
+                              icon={company.archived ? <ArrowRight size={15} /> : <Archive size={15} />}
+                              onClick={() => onArchiveCompany(company)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              title={search ? 'Nenhuma empresa encontrada' : 'Nenhuma empresa ainda'}
+              description={search ? 'Ajuste a busca acima.' : 'Cadastre empresas para agrupar contatos e ver o faturado consolidado.'}
+              action={<Button type="button" onClick={() => onOpenModal('company')}><Building2 size={16} /> Nova empresa</Button>}
+            />
+          )}
+        </Panel>
+      )}
     </div>
   )
 }
@@ -13126,10 +13227,23 @@ function ClientForm({ client, companies, initialCompanyId, onCreateCompany, onSu
   )
 }
 
-function CompanyForm({ onSubmit, onCancel }: { onSubmit: (values: CompanyFormValues) => void; onCancel: () => void }) {
+function CompanyForm({ company, onSubmit, onCancel }: { company?: Company; onSubmit: (values: CompanyFormValues) => void; onCancel: () => void }) {
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CompanyFormInput, unknown, CompanyFormValues>({
     resolver: zodResolver(companyFormSchema),
-    defaultValues: { legalName: '', tradeName: '', document: '', email: '', phone: '', whatsapp: '', website: '', address: '', neighborhood: '', postalCode: '', city: 'Curitiba', notes: '' },
+    defaultValues: {
+      legalName: company?.legalName ?? '',
+      tradeName: company?.tradeName ?? '',
+      document: company?.document ?? '',
+      email: company?.email ?? '',
+      phone: company?.phone ?? '',
+      whatsapp: company?.whatsapp ?? '',
+      website: company?.website ?? '',
+      address: company?.address ?? '',
+      neighborhood: company?.neighborhood ?? '',
+      postalCode: company?.postalCode ?? '',
+      city: company?.city ?? 'Curitiba',
+      notes: company?.notes ?? '',
+    },
   })
   const address = watch('address') ?? ''
   const phone = watch('phone') ?? ''
@@ -13147,7 +13261,7 @@ function CompanyForm({ onSubmit, onCancel }: { onSubmit: (values: CompanyFormVal
     <InputField label="CEP" error={getError(errors.postalCode?.message)}><input className="field-input" {...register('postalCode')} /></InputField>
     <div className="md:col-span-2"><input type="hidden" {...register('address')} /><MapsAddressField label="Endereço" error={getError(errors.address?.message)} value={address} onChange={(value) => setValue('address', value, { shouldDirty: true })} /></div>
     <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24" {...register('notes')} /></InputField></div>
-    <FormActions onCancel={onCancel} submitLabel="Criar empresa" />
+    <FormActions onCancel={onCancel} submitLabel={company ? 'Salvar alterações' : 'Criar empresa'} />
   </form>
 }
 
