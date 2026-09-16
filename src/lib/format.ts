@@ -81,6 +81,18 @@ export const whatsappLink = (phone: string) => {
   return `https://wa.me/${normalized.startsWith('55') ? normalized : `55${normalized}`}`
 }
 
+const consumerEmailDomains = new Set(['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'live.com'])
+
+/** Webmail de acesso direto para o domínio próprio, contornando SMTP/IMAP
+ * quando eles não estiverem configurados. Usa o domínio do e-mail informado
+ * quando é um domínio próprio (não um provedor genérico como Gmail); caso
+ * contrário cai no domínio padrão desta instalação. */
+export const webmailUrl = (email?: string, fallbackDomain = 'herodrone.com.br') => {
+  const domain = email?.split('@')[1]?.trim().toLowerCase()
+  const target = domain && !consumerEmailDomains.has(domain) ? domain : fallbackDomain
+  return `https://webmail.${target}`
+}
+
 export const mapsLink = (address: string) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
 

@@ -25,6 +25,7 @@ import {
   Copy,
   DollarSign,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   FileText,
@@ -117,6 +118,7 @@ import {
   initials,
   mapsLink,
   slugify,
+  webmailUrl,
   whatsappLink,
 } from './lib/format'
 import {
@@ -6531,15 +6533,8 @@ ${companyName}`,
       })
       return
     }
-    setToast('Preparando PDF, link de aceite e envio por e-mail…')
+    setToast('Preparando PDF e link de aceite…')
     try {
-      const googleConnection = getEmailConnection()
-      const googleClientId = state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
-      if (!googleConnection.connected) {
-        if (!googleClientId) throw new Error('A conta Google ainda não está configurada. Abra Configurações → Google Workspace e informe o OAuth Client ID.')
-        await connectGoogleWorkspace(googleClientId)
-      }
-
       const token = quote.publicToken || createProposalToken()
       const publishedQuote = { ...quote, publicToken: token, publicUrl: proposalUrl(token) }
       const [link, pdf] = await Promise.all([
@@ -6549,17 +6544,12 @@ ${companyName}`,
       updateState((current) => ({
         ...current,
         quotes: current.quotes.map((item) => item.id === quote.id ? { ...item, publicToken: token, publicUrl: link, updatedAt: new Date().toISOString() } : item),
-      }), 'Proposta pronta para envio por e-mail.')
+      }), 'Proposta pronta para envio.')
+
       const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
       const senderName = currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'
       const companyName = state.companySettings.companyName || 'Hero Drone'
-      setEmailComposer({
-        lead,
-        quote: { ...quote, publicToken: token, publicUrl: link },
-        to: recipient.email,
-        displayName: recipient.company || recipient.name || 'Cliente',
-        subject: `Proposta comercial · ${companyName}`,
-        body: `Olá, ${recipient.name || recipient.company || 'tudo bem'}!
+      const body = `Olá, ${recipient.name || recipient.company || 'tudo bem'}!
 
 Conforme conversamos, estou enviando em anexo a proposta comercial da ${companyName} para o seu projeto.
 
@@ -6570,12 +6560,43 @@ ${link}
 
 Abraço,
 ${senderName}
-${companyName}`,
-        attachment: {
-          fileName: pdf.fileName,
-          mimeType: 'application/pdf',
-          data: pdf.blob,
-        },
+${companyName}`
+
+      // Tenta conectar o Google (envio rastreado, direto pelo app); se não
+      // estiver configurado ou a conexão falhar, cai no caminho manual
+      // abaixo em vez de travar o fluxo inteiro.
+      const googleClientId = state.companySettings.googleOAuthClientId?.trim() || getStoredGoogleOAuthClientId()
+      if (!getEmailConnection().connected && googleClientId) {
+        await connectGoogleWorkspace(googleClientId).catch(() => undefined)
+      }
+
+      if (getEmailConnection().connected) {
+        setEmailComposer({
+          lead,
+          quote: { ...quote, publicToken: token, publicUrl: link },
+          to: recipient.email,
+          displayName: recipient.company || recipient.name || 'Cliente',
+          subject: `Proposta comercial · ${companyName}`,
+          body,
+          attachment: { fileName: pdf.fileName, mimeType: 'application/pdf', data: pdf.blob },
+        })
+        return
+      }
+
+      // Nenhuma conta de e-mail conectada: baixa o PDF, copia o texto pronto
+      // e abre o webmail — o envio continua manual, mas nunca fica travado.
+      const downloadAnchor = document.createElement('a')
+      downloadAnchor.href = URL.createObjectURL(pdf.blob)
+      downloadAnchor.download = pdf.fileName
+      downloadAnchor.click()
+      URL.revokeObjectURL(downloadAnchor.href)
+      await navigator.clipboard.writeText(body).catch(() => undefined)
+      window.open(webmailUrl(state.companySettings.email), '_blank', 'noopener,noreferrer')
+      showNotice({
+        title: 'Proposta pronta — envie manualmente',
+        description: 'O PDF foi baixado e o texto do e-mail (com o link de aceite) foi copiado para a área de transferência. Abrimos o webmail em outra aba: é só colar, anexar o PDF e enviar. Para enviar direto pelo FlyFlow da próxima vez, conecte um e-mail em Configurações.',
+        buttonLabel: 'Entendi',
+        tone: 'neutral',
       })
     } catch (preparationError) {
       showNotice({
@@ -11737,7 +11758,7 @@ function InboxPage({
   const senderInitials = (value: string) => senderLabel(value).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 
   if (!connection.connected) {
-    return <div className="inbox-page module-page space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="inbox-connect-state rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta de e-mail</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → E-mail com domínio próprio para configurar SMTP e IMAP, ou conecte o Gmail na seção Google Workspace.</p></div></div>
+    return <div className="inbox-page module-page space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="inbox-connect-state rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta de e-mail</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → E-mail com domínio próprio para configurar SMTP e IMAP, ou conecte o Gmail na seção Google Workspace.</p><a className="app-button app-button-secondary mt-4 inline-flex" href={webmailUrl(state.companySettings.email)} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Abrir webmail</a></div></div>
   }
 
   return (

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { ExternalLink } from 'lucide-react'
 import { disconnectDomainMail, refreshDomainMail, saveDomainMail, MailServiceUnavailableError, type MailAccount } from '../services/domainMail'
+import { webmailUrl } from '../lib/format'
 import { Button, Panel, Select } from './ui'
 
 const empty: MailAccount = { connected: false, email: '', name: '', smtp: { host: '', port: 465, user: '', pass: '' }, imap: { host: '', port: 993, user: '', pass: '' } }
@@ -39,8 +41,17 @@ export function MailAccountSettings() {
   return <Panel title="E-mail com domínio próprio" id="settings-mail">
     <div className="space-y-4">
       <p className="text-sm text-gray-500">Conecte SMTP para enviar e IMAP para receber. Quando conectada, esta conta será usada no Inbox e nas propostas. A agenda Google continua independente.</p>
-      {!available ? <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status"><p>{checking ? 'Verificando disponibilidade do serviço de e-mail…' : message}</p>{!checking ? <Button type="button" variant="secondary" onClick={() => setCheckRevision((value) => value + 1)}>Verificar disponibilidade</Button> : null}</div> : null}
-      <Button type="button" variant="secondary" disabled={busy} onClick={() => setAccount((current) => ({ ...current, smtp: { ...current.smtp, host: 'smtp.umbler.com', port: 587, user: current.smtp?.user || current.email }, imap: { ...current.imap, host: 'imap.umbler.com', port: 993, user: current.imap?.user || current.email } }))}>Usar servidores da Umbler</Button>
+      {!available ? <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+        <p>{checking ? 'Verificando disponibilidade do serviço de e-mail…' : message}</p>
+        {!checking ? <div className="mt-2 flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => setCheckRevision((value) => value + 1)}>Verificar disponibilidade</Button>
+          <a className="app-button app-button-secondary inline-flex" href={webmailUrl(account.email)} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Abrir webmail enquanto isso</a>
+        </div> : null}
+      </div> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => setAccount((current) => ({ ...current, smtp: { ...current.smtp, host: 'smtp.umbler.com', port: 587, user: current.smtp?.user || current.email }, imap: { ...current.imap, host: 'imap.umbler.com', port: 993, user: current.imap?.user || current.email } }))}>Usar servidores da Umbler</Button>
+        <a className="app-button app-button-secondary inline-flex" href={webmailUrl(account.email)} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Abrir webmail</a>
+      </div>
       <label className="block text-sm">Endereço de e-mail<input className="field-input" type="email" autoComplete="email" disabled={busy} value={account.email} onChange={(event) => setAccount({ ...account, email: event.target.value })} placeholder="contato@suaempresa.com.br" /></label>
       {(['smtp', 'imap'] as const).map((protocol) => <fieldset key={protocol} disabled={busy} className="grid gap-3 rounded-xl border border-gray-200 p-3 sm:grid-cols-2">
         <legend className="px-1 text-sm font-bold">{protocol === 'smtp' ? 'SMTP — envio' : 'IMAP — caixa de entrada'}</legend>
