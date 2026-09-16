@@ -11370,3 +11370,109 @@ html[data-theme='dark'] .crm-funnel-row[data-stage='approval'] .crm-funnel-dot, 
 html[data-theme='dark'] .crm-funnel-row[data-stage='deposit'] .crm-funnel-dot, html[data-theme='dark'] .crm-stage-group[data-stage='deposit'] .crm-stage-dot, html[data-theme='dark'] .crm-funnel-row[data-stage='deposit'] .crm-funnel-bar { background: #ef8cc7; }
 html[data-theme='dark'] .crm-funnel-row[data-stage='confirmed'] .crm-funnel-dot, html[data-theme='dark'] .crm-stage-group[data-stage='confirmed'] .crm-stage-dot, html[data-theme='dark'] .crm-funnel-row[data-stage='confirmed'] .crm-funnel-bar { background: #6adfab; }
 html[data-theme='dark'] .crm-funnel-row[data-stage='future'] .crm-funnel-dot, html[data-theme='dark'] .crm-stage-group[data-stage='future'] .crm-stage-dot, html[data-theme='dark'] .crm-funnel-row[data-stage='future'] .crm-funnel-bar { background: #9aa5b8; }
+
+/* ============================================================================
+   CRM Comercial — back to a horizontal board, restyled after Trello: colored
+   label bars, a checklist/attachment/due-date badge row and a member-avatar
+   stack on every card. .crm-board/.crm-pipeline-column/.crm-opportunity-card
+   base layout (scroll, columns, drag) already existed from the very first
+   kanban pass — this layers Trello's specific card anatomy on top of it.
+   ============================================================================ */
+
+.crm-opportunity-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.crm-card-labels {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.15rem;
+}
+
+.crm-card-label {
+  height: 0.45rem;
+  width: 2.4rem;
+  border-radius: 999px;
+}
+
+.crm-card-label-positive { background: var(--success); }
+.crm-card-label-warning { background: var(--warning); }
+.crm-card-label-danger { background: var(--danger); }
+
+.crm-card-title { font-size: 0.86rem; }
+.crm-card-subtitle { margin-top: -0.05rem; }
+.crm-card-value { margin-top: 0.15rem; }
+
+.crm-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.crm-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.crm-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.18rem 0.4rem;
+  border-radius: 0.4rem;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 750;
+}
+
+.crm-card-badge.is-complete { background: var(--ff-green-soft); color: var(--ff-green-strong); }
+.crm-card-due.is-overdue { background: var(--ff-rose-soft); color: var(--ff-rose-strong); }
+
+.crm-card-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.crm-card-avatars {
+  display: flex;
+  align-items: center;
+}
+
+.crm-card-avatar {
+  width: 1.6rem;
+  height: 1.6rem;
+  font-size: 0.55rem;
+  border: 2px solid var(--surface);
+}
+
+.crm-card-avatars .crm-card-avatar + .crm-card-avatar {
+  margin-left: -0.5rem;
+}
+
+.crm-pipeline-column[data-stage='entry'] .crm-card-label-stage { background: #579dff; }
+.crm-pipeline-column[data-stage='contact'] .crm-card-label-stage { background: #00a2bf; }
+.crm-pipeline-column[data-stage='negotiation'] .crm-card-label-stage { background: #9f8fef; }
+.crm-pipeline-column[data-stage='sent'] .crm-card-label-stage { background: #f5cd47; }
+.crm-pipeline-column[data-stage='approval'] .crm-card-label-stage { background: #fea362; }
+.crm-pipeline-column[data-stage='deposit'] .crm-card-label-stage { background: #e774bb; }
+.crm-pipeline-column[data-stage='confirmed'] .crm-card-label-stage { background: #4bce97; }
+.crm-pipeline-column[data-stage='future'] .crm-card-label-stage { background: #8590a2; }
+
+html[data-theme='dark'] .crm-pipeline-column[data-stage='entry'] .crm-card-label-stage { background: #6ba6ff; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='contact'] .crm-card-label-stage { background: #2bb8d6; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='negotiation'] .crm-card-label-stage { background: #b3a4f5; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='sent'] .crm-card-label-stage { background: #e6c454; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='approval'] .crm-card-label-stage { background: #f5a877; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='deposit'] .crm-card-label-stage { background: #ef8cc7; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='confirmed'] .crm-card-label-stage { background: #6adfab; }
+html[data-theme='dark'] .crm-pipeline-column[data-stage='future'] .crm-card-label-stage { background: #9aa5b8; }

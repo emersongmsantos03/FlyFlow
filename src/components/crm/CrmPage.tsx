@@ -1,10 +1,12 @@
 import {
+  ArrowLeft,
   ArrowRight,
   Ban,
   Briefcase,
   CalendarDays,
   Check,
   CheckCircle2,
+  CheckSquare,
   ChevronDown,
   CircleDollarSign,
   Clock3,
@@ -12,11 +14,12 @@ import {
   ExternalLink,
   Eye,
   FileText,
-  Filter,
   Globe2,
+  LayoutGrid,
   Mail,
   MapPin,
   MessageCircle,
+  MoreHorizontal,
   Paperclip,
   Phone,
   Plus,
@@ -234,9 +237,12 @@ export function CrmPage({
   onCancelTask: (task: TaskItem) => void
   onDeleteTask: (task: TaskItem) => void
 }) {
+  const boardRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
   const [priorityLead, setPriorityLead] = useState<Lead>()
+  const [draggedLeadId, setDraggedLeadId] = useState<string>()
+  const [dropColumnId, setDropColumnId] = useState<string>()
   const [whatsAppContext, setWhatsAppContext] = useState<WhatsAppContext>('Primeiro contato')
   const [whatsAppMessage, setWhatsAppMessage] = useState('')
 
@@ -273,7 +279,7 @@ export function CrmPage({
   const contactsNeedingAction = openLeads.filter((lead) => !lead.nextContactAt || new Date(lead.nextContactAt) < new Date()).length
   const actionQueue = useMemo(() => buildCommercialActionQueue(openLeads, state).slice(0, 5), [openLeads, state])
   const selectedPriority = priorityLead ? actionQueue.find(({ lead }) => lead.id === priorityLead.id)?.priority : undefined
-  const maxColumnCount = Math.max(1, ...columns.map((column) => filtered.filter((lead) => column.stages.includes(lead.pipelineStage)).length))
+  const scrollBoard = (direction: -1 | 1) => boardRef.current?.scrollBy({ left: direction * 620, behavior: 'smooth' })
 
   return (
     <div className="crm-page commercial-page module-page space-y-4">
@@ -343,7 +349,7 @@ export function CrmPage({
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="crm-toolbar-tabs inline-flex w-full rounded-lg bg-gray-100 p-1 sm:w-auto">
             {([
-              ['kanban', 'Funil', Filter],
+              ['kanban', 'Quadro', LayoutGrid],
               ['table', 'Lista', Table2],
               ['tasks', 'Minhas tarefas', CheckCircle2],
               ['lost', `Perdidos (${lostLeads.length})`, Ban],
@@ -376,40 +382,40 @@ export function CrmPage({
       </section>
 
       {view === 'kanban' ? (
-        <section className="crm-funnel">
-          <div className="crm-funnel-overview">
-            {columns.map((column) => {
-              const columnLeads = filtered.filter((lead) => column.stages.includes(lead.pipelineStage))
-              const value = columnLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
-              const widthPct = columnLeads.length ? Math.max(8, Math.round((columnLeads.length / maxColumnCount) * 100)) : 3
-              return (
-                <a key={column.id} className="crm-funnel-row" data-stage={column.id} href={`#crm-stage-${column.id}`}>
-                  <span className="crm-funnel-label"><span className="crm-funnel-dot" aria-hidden="true" />{column.title}</span>
-                  <span className="crm-funnel-bar-track"><span className="crm-funnel-bar" style={{ width: `${widthPct}%` }} /></span>
-                  <span className="crm-funnel-stats"><strong>{columnLeads.length}</strong><small>{formatCurrency(value)}</small></span>
-                </a>
-              )
-            })}
-          </div>
-
-          <div className="crm-stage-groups">
+        <section className="crm-board-shell relative">
+          <button aria-label="Rolar quadro para a esquerda" className="crm-scroll-button left-2" type="button" onClick={() => scrollBoard(-1)}><ArrowLeft size={19} /></button>
+          <button aria-label="Rolar quadro para a direita" className="crm-scroll-button right-2" type="button" onClick={() => scrollBoard(1)}><ArrowRight size={19} /></button>
+          <div ref={boardRef} className="crm-board" tabIndex={0}>
             {columns.map((column) => {
               const columnLeads = filtered.filter((lead) => column.stages.includes(lead.pipelineStage))
               const value = columnLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
               return (
-                <details key={column.id} id={`crm-stage-${column.id}`} className="crm-stage-group" data-stage={column.id} open>
-                  <summary className="crm-stage-group-summary">
-                    <span className="crm-stage-dot" aria-hidden="true" />
-                    <span className="crm-stage-title">{column.title}</span>
-                    <span className="crm-stage-sub">{column.subtitle}</span>
-                    <span className="crm-stage-count">{columnLeads.length}</span>
-                    <span className="crm-stage-value">{formatCurrency(value)}</span>
-                    <span className="crm-stage-probability">{stageProbability(column.target)}% referência</span>
-                    <ChevronDown className="crm-stage-chevron" size={16} aria-hidden="true" />
-                  </summary>
-                  <div className="crm-stage-rows">
+                <section
+                  key={column.id}
+                  className={`crm-pipeline-column ${dropColumnId === column.id ? 'is-drop-target' : ''}`}
+                  data-stage={column.id}
+                  onDragEnter={() => draggedLeadId && setDropColumnId(column.id)}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropColumnId(undefined)
+                  }}
+                  onDrop={(event) => {
+                    const leadId = event.dataTransfer.getData('lead-id')
+                    if (leadId) onMoveLead(leadId, column.target)
+                    setDraggedLeadId(undefined)
+                    setDropColumnId(undefined)
+                  }}
+                >
+                  <header className="crm-column-header">
+                    <div className="crm-column-title-row"><span className="crm-column-accent" aria-hidden="true" /><h2 className="text-sm font-black text-gray-950">{column.title}</h2><span className="crm-column-count">{columnLeads.length}</span></div>
+                    <div className="mt-1 flex items-center justify-between gap-3"><p className="text-xs text-gray-500">{formatCurrency(value)}</p><span className="text-[0.62rem] font-bold text-gray-400">{stageProbability(column.target)}% referência</span></div>
+                  </header>
+                  <div className="crm-column-body">
                     {columnLeads.map((lead) => (
-                      <OpportunityRow
+                      <OpportunityCard
                         key={lead.id}
                         lead={lead}
                         state={state}
@@ -417,7 +423,6 @@ export function CrmPage({
                         onEdit={onEditLead}
                         onDelete={onDeleteLead}
                         onLose={(item) => onMoveLead(item.id, 'Perdido')}
-                        onMoveStage={(item, target) => onMoveLead(item.id, target)}
                         onAttachReceipt={onAttachReceipt}
                         onGenerateProposal={onGenerateProposal}
                         onRegisterInteraction={onRegisterInteraction}
@@ -425,12 +430,17 @@ export function CrmPage({
                         onEditTask={onEditTask}
                         onRegisterDeposit={onRegisterDeposit}
                         onCreateProject={onCreateProject}
+                        isDragging={draggedLeadId === lead.id}
+                        onDragStateChange={(dragging) => {
+                          setDraggedLeadId(dragging ? lead.id : undefined)
+                          if (!dragging) setDropColumnId(undefined)
+                        }}
                       />
                     ))}
-                    {!columnLeads.length ? <div className="crm-stage-empty">Nenhum contato nesta etapa.</div> : null}
+                    {!columnLeads.length ? <div className="rounded-lg border border-dashed border-gray-300 p-4 text-center text-xs text-gray-500">Nenhum contato.</div> : null}
                     <button className="crm-add-card" type="button" onClick={onCreateLead}><Plus size={15} /> Adicionar oportunidade</button>
                   </div>
-                </details>
+                </section>
               )
             })}
           </div>
@@ -519,14 +529,13 @@ export function CrmPage({
   )
 }
 
-function OpportunityRow({ lead, state, onOpen, onEdit, onDelete, onLose, onMoveStage, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onEditTask, onRegisterDeposit, onCreateProject }: {
+function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onEditTask, onRegisterDeposit, onCreateProject, isDragging, onDragStateChange }: {
   lead: Lead
   state: AppState
   onOpen: (lead: Lead) => void
   onEdit: (lead: Lead) => void
   onDelete: (lead: Lead) => void
   onLose: (lead: Lead) => void
-  onMoveStage: (lead: Lead, target: PipelineStage) => void
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
@@ -534,8 +543,9 @@ function OpportunityRow({ lead, state, onOpen, onEdit, onDelete, onLose, onMoveS
   onEditTask: (task: TaskItem) => void
   onRegisterDeposit: (quote: Quote) => void
   onCreateProject: (lead: Lead) => void
+  isDragging: boolean
+  onDragStateChange: (dragging: boolean) => void
 }) {
-  const quote = newestQuote(state, lead.id)
   const overdueTask = state.tasks
     .filter((task) =>
       (task.leadId === lead.id || task.leadIds?.includes(lead.id)) &&
@@ -543,61 +553,76 @@ function OpportunityRow({ lead, state, onOpen, onEdit, onDelete, onLose, onMoveS
       new Date(task.dueAt) < new Date(),
     )
     .sort((left, right) => left.dueAt.localeCompare(right.dueAt))[0]
+  const tasks = state.tasks.filter((task) => (task.leadId === lead.id || task.leadIds?.includes(lead.id)) && task.status !== 'Cancelada')
+  const tasksDone = tasks.filter((task) => task.status === 'Concluída').length
+  const attachments = state.files.filter((file) => !file.deletedAt && file.leadId === lead.id).length
   const health = opportunityHealth(lead)
-  const currentColumn = columns.find((column) => column.stages.includes(lead.pipelineStage))
+  const owner = state.users.find((user) => user.id === lead.responsibleUserId)
+  const dueLabel = lead.nextContactAt ? formatDate(lead.nextContactAt) : undefined
+  const dueOverdue = Boolean(lead.nextContactAt && new Date(lead.nextContactAt) < new Date())
 
   const stop = (event: MouseEvent) => event.stopPropagation()
   return (
-    <article className="crm-opportunity-row" onClick={() => onOpen(lead)}>
-      <span className="avatar-chip crm-row-avatar" data-tint={avatarTint(lead.id)}>{initials(displayName(lead))}</span>
-      <div className="crm-row-identity min-w-0">
-        <h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3>
-        <p className="truncate text-xs text-gray-500">{displayDetail(lead)} · {lead.serviceInterest}</p>
+    <article
+      className={`crm-opportunity-card ${isDragging ? 'is-dragging' : ''}`}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('lead-id', lead.id)
+        onDragStateChange(true)
+      }}
+      onDragEnd={() => onDragStateChange(false)}
+      onClick={() => onOpen(lead)}
+    >
+      <div className="crm-card-labels">
+        <span className="crm-card-label crm-card-label-stage" aria-hidden="true" />
+        <span className={`crm-card-label crm-card-label-${health.tone}`} title={health.label} />
       </div>
-      <span className={`crm-health crm-health-${health.tone} crm-row-health`}>{health.label}</span>
-      {overdueTask ? (
-        <button
-          className="crm-next-action is-overdue crm-row-next-action flex items-center gap-1.5 rounded-md bg-red-50 px-2 py-1 text-left text-xs text-red-700"
-          type="button"
-          title="Abrir tarefa para ajustar data, concluir ou excluir"
-          aria-label={`Tarefa atrasada em ${formatDateTime(overdueTask.dueAt)}. Abrir para ajustar`}
-          onClick={(event) => { stop(event); onEditTask(overdueTask) }}
-        >
-          <Clock3 className="shrink-0" size={12} /><span className="max-w-[9rem] truncate">Atrasada</span>
-        </button>
-      ) : quote ? (
-        <span className="crm-row-quote inline-flex items-center gap-1 text-xs text-gray-500"><FileText size={12} />{quote.status}</span>
-      ) : null}
-      <strong className="crm-row-value shrink-0 text-sm text-gray-950">{formatCurrency(lead.estimatedValue)}</strong>
-      <span className="crm-row-stage" onClick={stop}>
-        <Select
-          size="sm"
-          ariaLabel={`Alterar etapa de ${displayName(lead)}`}
-          value={currentColumn?.target ?? lead.pipelineStage}
-          onChange={(value) => onMoveStage(lead, value as PipelineStage)}
-          options={columns.map((column) => ({ value: column.target, label: column.title }))}
-        />
-      </span>
-      <span className="crm-row-actions flex shrink-0 items-center gap-1" onClick={stop}>
-        <ContactShortcuts
-          lead={lead}
-          state={state}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onAttachReceipt={onAttachReceipt}
-          onGenerateProposal={onGenerateProposal}
-          onRegisterInteraction={onRegisterInteraction}
-          onScheduleReturn={onScheduleReturn}
-          onRegisterDeposit={onRegisterDeposit}
-          onCreateProject={onCreateProject}
-        />
-        {lead.pipelineStage !== 'Perdido' ? <button className="rounded-md p-1.5 text-gray-400 hover:bg-amber-50 hover:text-amber-700" type="button" onClick={(event) => { stop(event); onLose(lead) }} title="Marcar oportunidade como perdida" aria-label={`Marcar ${displayName(lead)} como oportunidade perdida`}><Ban size={14} /></button> : null}
-      </span>
+      <h3 className="crm-card-title truncate font-black text-gray-950">{displayName(lead)}</h3>
+      <p className="crm-card-subtitle truncate text-xs text-gray-500">{displayDetail(lead)} · {lead.serviceInterest}</p>
+      <strong className="crm-card-value block text-sm text-gray-950">{formatCurrency(lead.estimatedValue)}</strong>
+      {overdueTask ? <button
+        className="crm-next-action is-overdue mt-2 flex w-full items-center gap-2 rounded-md bg-red-50 px-2.5 py-2 text-left text-xs text-red-700"
+        type="button"
+        title="Abrir tarefa para ajustar data, concluir ou excluir"
+        aria-label={`Tarefa atrasada em ${formatDateTime(overdueTask.dueAt)}. Abrir para ajustar`}
+        onClick={(event) => { stop(event); onEditTask(overdueTask) }}
+      >
+        <Clock3 className="shrink-0" size={13} /><span className="min-w-0 flex-1 truncate">Atrasada · {formatDateTime(overdueTask.dueAt)}</span><span className="crm-next-action-label">Ajustar</span>
+      </button> : null}
+      <footer className="crm-card-footer">
+        <div className="crm-card-badges">
+          {lead.notes ? <span className="crm-card-badge" title="Tem anotações"><FileText size={12} /></span> : null}
+          {attachments ? <span className="crm-card-badge"><Paperclip size={12} />{attachments}</span> : null}
+          {tasks.length ? <span className={`crm-card-badge ${tasksDone === tasks.length ? 'is-complete' : ''}`}><CheckSquare size={12} />{tasksDone}/{tasks.length}</span> : null}
+          {dueLabel ? <span className={`crm-card-badge crm-card-due ${dueOverdue ? 'is-overdue' : ''}`}><CalendarDays size={12} />{dueLabel}</span> : null}
+        </div>
+        <div className="crm-card-footer-right" onClick={stop}>
+          <div className="crm-card-avatars">
+            {owner && owner.id !== lead.id ? <span className="avatar-chip crm-card-avatar" data-tint={avatarTint(owner.id)} title={owner.name}>{initials(owner.name)}</span> : null}
+            <span className="avatar-chip crm-card-avatar" data-tint={avatarTint(lead.id)} title={displayName(lead)}>{initials(displayName(lead))}</span>
+          </div>
+          <ContactShortcuts
+            compact
+            lead={lead}
+            state={state}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onAttachReceipt={onAttachReceipt}
+            onGenerateProposal={onGenerateProposal}
+            onRegisterInteraction={onRegisterInteraction}
+            onScheduleReturn={onScheduleReturn}
+            onRegisterDeposit={onRegisterDeposit}
+            onCreateProject={onCreateProject}
+            onLose={lead.pipelineStage !== 'Perdido' ? () => onLose(lead) : undefined}
+          />
+        </div>
+      </footer>
     </article>
   )
 }
 
-function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject }: {
+function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onRegisterDeposit, onCreateProject, onLose, compact }: {
   lead: Lead
   state: AppState
   onEdit: (lead: Lead) => void
@@ -608,6 +633,8 @@ function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGe
   onScheduleReturn: (lead: Lead) => void
   onRegisterDeposit: (quote: Quote) => void
   onCreateProject: (lead: Lead) => void
+  onLose?: () => void
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 })
@@ -672,9 +699,15 @@ function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGe
       className="relative"
       onClick={(event) => event.stopPropagation()}
     >
-      <button ref={triggerRef} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-[color:var(--text-secondary)] hover:bg-[var(--surface-soft)]" type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-        Atalhos <ChevronDown className={`transition ${open ? 'rotate-180' : ''}`} size={13} />
-      </button>
+      {compact ? (
+        <button ref={triggerRef} className="crm-card-more-trigger flex h-6 w-6 items-center justify-center rounded-md text-[color:var(--text-muted)] hover:bg-[var(--surface-soft)] hover:text-[color:var(--text-primary)]" type="button" aria-haspopup="menu" aria-label="Mais ações" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+          <MoreHorizontal size={15} />
+        </button>
+      ) : (
+        <button ref={triggerRef} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-[color:var(--text-secondary)] hover:bg-[var(--surface-soft)]" type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+          Atalhos <ChevronDown className={`transition ${open ? 'rotate-180' : ''}`} size={13} />
+        </button>
+      )}
       {open ? createPortal(
         <div
           ref={menuRef}
@@ -693,6 +726,7 @@ function ContactShortcuts({ lead, state, onEdit, onDelete, onAttachReceipt, onGe
           {lead.pipelineStage === 'Serviço confirmado' && !project ? <button className={shortcutClass} type="button" onClick={() => run(() => onCreateProject(lead))}><Briefcase size={15} /> Criar projeto</button> : null}
           <div className="my-1 border-t border-gray-100" />
           <button className={shortcutClass} type="button" onClick={() => run(() => onEdit(lead))}><SlidersHorizontal size={15} /> Editar contato</button>
+          {onLose ? <button className={`${shortcutClass} text-amber-700 hover:bg-amber-50`} type="button" onClick={() => run(onLose)}><Ban size={15} /> Marcar como perdida</button> : null}
           <button className={`${shortcutClass} text-red-600 hover:bg-red-50`} type="button" onClick={() => run(() => onDelete(lead))}><Trash2 size={15} /> Excluir contato</button>
         </div>,
         document.body,
