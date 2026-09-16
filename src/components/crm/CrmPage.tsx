@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   ArrowRight,
   Ban,
   Briefcase,
@@ -13,9 +12,8 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  Filter,
   Globe2,
-  GripVertical,
-  LayoutGrid,
   Mail,
   MapPin,
   MessageCircle,
@@ -236,13 +234,9 @@ export function CrmPage({
   onCancelTask: (task: TaskItem) => void
   onDeleteTask: (task: TaskItem) => void
 }) {
-  const boardRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all')
-  const [mobileColumn, setMobileColumn] = useState(columns[0].id)
   const [priorityLead, setPriorityLead] = useState<Lead>()
-  const [draggedLeadId, setDraggedLeadId] = useState<string>()
-  const [dropColumnId, setDropColumnId] = useState<string>()
   const [whatsAppContext, setWhatsAppContext] = useState<WhatsAppContext>('Primeiro contato')
   const [whatsAppMessage, setWhatsAppMessage] = useState('')
 
@@ -279,8 +273,7 @@ export function CrmPage({
   const contactsNeedingAction = openLeads.filter((lead) => !lead.nextContactAt || new Date(lead.nextContactAt) < new Date()).length
   const actionQueue = useMemo(() => buildCommercialActionQueue(openLeads, state).slice(0, 5), [openLeads, state])
   const selectedPriority = priorityLead ? actionQueue.find(({ lead }) => lead.id === priorityLead.id)?.priority : undefined
-
-  const scrollBoard = (direction: -1 | 1) => boardRef.current?.scrollBy({ left: direction * 620, behavior: 'smooth' })
+  const maxColumnCount = Math.max(1, ...columns.map((column) => filtered.filter((lead) => column.stages.includes(lead.pipelineStage)).length))
 
   return (
     <div className="crm-page commercial-page module-page space-y-4">
@@ -350,7 +343,7 @@ export function CrmPage({
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="crm-toolbar-tabs inline-flex w-full rounded-lg bg-gray-100 p-1 sm:w-auto">
             {([
-              ['kanban', 'Quadro', LayoutGrid],
+              ['kanban', 'Funil', Filter],
               ['table', 'Lista', Table2],
               ['tasks', 'Minhas tarefas', CheckCircle2],
               ['lost', `Perdidos (${lostLeads.length})`, Ban],
@@ -383,43 +376,40 @@ export function CrmPage({
       </section>
 
       {view === 'kanban' ? (
-        <section className="crm-board-shell relative">
-          <div className="mb-2 flex items-center justify-between gap-3 lg:hidden">
-            <Select value={mobileColumn} onChange={setMobileColumn} options={columns.map((column) => ({ value: column.id, label: column.title }))} />
+        <section className="crm-funnel">
+          <div className="crm-funnel-overview">
+            {columns.map((column) => {
+              const columnLeads = filtered.filter((lead) => column.stages.includes(lead.pipelineStage))
+              const value = columnLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
+              const widthPct = columnLeads.length ? Math.max(8, Math.round((columnLeads.length / maxColumnCount) * 100)) : 3
+              return (
+                <a key={column.id} className="crm-funnel-row" data-stage={column.id} href={`#crm-stage-${column.id}`}>
+                  <span className="crm-funnel-label"><span className="crm-funnel-dot" aria-hidden="true" />{column.title}</span>
+                  <span className="crm-funnel-bar-track"><span className="crm-funnel-bar" style={{ width: `${widthPct}%` }} /></span>
+                  <span className="crm-funnel-stats"><strong>{columnLeads.length}</strong><small>{formatCurrency(value)}</small></span>
+                </a>
+              )
+            })}
           </div>
-          <button aria-label="Rolar quadro para a esquerda" className="crm-scroll-button left-2" type="button" onClick={() => scrollBoard(-1)}><ArrowLeft size={19} /></button>
-          <button aria-label="Rolar quadro para a direita" className="crm-scroll-button right-2" type="button" onClick={() => scrollBoard(1)}><ArrowRight size={19} /></button>
-          <div ref={boardRef} className="crm-board" tabIndex={0}>
+
+          <div className="crm-stage-groups">
             {columns.map((column) => {
               const columnLeads = filtered.filter((lead) => column.stages.includes(lead.pipelineStage))
               const value = columnLeads.reduce((total, lead) => total + lead.estimatedValue, 0)
               return (
-                <section
-                  key={column.id}
-                  className={`crm-pipeline-column ${mobileColumn === column.id ? 'is-mobile-active' : ''} ${dropColumnId === column.id ? 'is-drop-target' : ''}`}
-                  data-stage={column.id}
-                  onDragEnter={() => draggedLeadId && setDropColumnId(column.id)}
-                  onDragOver={(event) => {
-                    event.preventDefault()
-                    event.dataTransfer.dropEffect = 'move'
-                  }}
-                  onDragLeave={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropColumnId(undefined)
-                  }}
-                  onDrop={(event) => {
-                    const leadId = event.dataTransfer.getData('lead-id')
-                    if (leadId) onMoveLead(leadId, column.target)
-                    setDraggedLeadId(undefined)
-                    setDropColumnId(undefined)
-                  }}
-                >
-                  <header className="crm-column-header">
-                    <div className="crm-column-title-row"><span className="crm-column-accent" aria-hidden="true" /><h2 className="text-sm font-black text-gray-950">{column.title}</h2><span className="crm-column-count">{columnLeads.length}</span></div>
-                    <div className="mt-1 flex items-center justify-between gap-3"><p className="text-xs text-gray-500">{formatCurrency(value)}</p><span className="text-[0.62rem] font-bold text-gray-400">{stageProbability(column.target)}% referência</span></div>
-                  </header>
-                  <div className="crm-column-body">
+                <details key={column.id} id={`crm-stage-${column.id}`} className="crm-stage-group" data-stage={column.id} open>
+                  <summary className="crm-stage-group-summary">
+                    <span className="crm-stage-dot" aria-hidden="true" />
+                    <span className="crm-stage-title">{column.title}</span>
+                    <span className="crm-stage-sub">{column.subtitle}</span>
+                    <span className="crm-stage-count">{columnLeads.length}</span>
+                    <span className="crm-stage-value">{formatCurrency(value)}</span>
+                    <span className="crm-stage-probability">{stageProbability(column.target)}% referência</span>
+                    <ChevronDown className="crm-stage-chevron" size={16} aria-hidden="true" />
+                  </summary>
+                  <div className="crm-stage-rows">
                     {columnLeads.map((lead) => (
-                      <OpportunityCard
+                      <OpportunityRow
                         key={lead.id}
                         lead={lead}
                         state={state}
@@ -427,6 +417,7 @@ export function CrmPage({
                         onEdit={onEditLead}
                         onDelete={onDeleteLead}
                         onLose={(item) => onMoveLead(item.id, 'Perdido')}
+                        onMoveStage={(item, target) => onMoveLead(item.id, target)}
                         onAttachReceipt={onAttachReceipt}
                         onGenerateProposal={onGenerateProposal}
                         onRegisterInteraction={onRegisterInteraction}
@@ -434,17 +425,12 @@ export function CrmPage({
                         onEditTask={onEditTask}
                         onRegisterDeposit={onRegisterDeposit}
                         onCreateProject={onCreateProject}
-                        isDragging={draggedLeadId === lead.id}
-                        onDragStateChange={(dragging) => {
-                          setDraggedLeadId(dragging ? lead.id : undefined)
-                          if (!dragging) setDropColumnId(undefined)
-                        }}
                       />
                     ))}
-                    {!columnLeads.length ? <div className="rounded-lg border border-dashed border-gray-300 p-4 text-center text-xs text-gray-500">Nenhum contato.</div> : null}
+                    {!columnLeads.length ? <div className="crm-stage-empty">Nenhum contato nesta etapa.</div> : null}
                     <button className="crm-add-card" type="button" onClick={onCreateLead}><Plus size={15} /> Adicionar oportunidade</button>
                   </div>
-                </section>
+                </details>
               )
             })}
           </div>
@@ -533,13 +519,14 @@ export function CrmPage({
   )
 }
 
-function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onEditTask, onRegisterDeposit, onCreateProject, isDragging, onDragStateChange }: {
+function OpportunityRow({ lead, state, onOpen, onEdit, onDelete, onLose, onMoveStage, onAttachReceipt, onGenerateProposal, onRegisterInteraction, onScheduleReturn, onEditTask, onRegisterDeposit, onCreateProject }: {
   lead: Lead
   state: AppState
   onOpen: (lead: Lead) => void
   onEdit: (lead: Lead) => void
   onDelete: (lead: Lead) => void
   onLose: (lead: Lead) => void
+  onMoveStage: (lead: Lead, target: PipelineStage) => void
   onAttachReceipt: (payment: Payment) => void
   onGenerateProposal: (clientId: string, leadId?: string) => void
   onRegisterInteraction: (lead: Lead, type: string) => void
@@ -547,8 +534,6 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
   onEditTask: (task: TaskItem) => void
   onRegisterDeposit: (quote: Quote) => void
   onCreateProject: (lead: Lead) => void
-  isDragging: boolean
-  onDragStateChange: (dragging: boolean) => void
 }) {
   const quote = newestQuote(state, lead.id)
   const overdueTask = state.tasks
@@ -559,43 +544,41 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
     )
     .sort((left, right) => left.dueAt.localeCompare(right.dueAt))[0]
   const health = opportunityHealth(lead)
+  const currentColumn = columns.find((column) => column.stages.includes(lead.pipelineStage))
 
   const stop = (event: MouseEvent) => event.stopPropagation()
   return (
-    <article
-      className={`crm-opportunity-card ${isDragging ? 'is-dragging' : ''}`}
-      draggable
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = 'move'
-        event.dataTransfer.setData('lead-id', lead.id)
-        onDragStateChange(true)
-      }}
-      onDragEnd={() => onDragStateChange(false)}
-      onClick={() => onOpen(lead)}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <GripVertical className="crm-card-grip" size={16} aria-hidden="true" />
-        <span className="avatar-chip" data-tint={avatarTint(lead.id)}>{initials(displayName(lead))}</span>
-        <div className="min-w-0 flex-1"><h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3><p className="truncate text-xs text-gray-500">{displayDetail(lead)}</p></div>
-        <span className={`crm-health crm-health-${health.tone}`}>{health.label}</span>
+    <article className="crm-opportunity-row" onClick={() => onOpen(lead)}>
+      <span className="avatar-chip crm-row-avatar" data-tint={avatarTint(lead.id)}>{initials(displayName(lead))}</span>
+      <div className="crm-row-identity min-w-0">
+        <h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3>
+        <p className="truncate text-xs text-gray-500">{displayDetail(lead)} · {lead.serviceInterest}</p>
       </div>
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <div className="min-w-0"><p className="truncate text-sm text-gray-600">{lead.serviceInterest}</p>{quote ? <p className="mt-1 truncate text-xs text-gray-500"><FileText className="mr-1 inline" size={12} />{quote.status}</p> : null}</div>
-        <strong className="shrink-0 text-sm text-gray-950">{formatCurrency(lead.estimatedValue)}</strong>
-      </div>
-      {overdueTask ? <button
-        className="crm-next-action is-overdue mt-3 flex w-full items-center gap-2 rounded-md bg-red-50 px-2.5 py-2 text-left text-xs text-red-700"
-        type="button"
-        title="Abrir tarefa para ajustar data, concluir ou excluir"
-        aria-label={`Tarefa atrasada em ${formatDateTime(overdueTask.dueAt)}. Abrir para ajustar`}
-        onClick={(event) => {
-          stop(event)
-          onEditTask(overdueTask)
-        }}
-      >
-        <Clock3 className="shrink-0" size={13} /><span className="min-w-0 flex-1 truncate">Atrasada · {formatDateTime(overdueTask.dueAt)}</span><span className="crm-next-action-label">Ajustar</span>
-      </button> : null}
-      <footer className="mt-2 flex items-center justify-between gap-1 border-t border-gray-100 pt-2">
+      <span className={`crm-health crm-health-${health.tone} crm-row-health`}>{health.label}</span>
+      {overdueTask ? (
+        <button
+          className="crm-next-action is-overdue crm-row-next-action flex items-center gap-1.5 rounded-md bg-red-50 px-2 py-1 text-left text-xs text-red-700"
+          type="button"
+          title="Abrir tarefa para ajustar data, concluir ou excluir"
+          aria-label={`Tarefa atrasada em ${formatDateTime(overdueTask.dueAt)}. Abrir para ajustar`}
+          onClick={(event) => { stop(event); onEditTask(overdueTask) }}
+        >
+          <Clock3 className="shrink-0" size={12} /><span className="max-w-[9rem] truncate">Atrasada</span>
+        </button>
+      ) : quote ? (
+        <span className="crm-row-quote inline-flex items-center gap-1 text-xs text-gray-500"><FileText size={12} />{quote.status}</span>
+      ) : null}
+      <strong className="crm-row-value shrink-0 text-sm text-gray-950">{formatCurrency(lead.estimatedValue)}</strong>
+      <span className="crm-row-stage" onClick={stop}>
+        <Select
+          size="sm"
+          ariaLabel={`Alterar etapa de ${displayName(lead)}`}
+          value={currentColumn?.target ?? lead.pipelineStage}
+          onChange={(value) => onMoveStage(lead, value as PipelineStage)}
+          options={columns.map((column) => ({ value: column.target, label: column.title }))}
+        />
+      </span>
+      <span className="crm-row-actions flex shrink-0 items-center gap-1" onClick={stop}>
         <ContactShortcuts
           lead={lead}
           state={state}
@@ -609,7 +592,7 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
           onCreateProject={onCreateProject}
         />
         {lead.pipelineStage !== 'Perdido' ? <button className="rounded-md p-1.5 text-gray-400 hover:bg-amber-50 hover:text-amber-700" type="button" onClick={(event) => { stop(event); onLose(lead) }} title="Marcar oportunidade como perdida" aria-label={`Marcar ${displayName(lead)} como oportunidade perdida`}><Ban size={14} /></button> : null}
-      </footer>
+      </span>
     </article>
   )
 }
