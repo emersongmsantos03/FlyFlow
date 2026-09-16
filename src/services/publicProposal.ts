@@ -24,6 +24,7 @@ export interface PublicProposal {
   depositValue: number
   status: string
   items: Array<{ description: string; quantity: number; unitPrice: number; totalPrice: number; pricingLabel?: 'Incluso' | 'Gratuito' }>
+  viewedAt?: string
   acceptedAt?: string
   acceptedBy?: string
   acceptanceDocument?: string
@@ -82,6 +83,18 @@ export const deletePublicProposal = async (token: string) => {
   await deleteDoc(doc(ensureDb(), 'publicProposals', token))
 }
 
+/** Stamps the moment a client first opens the public link — only advances
+ * `Enviada` to `Visualizada`, never overrides a further-along status (e.g. a
+ * proposal already negotiated or approved should not regress). */
+export const markProposalViewed = async (token: string) => {
+  const ref = doc(ensureDb(), 'publicProposals', token)
+  const snapshot = await getDoc(ref)
+  if (!snapshot.exists()) return
+  const data = snapshot.data() as PublicProposal
+  if (data.viewedAt || data.status !== 'Enviada') return
+  await updateDoc(ref, { status: 'Visualizada', viewedAt: new Date().toISOString() })
+}
+
 export const acceptPublicProposal = async (token: string, acceptedBy: string, acceptanceDocument: string) => {
   const acceptedAt = new Date().toISOString()
   await updateDoc(doc(ensureDb(), 'publicProposals', token), {
@@ -97,25 +110,42 @@ export const acceptPublicProposal = async (token: string, acceptedBy: string, ac
 export const reconcilePublicProposalAcceptances = async (state: AppState): Promise<AppState> => {
   const linked = state.quotes.filter((quote) => quote.publicToken && !quote.approvedAt)
   if (!linked.length) return state
-  const accepted = await Promise.all(linked.map(async (quote) => ({
+  const resolved = await Promise.all(linked.map(async (quote) => ({
     quote,
     proposal: await loadPublicProposal(quote.publicToken || ''),
   })))
-  const updates = new Map(accepted.filter(({ proposal }) => proposal?.status === 'Aprovada').map(({ quote, proposal }) => [quote.id, proposal!]))
-  if (!updates.size) return state
+  const acceptedUpdates = new Map(resolved.filter(({ proposal }) => proposal?.status === 'Aprovada').map(({ quote, proposal }) => [quote.id, proposal!]))
+  const viewedUpdates = new Map(
+    resolved
+      .filter(({ quote, proposal }) => proposal?.viewedAt && !quote.viewedAt && !acceptedUpdates.has(quote.id))
+      .map(({ quote, proposal }) => [quote.id, proposal!]),
+  )
+  if (!acceptedUpdates.size && !viewedUpdates.size) return state
   return {
     ...state,
     quotes: state.quotes.map((quote) => {
-      const proposal = updates.get(quote.id)
-      return proposal ? {
-        ...quote,
-        status: 'Aprovada',
-        approvedAt: proposal.acceptedAt || new Date().toISOString(),
-        approvedBy: proposal.acceptedBy || 'Cliente',
-        approvalDocument: proposal.acceptanceDocument,
-        approvalMethod: 'Aceite eletrônico',
-        updatedAt: proposal.acceptedAt || new Date().toISOString(),
-      } : quote
+      const acceptedProposal = acceptedUpdates.get(quote.id)
+      if (acceptedProposal) {
+        return {
+          ...quote,
+          status: 'Aprovada',
+          approvedAt: acceptedProposal.acceptedAt || new Date().toISOString(),
+          approvedBy: acceptedProposal.acceptedBy || 'Cliente',
+          approvalDocument: acceptedProposal.acceptanceDocument,
+          approvalMethod: 'Aceite eletrônico',
+          updatedAt: acceptedProposal.acceptedAt || new Date().toISOString(),
+        }
+      }
+      const viewedProposal = viewedUpdates.get(quote.id)
+      if (viewedProposal) {
+        return {
+          ...quote,
+          status: quote.status === 'Enviada' ? 'Visualizada' : quote.status,
+          viewedAt: viewedProposal.viewedAt,
+          updatedAt: viewedProposal.viewedAt || new Date().toISOString(),
+        }
+      }
+      return quote
     }),
   }
 }

@@ -252,6 +252,7 @@ import {
   createProposalToken,
   deletePublicProposal,
   loadPublicProposal,
+  markProposalViewed,
   proposalUrl,
   publishProposal,
   reconcilePublicProposalAcceptances,
@@ -2307,19 +2308,21 @@ function App() {
       setToast('Este contato não possui e-mail informado.')
       return
     }
+    const senderName = currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'
+    const companyName = state.companySettings.companyName || 'Hero Drone'
     const subject = `Uma ideia visual para ${repairTextEncoding(contactDisplayName(lead))}`
     const opportunityHook = lead.leadHunterData?.aiContactHook?.trim()
     const body = `Olá! Tudo bem?
 
-Aqui é o Emerson, da Hero Drone. ${opportunityHook || `Vi uma oportunidade de valorizar a apresentação da ${contactDisplayName(lead)} com imagens aéreas profissionais.`}
+Aqui é o ${senderName}, da ${companyName}. ${opportunityHook || `Vi uma oportunidade de valorizar a apresentação da ${contactDisplayName(lead)} com imagens aéreas profissionais.`}
 
 Pensei em um trabalho de ${lead.serviceInterest.toLocaleLowerCase('pt-BR')} para destacar o espaço, a localização e os diferenciais do negócio de uma forma mais marcante nas redes sociais e no Google.
 
 Posso te apresentar a ideia em uma conversa rápida, sem compromisso?
 
 Abraço,
-Emerson
-Hero Drone`
+${senderName}
+${companyName}`
     setEmailComposer({
       lead,
       whatsappUrl: lead.whatsapp || lead.phone
@@ -2334,6 +2337,8 @@ Hero Drone`
 
   const sendLeadHunterEmail = (prospect: LeadHunterProspect) => {
     importLeadHunterProspects([prospect.id])
+    const senderName = currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'
+    const companyName = state.companySettings.companyName || 'Hero Drone'
     const businessName = repairTextEncoding(prospect.name.trim())
     const service = prospect.recommendedService || 'vídeo institucional com drone'
     const storedOpportunityHook = prospect.aiContactHook?.trim() || prospect.aiSummary?.trim()
@@ -2350,15 +2355,15 @@ Hero Drone`
       subject: `Uma ideia visual para ${businessName}`,
       body: `Olá! Tudo bem?
 
-Aqui é o Emerson, da Hero Drone. ${opportunityHook || `Conheci o trabalho da ${businessName} e identifiquei uma oportunidade de fortalecer a apresentação do negócio com imagens aéreas profissionais.`}
+Aqui é o ${senderName}, da ${companyName}. ${opportunityHook || `Conheci o trabalho da ${businessName} e identifiquei uma oportunidade de fortalecer a apresentação do negócio com imagens aéreas profissionais.`}
 
 Preparei uma ideia de ${service.toLocaleLowerCase('pt-BR')} pensada para destacar o espaço, a localização e os diferenciais da ${businessName} nas redes sociais e no Google.
 
 Posso te apresentar essa proposta em uma conversa rápida, sem compromisso?
 
 Abraço,
-Emerson
-Hero Drone`,
+${senderName}
+${companyName}`,
     })
   }
 
@@ -6546,15 +6551,17 @@ Hero Drone`,
         quotes: current.quotes.map((item) => item.id === quote.id ? { ...item, publicToken: token, publicUrl: link, updatedAt: new Date().toISOString() } : item),
       }), 'Proposta pronta para envio por e-mail.')
       const lead = quote.leadId ? state.leads.find((item) => item.id === quote.leadId) : undefined
+      const senderName = currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'
+      const companyName = state.companySettings.companyName || 'Hero Drone'
       setEmailComposer({
         lead,
         quote: { ...quote, publicToken: token, publicUrl: link },
         to: recipient.email,
         displayName: recipient.company || recipient.name || 'Cliente',
-        subject: 'Proposta comercial · Hero Drone',
+        subject: `Proposta comercial · ${companyName}`,
         body: `Olá, ${recipient.name || recipient.company || 'tudo bem'}!
 
-Conforme conversamos, estou enviando em anexo a proposta comercial da Hero Drone para o seu projeto.
+Conforme conversamos, estou enviando em anexo a proposta comercial da ${companyName} para o seu projeto.
 
 No documento você encontra o escopo, investimento, condições de pagamento e prazo previsto. Se quiser ajustar algum ponto, fico à disposição.
 
@@ -6562,8 +6569,8 @@ Você também pode visualizar e aceitar a proposta online por este link:
 ${link}
 
 Abraço,
-Emerson
-Hero Drone`,
+${senderName}
+${companyName}`,
         attachment: {
           fileName: pdf.fileName,
           mimeType: 'application/pdf',
@@ -7537,15 +7544,15 @@ Hero Drone`,
                 subject: '',
                 body: `Olá! Tudo bem?
 
-Aqui é o Emerson, da Hero Drone.
+Aqui é o ${currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'}, da ${state.companySettings.companyName || 'Hero Drone'}.
 
 Gostaria de apresentar uma ideia de conteúdo com imagens aéreas profissionais para valorizar a presença visual do seu negócio.
 
 Podemos conversar rapidamente?
 
 Abraço,
-Emerson
-Hero Drone`,
+${currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'}
+${state.companySettings.companyName || 'Hero Drone'}`,
               })}
             />
           ) : null}
@@ -8562,7 +8569,13 @@ function PublicProposalPage({ token }: { token: string }) {
     void loadPublicProposal(token)
       .then((result) => {
         setProposal(result)
-        if (!result) setError('Esta proposta não existe ou não está mais disponível.')
+        if (!result) {
+          setError('Esta proposta não existe ou não está mais disponível.')
+          return
+        }
+        if (result.status === 'Enviada') {
+          void markProposalViewed(token).catch(() => undefined)
+        }
       })
       .catch(() => setError('Não foi possível carregar a proposta. Tente novamente.'))
       .finally(() => setLoading(false))
@@ -12486,7 +12499,7 @@ function TimeGridCalendar({
     return day
   })
   const hours = Array.from({ length: 24 }, (_, index) => index)
-  const hourHeight = view === 'diaria' ? 64 : 56
+  const hourHeight = view === 'diaria' ? 48 : 42
   const totalHeight = hours.length * hourHeight
   const rangeStartHour = hours[0] ?? 0
   const rangeEndHour = (hours[hours.length - 1] ?? 23) + 1
