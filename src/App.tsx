@@ -9095,7 +9095,7 @@ function DashboardPage({
         </Panel>
       </div>
 
-      <details className="dashboard-more">
+      <details className="dashboard-more" open>
         <summary><span><strong>Análises e detalhes</strong><small>Gráficos, agenda, entregas, recebimentos e desempenho</small></span><ChevronDown size={17} /></summary>
         <div className="dashboard-more-content">
       <div className="grid gap-4 xl:grid-cols-[1.45fr_0.9fr]">
