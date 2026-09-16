@@ -12529,9 +12529,13 @@ function TimeGridCalendar({
     const endMinutes = endDate.getHours() * 60 + endDate.getMinutes()
     const topMinutes = Math.max(startMinutes, rangeStartMinutes) - rangeStartMinutes
     const visibleMinutes = Math.max(Math.min(endMinutes, rangeEndMinutes) - Math.max(startMinutes, rangeStartMinutes), 5)
+    const heightPx = Math.max((visibleMinutes / 60) * hourHeight - 4, 20)
     return {
-      top: `${(topMinutes / 60) * hourHeight + 4}px`,
-      height: `${Math.max((visibleMinutes / 60) * hourHeight - 8, 24)}px`,
+      heightPx,
+      style: {
+        top: `${(topMinutes / 60) * hourHeight + 4}px`,
+        height: `${heightPx}px`,
+      },
     }
   }
 
@@ -12746,15 +12750,18 @@ function TimeGridCalendar({
                     const layout = appointmentColumns.get(appointment.id) || { column: 0, columns: 1 }
                     const columnWidth = 100 / layout.columns
                     const canResize = state.appointments.some((item) => item.id === appointment.id)
+                    const showMeta = block.heightPx >= 30
+                    const showContact = block.heightPx >= 46 && Boolean(appointment.clientId || appointment.leadId)
+                    const paddingClass = block.heightPx < 30 ? 'px-1.5 py-0.5' : 'px-2 py-1'
                     return (
                       <div
                         key={appointment.id}
                         data-appointment-id={appointment.id}
-                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
+                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md ${paddingClass} text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
                         style={{
                           '--calendar-item-color': appointment.color || '#2563eb',
                           '--calendar-item-text': readableEventTextColor(appointment.color || '#2563eb'),
-                          ...block,
+                          ...block.style,
                           left: `calc(${layout.column * columnWidth}% + 4px)`,
                           right: `calc(${(layout.columns - layout.column - 1) * columnWidth}% + 4px)`,
                         } as React.CSSProperties}
@@ -12774,9 +12781,9 @@ function TimeGridCalendar({
                         }}
                       >
                         {task ? <button className={`calendar-task-toggle absolute right-[3px] top-[3px] z-20 flex h-2.5 w-2.5 shrink-0 items-center justify-center rounded-full border shadow-sm ${completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-white bg-white text-transparent ring-1 ring-gray-400'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={7} strokeWidth={3.5} /></button> : null}
-                        {(appointment.clientId || appointment.leadId) ? <p className={`calendar-event-contact truncate ${task ? 'pr-4' : ''}`}><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
+                        {showContact ? <p className={`calendar-event-contact truncate ${task ? 'pr-4' : ''}`}><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
                         <p className={`calendar-event-title truncate ${completed ? 'is-completed' : ''} ${task && !appointment.clientId && !appointment.leadId ? 'pr-4' : ''}`}>{appointment.title}</p>
-                        <p className="calendar-event-meta truncate">{appointmentTime(effectiveAppointment)} · {appointment.appointmentType}</p>
+                        {showMeta ? <p className="calendar-event-meta truncate">{appointmentTime(effectiveAppointment)} · {appointment.appointmentType}</p> : null}
                         {canResize ? <div
                           data-resize-handle
                           className="absolute inset-x-0 bottom-0 flex h-3 touch-none cursor-ns-resize items-center justify-center border-t border-transparent transition group-hover:border-gray-300 group-hover:bg-gray-100"
