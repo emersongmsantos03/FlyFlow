@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Button, InputField, Modal, Select } from '../ui'
+import { avatarTint, initials } from '../../lib/format'
 import {
   internalProjectCategories,
   internalProjectStatuses,
@@ -258,8 +259,8 @@ export function InternalProjectsPage({
         <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-[0.68rem] font-semibold">
           <span className={`inline-flex items-center gap-1.5 ${late ? 'text-red-600' : 'text-gray-500'}`}><CalendarDays size={13} /> {late ? `${Math.abs(due!)}d atrasado` : formatDate(project.dueDate)}</span>
           <span className="flex items-center gap-1.5 text-gray-500" title={owner?.name}>
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-900 text-[0.6rem] font-bold text-white">
-              {owner?.avatarUrl ? <img src={owner.avatarUrl} alt={owner.name} className="h-full w-full object-cover" /> : owner ? owner.name.split(' ').slice(0, 2).map((part) => part[0]).join('') : <UserRound size={12} />}
+            <span className="avatar-chip h-6 w-6 shrink-0 overflow-hidden text-[0.6rem]" data-tint={owner ? avatarTint(owner.id) : undefined}>
+              {owner?.avatarUrl ? <img src={owner.avatarUrl} alt={owner.name} className="h-full w-full object-cover" /> : owner ? initials(owner.name) : <UserRound size={12} />}
             </span>
           </span>
         </div>

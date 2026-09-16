@@ -91,3 +91,21 @@ export const slugify = (value: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
+
+export const initials = (value: string) =>
+  value
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase() || '?'
+
+export const avatarTints = ['blue', 'peach', 'lavender', 'green', 'rose', 'amber'] as const
+export type AvatarTint = (typeof avatarTints)[number]
+
+export const avatarTint = (seed: string): AvatarTint => {
+  let hash = 0
+  for (let index = 0; index < seed.length; index += 1) hash = (hash * 31 + seed.charCodeAt(index)) >>> 0
+  return avatarTints[hash % avatarTints.length]
+}

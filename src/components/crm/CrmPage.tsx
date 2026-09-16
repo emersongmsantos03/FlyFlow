@@ -31,7 +31,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { formatCurrency, formatDate, formatDateTime, phoneLink, whatsappLink } from '../../lib/format'
+import { avatarTint, formatCurrency, formatDate, formatDateTime, initials, phoneLink, whatsappLink } from '../../lib/format'
 import { buildGoogleBusinessUrl, buildInstagramUrl, leadOpportunitySummary } from '../../services/leadHunter/LeadOpportunityService'
 import { buildCommercialActionQueue, buildCommercialInsights } from '../../services/commercial/CommercialPriorityService'
 import { averageOpportunityAge, opportunityHealth, stageProbability, weightedPipelineValue } from '../../lib/crmIntelligence'
@@ -572,6 +572,7 @@ function OpportunityCard({ lead, state, onOpen, onEdit, onDelete, onLose, onAtta
     >
       <div className="flex items-start justify-between gap-3">
         <GripVertical className="crm-card-grip" size={16} aria-hidden="true" />
+        <span className="avatar-chip" data-tint={avatarTint(lead.id)}>{initials(displayName(lead))}</span>
         <div className="min-w-0 flex-1"><h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3><p className="truncate text-xs text-gray-500">{displayDetail(lead)}</p></div>
         <span className={`crm-health crm-health-${health.tone}`}>{health.label}</span>
       </div>

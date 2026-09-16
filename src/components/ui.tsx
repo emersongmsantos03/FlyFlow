@@ -101,7 +101,7 @@ export const MetricCard = ({
   icon: ReactNode
   tone?: 'neutral' | 'positive' | 'warning' | 'danger'
 }) => (
-  <article className="metric-card glass-surface min-h-24 rounded-xl border border-gray-200 p-3.5 shadow-sm">
+  <article className="metric-card glass-surface min-h-24 rounded-2xl border border-gray-200 p-3.5 shadow-sm">
     <div className="flex items-start justify-between gap-3">
       <div>
         <p className="text-xs font-bold uppercase text-gray-500">{label}</p>
@@ -118,13 +118,7 @@ export const MetricCard = ({
         </div>
       </div>
       <div
-        className={clsx(
-          'metric-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border',
-          tone === 'positive' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
-          tone === 'warning' && 'border-amber-200 bg-amber-50 text-amber-700',
-          tone === 'danger' && 'border-red-200 bg-red-50 text-red-700',
-          tone === 'neutral' && 'border-gray-200 bg-gray-50 text-gray-700',
-        )}
+        className={clsx('metric-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', `metric-icon--${tone}`)}
       >
         {icon}
       </div>
@@ -200,7 +194,7 @@ export const EmptyState = ({
   description: string
   action?: ReactNode
 }) => (
-  <div className="flex min-h-48 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+  <div className="empty-state flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
     <h3 className="text-base font-semibold text-gray-950">{title}</h3>
     <p className="mt-1 max-w-md text-sm text-gray-500">{description}</p>
     {action ? <div className="mt-4">{action}</div> : null}

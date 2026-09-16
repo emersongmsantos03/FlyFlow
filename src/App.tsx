@@ -108,11 +108,13 @@ import {
   type PeriodPreset,
 } from './lib/financial'
 import {
+  avatarTint,
   formatCurrency,
   formatDate,
   formatDateTime,
   formatDaysUntil,
   daysUntil,
+  initials,
   mapsLink,
   slugify,
   whatsappLink,
@@ -674,21 +676,22 @@ const proposalPackages: Array<{
 ]
 
 type NavigationGroup = 'Visão geral' | 'Relacionamento' | 'Operação' | 'Gestão'
-const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard; group: NavigationGroup }> = [
-  { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Visão geral' },
-  { page: 'leads', label: 'Comercial', icon: Handshake, group: 'Relacionamento' },
-  { page: 'clients', label: 'Contatos', icon: ContactRound, group: 'Relacionamento' },
-  { page: 'leadHunter', label: 'Lead Hunter', icon: Search, group: 'Relacionamento' },
-  { page: 'inbox', label: 'Inbox', icon: Mail, group: 'Relacionamento' },
-  { page: 'projects', label: 'Projetos', icon: Briefcase, group: 'Operação' },
-  { page: 'internalProjects', label: 'Projetos internos', icon: Wand2, group: 'Operação' },
-  { page: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'Operação' },
-  { page: 'quotes', label: 'Propostas', icon: FileText, group: 'Operação' },
-  { page: 'equipment', label: 'Equipamentos', icon: PackageCheck, group: 'Operação' },
-  { page: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Gestão' },
-  { page: 'reports', label: 'Relatórios', icon: BarChart3, group: 'Gestão' },
-  { page: 'settings', label: 'Configurações', icon: Settings, group: 'Gestão' },
-  { page: 'users', label: 'Usuários', icon: UserCog, group: 'Gestão' },
+type NavTint = 'gold' | 'peach' | 'lavender' | 'rose' | 'blue' | 'green' | 'amber'
+const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard; group: NavigationGroup; tint: NavTint }> = [
+  { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Visão geral', tint: 'gold' },
+  { page: 'leads', label: 'Comercial', icon: Handshake, group: 'Relacionamento', tint: 'peach' },
+  { page: 'clients', label: 'Contatos', icon: ContactRound, group: 'Relacionamento', tint: 'lavender' },
+  { page: 'leadHunter', label: 'Lead Hunter', icon: Search, group: 'Relacionamento', tint: 'rose' },
+  { page: 'inbox', label: 'Inbox', icon: Mail, group: 'Relacionamento', tint: 'blue' },
+  { page: 'projects', label: 'Projetos', icon: Briefcase, group: 'Operação', tint: 'green' },
+  { page: 'internalProjects', label: 'Projetos internos', icon: Wand2, group: 'Operação', tint: 'peach' },
+  { page: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'Operação', tint: 'blue' },
+  { page: 'quotes', label: 'Propostas', icon: FileText, group: 'Operação', tint: 'rose' },
+  { page: 'equipment', label: 'Equipamentos', icon: PackageCheck, group: 'Operação', tint: 'amber' },
+  { page: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Gestão', tint: 'green' },
+  { page: 'reports', label: 'Relatórios', icon: BarChart3, group: 'Gestão', tint: 'blue' },
+  { page: 'settings', label: 'Configurações', icon: Settings, group: 'Gestão', tint: 'lavender' },
+  { page: 'users', label: 'Usuários', icon: UserCog, group: 'Gestão', tint: 'peach' },
 ]
 const navigationGroups: NavigationGroup[] = ['Visão geral', 'Relacionamento', 'Operação', 'Gestão']
 
@@ -6723,7 +6726,7 @@ Hero Drone`,
               if (!items.length) return null
               return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => {
                 const Icon = item.icon
-                return <button key={item.page} className={`app-nav-item focus-ring flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold transition ${page === item.page ? 'is-active' : 'text-white/65 hover:bg-white/10 hover:text-white'}`} type="button" onClick={() => setPage(item.page)}><Icon size={16} strokeWidth={1.8} />{item.label}</button>
+                return <button key={item.page} className={`app-nav-item focus-ring flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold transition ${page === item.page ? 'is-active' : 'text-white/65 hover:bg-white/10 hover:text-white'}`} type="button" onClick={() => setPage(item.page)}><span className={`app-nav-icon nav-tint-${item.tint}`}><Icon size={15} strokeWidth={1.85} /></span>{item.label}</button>
               })}</div></div>
             })}
           </nav>
@@ -6746,7 +6749,7 @@ Hero Drone`,
         </div>
       </aside>
 
-      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">{navigationGroups.map((group) => { const items = availableNavigation.filter((item) => item.group === group); if (!items.length) return null; return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><Icon size={17} />{item.label}</button> })}</div></div> })}</nav></aside></div> : null}
+      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">{navigationGroups.map((group) => { const items = availableNavigation.filter((item) => item.group === group); if (!items.length) return null; return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><span className={`app-nav-icon nav-tint-${item.tint}`}><Icon size={16} /></span>{item.label}</button> })}</div></div> })}</nav></aside></div> : null}
 
       <main className="min-w-0">
         <header className="app-header sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
@@ -9421,8 +9424,13 @@ function ClientsPage({
                     return (
                       <tr key={client.id}>
                         <td data-label="Contato">
-                          <div className="font-black text-gray-950">{contactDisplayName(client)}</div>
-                          <div className="text-sm text-gray-500">{contactDisplayDetail(client)}</div>
+                          <div className="flex items-center gap-3">
+                            <span className="avatar-chip h-9 w-9 shrink-0 text-xs" data-tint={avatarTint(client.id)}>{initials(contactDisplayName(client))}</span>
+                            <div className="min-w-0">
+                              <div className="truncate font-black text-gray-950">{contactDisplayName(client)}</div>
+                              <div className="truncate text-sm text-gray-500">{contactDisplayDetail(client)}</div>
+                            </div>
+                          </div>
                         </td>
                         <td data-label="Canais">
                           <div className="flex gap-2">
@@ -9482,8 +9490,13 @@ function ClientsPage({
                     return (
                       <tr key={company.id} className={company.archived ? 'opacity-60' : ''}>
                         <td data-label="Empresa">
-                          <div className="font-black text-gray-950">{company.tradeName}</div>
-                          {company.legalName && company.legalName !== company.tradeName ? <div className="text-sm text-gray-500">{company.legalName}</div> : null}
+                          <div className="flex items-center gap-3">
+                            <span className="avatar-chip h-9 w-9 shrink-0 text-xs" data-tint={avatarTint(company.id)}>{initials(company.tradeName)}</span>
+                            <div className="min-w-0">
+                              <div className="truncate font-black text-gray-950">{company.tradeName}</div>
+                              {company.legalName && company.legalName !== company.tradeName ? <div className="truncate text-sm text-gray-500">{company.legalName}</div> : null}
+                            </div>
+                          </div>
                         </td>
                         <td data-label="CNPJ">{company.document || '-'}</td>
                         <td data-label="Cidade">{company.city || '-'}</td>
@@ -9620,7 +9633,7 @@ function ProjectsPage({
           </span>
         </button>
         <div className="customer-project-cell owner-cell" title={owner?.name || 'Não atribuído'}>
-          <span className="owner-avatar">{owner?.avatarUrl ? <img src={owner.avatarUrl} alt="" /> : ownerInitials || <UserCog size={14} />}</span>
+          <span className="owner-avatar" data-tint={owner ? avatarTint(owner.id) : undefined}>{owner?.avatarUrl ? <img src={owner.avatarUrl} alt="" /> : ownerInitials || <UserCog size={14} />}</span>
           <small>{owner?.name?.split(' ')[0] || 'Sem dono'}</small>
         </div>
         <button className="customer-project-cell timeline-cell" type="button" onClick={() => onScheduleCapture(project)}>
@@ -11345,10 +11358,10 @@ function UsersPage({
                   <tr key={user.id}>
                     <td data-label="Usuário">
                       <div className="users-identity">
-                        <span>
+                        <span data-tint={avatarTint(user.id)}>
                           {user.avatarUrl
                             ? <img src={user.avatarUrl} alt={`Foto de ${user.name}`} />
-                            : user.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}
+                            : initials(user.name)}
                         </span>
                         <div><strong>{user.name}</strong><small>{user.email}</small><div>{user.isPrimaryOwner ? <Tag>Conta principal</Tag> : user.invitationPending ? <Tag>Aguardando definição de senha</Tag> : null}</div></div>
                       </div>
@@ -11772,7 +11785,7 @@ function InboxPage({
               const active = selected?.id === message.id
               const counterpart = message.sent ? message.to : message.from
               return <button key={message.id} className={`inbox-message-row ${active ? 'is-active' : ''} ${message.unread ? 'is-unread' : ''}`} type="button" onClick={() => setSelectedId(message.id)}>
-                <span className="inbox-sender-avatar">{senderInitials(counterpart)}</span>
+                <span className="inbox-sender-avatar" data-tint={avatarTint(counterpart)}>{senderInitials(counterpart)}</span>
                 <span className="inbox-message-copy">
                   <span className="inbox-message-meta"><strong>{senderLabel(counterpart)}</strong><time>{message.date ? new Date(message.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : ''}</time></span>
                   <b>{message.subject || 'Sem assunto'}</b>
@@ -11791,7 +11804,7 @@ function InboxPage({
                 <div className="inbox-reader-actions">{selectedLead ? <Button variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}><Users size={15} /> Ver contato</Button> : <span>Contato não vinculado</span>}<Button type="button" onClick={() => onReply(selected)}><ArrowRight size={15} /> Responder</Button></div>
               </div>
               <div className="inbox-correspondent">
-                <span className="inbox-sender-avatar is-large">{senderInitials(selected.sent ? selected.to : selected.from)}</span>
+                <span className="inbox-sender-avatar is-large" data-tint={avatarTint(selected.sent ? selected.to : selected.from)}>{senderInitials(selected.sent ? selected.to : selected.from)}</span>
                 <div><strong>{senderLabel(selected.sent ? selected.to : selected.from)}</strong><small>{selected.sent ? `Para: ${selected.to}` : `De: ${selected.from}`}</small></div>
                 <time>{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</time>
               </div>

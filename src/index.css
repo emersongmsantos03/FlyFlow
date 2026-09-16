@@ -2380,15 +2380,21 @@ html[data-theme='dark'] .finance-current-balance span {
   --ff-gold: #d6ad3c;
   --ff-gold-strong: #ad7f0f;
   --ff-ink: #171b18;
-  --ff-canvas: #f2f3ef;
-  --ff-panel: #fbfcf9;
-  --ff-panel-raised: #ffffff;
-  --ff-line: #e1e4dd;
-  --ff-line-soft: #e9ebe6;
-  --ff-sidebar: #121613;
-  --ff-sidebar-soft: #1a201b;
-  --ff-radius: 0.85rem;
+  --ff-canvas: #f9f5ea;
+  --ff-panel: #fffcf4;
+  --ff-panel-raised: #fffdf8;
+  --ff-line: #e6e2d4;
+  --ff-line-soft: #ede9db;
+  --ff-sidebar: #161513;
+  --ff-sidebar-soft: #1e1c18;
+  --ff-radius: 1.1rem;
   --ff-shadow: 0 1px 2px rgb(18 24 19 / 0.035), 0 8px 28px rgb(18 24 19 / 0.035);
+  --ff-blue-soft: #eaf1fb; --ff-blue-strong: #3f6fb0;
+  --ff-peach-soft: #fbeee2; --ff-peach-strong: #b8672f;
+  --ff-lavender-soft: #f0ecf9; --ff-lavender-strong: #7458b0;
+  --ff-green-soft: #e5f2ea; --ff-green-strong: #2f7a52;
+  --ff-rose-soft: #fbe9ef; --ff-rose-strong: #b3477e;
+  --ff-amber-soft: #f7f0da; --ff-amber-strong: #ad8715;
 }
 
 html:not([data-theme='dark']) {
@@ -2879,13 +2885,19 @@ summary {
 
 html[data-theme='dark'] {
   --ff-ink: #f1f3ef;
-  --ff-canvas: #0e110f;
-  --ff-panel: #151916;
-  --ff-panel-raised: #181d19;
-  --ff-line: #303730;
-  --ff-line-soft: #252b26;
-  --ff-sidebar: #0a0d0b;
-  --ff-sidebar-soft: #131814;
+  --ff-canvas: #121110;
+  --ff-panel: #1a1917;
+  --ff-panel-raised: #1e1c18;
+  --ff-line: #2c2b27;
+  --ff-line-soft: #232119;
+  --ff-sidebar: #161513;
+  --ff-sidebar-soft: #1e1c18;
+  --ff-blue-soft: #1c2a3a; --ff-blue-strong: #7fa8e0;
+  --ff-peach-soft: #3a2b1c; --ff-peach-strong: #e0a06b;
+  --ff-lavender-soft: #2a2338; --ff-lavender-strong: #b199e0;
+  --ff-green-soft: #16301f; --ff-green-strong: #5cc490;
+  --ff-rose-soft: #331f28; --ff-rose-strong: #e08fb3;
+  --ff-amber-soft: #332a13; --ff-amber-strong: #e8c65a;
 }
 
 html[data-theme='dark'] .app-button-primary {
@@ -10345,3 +10357,213 @@ html[data-theme='dark'] .crm-pipeline-column[data-stage='future'] .crm-column-ac
 .module-page .hover\:border-gray-400:hover,
 .modal-surface .hover\:border-gray-300:hover,
 .modal-surface .hover\:border-gray-400:hover { border-color: color-mix(in srgb, var(--text-muted) 45%, var(--border)) !important; }
+
+/* ============================================================================
+   2026 warmth pass (authoritative layer) — approved design proposal applied
+   to the real app. Adds colored nav/metric icon chips, a bolder solid-fill
+   active nav state, circular avatar chips and a touch more roundness, on
+   top of the cream/near-black canvas tokens set on --ff-canvas earlier in
+   this file. Appended last so it wins over the older, duplicated sidebar
+   and metric-card rule sets above without having to hand-edit every one.
+   ============================================================================ */
+
+.app-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.6rem;
+  flex-shrink: 0;
+}
+
+.app-nav-icon.nav-tint-blue { background: var(--ff-blue-soft); color: var(--ff-blue-strong); }
+.app-nav-icon.nav-tint-peach { background: var(--ff-peach-soft); color: var(--ff-peach-strong); }
+.app-nav-icon.nav-tint-lavender { background: var(--ff-lavender-soft); color: var(--ff-lavender-strong); }
+.app-nav-icon.nav-tint-green { background: var(--ff-green-soft); color: var(--ff-green-strong); }
+.app-nav-icon.nav-tint-rose { background: var(--ff-rose-soft); color: var(--ff-rose-strong); }
+.app-nav-icon.nav-tint-amber,
+.app-nav-icon.nav-tint-gold { background: var(--ff-amber-soft); color: var(--ff-amber-strong); }
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item .app-nav-icon svg,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item .app-nav-icon svg,
+html[data-theme='dark'] .app-sidebar .app-nav-item .app-nav-icon svg,
+html[data-theme='dark'] .mobile-drawer .app-nav-item .app-nav-icon svg {
+  color: inherit !important;
+}
+
+.app-sidebar .app-nav-item,
+.mobile-drawer .app-nav-item {
+  border-radius: 0.85rem !important;
+  min-height: 2.65rem !important;
+  gap: 0.7rem !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active,
+html[data-theme='dark'] .app-sidebar .app-nav-item.is-active,
+html[data-theme='dark'] .mobile-drawer .app-nav-item.is-active {
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #e0bb57, #c9a227) !important;
+  color: #221a08 !important;
+  font-weight: 700 !important;
+  box-shadow: 0 8px 18px rgb(169 128 15 / 0.3) !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active::before,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active::before,
+html[data-theme='dark'] .app-sidebar .app-nav-item.is-active::before,
+html[data-theme='dark'] .mobile-drawer .app-nav-item.is-active::before {
+  display: none !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active svg,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active svg,
+html[data-theme='dark'] .app-sidebar .app-nav-item.is-active svg,
+html[data-theme='dark'] .mobile-drawer .app-nav-item.is-active svg {
+  color: #221a08 !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon,
+html[data-theme='dark'] .app-sidebar .app-nav-item.is-active .app-nav-icon,
+html[data-theme='dark'] .mobile-drawer .app-nav-item.is-active .app-nav-icon {
+  background: rgb(255 255 255 / 0.28) !important;
+  color: #221a08 !important;
+}
+
+html[data-theme='dark'] .app-sidebar .app-nav-item.is-active,
+html[data-theme='dark'] .mobile-drawer .app-nav-item.is-active {
+  background: linear-gradient(135deg, #e8c65a, #d7b33f) !important;
+  color: #221a08 !important;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.34) !important;
+}
+
+.app-sidebar .app-brand {
+  position: relative;
+  overflow: hidden;
+}
+
+.app-sidebar .app-brand::before {
+  content: '';
+  position: absolute;
+  left: -2.5rem;
+  top: -3.5rem;
+  width: 11rem;
+  height: 11rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(214 173 60 / 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+/* Metric-card icon chips — soft accent family instead of flat semantic gray/emerald/amber/red. */
+.metric-icon--positive { background: var(--ff-green-soft) !important; color: var(--ff-green-strong) !important; }
+.metric-icon--warning { background: var(--ff-amber-soft) !important; color: var(--ff-amber-strong) !important; }
+.metric-icon--danger { background: var(--ff-rose-soft) !important; color: var(--ff-rose-strong) !important; }
+.metric-icon--neutral { background: var(--ff-blue-soft) !important; color: var(--ff-blue-strong) !important; }
+
+.metric-card {
+  border-radius: 1.1rem !important;
+  box-shadow: 0 10px 26px rgb(31 29 24 / 0.07) !important;
+}
+
+html[data-theme='dark'] .metric-card {
+  box-shadow: 0 14px 30px rgb(0 0 0 / 0.3) !important;
+}
+
+/* Shared circular initials chip for contacts, leads and project owners. */
+.avatar-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.avatar-chip[data-tint='blue'] { background: var(--ff-blue-soft); color: var(--ff-blue-strong); }
+.avatar-chip[data-tint='peach'] { background: var(--ff-peach-soft); color: var(--ff-peach-strong); }
+.avatar-chip[data-tint='lavender'] { background: var(--ff-lavender-soft); color: var(--ff-lavender-strong); }
+.avatar-chip[data-tint='green'] { background: var(--ff-green-soft); color: var(--ff-green-strong); }
+.avatar-chip[data-tint='rose'] { background: var(--ff-rose-soft); color: var(--ff-rose-strong); }
+.avatar-chip[data-tint='amber'] { background: var(--ff-amber-soft); color: var(--ff-amber-strong); }
+
+.crm-board .crm-opportunity-card {
+  border-radius: 1.1rem !important;
+}
+
+.crm-opportunity-card .avatar-chip {
+  width: 1.9rem;
+  height: 1.9rem;
+  font-size: 0.65rem;
+}
+
+/* Same soft-accent tint system applied to the app's other person/record
+   avatars (project owners, team directory, inbox correspondents) so every
+   circular initials badge in the app pulls from one consistent palette. */
+.owner-avatar[data-tint],
+.users-identity > span[data-tint],
+.inbox-sender-avatar[data-tint] {
+  box-shadow: none !important;
+}
+
+.owner-avatar[data-tint='blue'],
+.users-identity > span[data-tint='blue'],
+.inbox-sender-avatar[data-tint='blue'] { background: var(--ff-blue-soft) !important; color: var(--ff-blue-strong) !important; }
+.owner-avatar[data-tint='peach'],
+.users-identity > span[data-tint='peach'],
+.inbox-sender-avatar[data-tint='peach'] { background: var(--ff-peach-soft) !important; color: var(--ff-peach-strong) !important; }
+.owner-avatar[data-tint='lavender'],
+.users-identity > span[data-tint='lavender'],
+.inbox-sender-avatar[data-tint='lavender'] { background: var(--ff-lavender-soft) !important; color: var(--ff-lavender-strong) !important; }
+.owner-avatar[data-tint='green'],
+.users-identity > span[data-tint='green'],
+.inbox-sender-avatar[data-tint='green'] { background: var(--ff-green-soft) !important; color: var(--ff-green-strong) !important; }
+.owner-avatar[data-tint='rose'],
+.users-identity > span[data-tint='rose'],
+.inbox-sender-avatar[data-tint='rose'] { background: var(--ff-rose-soft) !important; color: var(--ff-rose-strong) !important; }
+.owner-avatar[data-tint='amber'],
+.users-identity > span[data-tint='amber'],
+.inbox-sender-avatar[data-tint='amber'] { background: var(--ff-amber-soft) !important; color: var(--ff-amber-strong) !important; }
+
+.users-identity > span {
+  border-radius: 50% !important;
+}
+
+/* Shared primitives (Panel, Button, EmptyState) used across nearly every
+   remaining page — bumping these here carries the rounder, warmer look to
+   screens that weren't touched individually (Lead Hunter, Projetos
+   internos, Inbox, Financeiro, Relatórios, Propostas, Equipamentos,
+   Usuários, Configurações). Bare selectors only, so page-specific button
+   tweaks elsewhere in this file (higher specificity) still win where they
+   exist. */
+.panel-surface {
+  border-radius: 1.1rem !important;
+}
+
+.app-button {
+  border-radius: 0.8rem !important;
+}
+
+.app-button-primary {
+  background: linear-gradient(135deg, #e0bb57, #c9a227) !important;
+  box-shadow: 0 6px 16px rgb(169 128 15 / 0.24) !important;
+}
+
+.app-button-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e7c56a, #d6ad3c) !important;
+}
+
+html[data-theme='dark'] .app-button-primary {
+  background: linear-gradient(135deg, #e8c65a, #d7b33f) !important;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.3) !important;
+}
+
+.empty-state {
+  border-radius: 1.1rem !important;
+}
+
+.modal-surface {
+  border-radius: 1.3rem !important;
+}
