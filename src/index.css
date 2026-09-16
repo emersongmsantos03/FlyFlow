@@ -11500,3 +11500,294 @@ html[data-theme='dark'] .crm-pipeline-column[data-stage='future'] .crm-card-labe
 .crm-contact-drawer > header {
   border-radius: 1.35rem 1.35rem 0 0 !important;
 }
+
+/* ============================================================================
+   Retema do tema claro — identidade inspirada no Trello: fundo neutro frio em
+   vez de bege, superfícies brancas com sombra sutil, texto azul-acinzentado,
+   o dourado da marca reservado a acentos pontuais (botão primário, ícones
+   ativos) e azul vivo para ações secundárias/foco. Camada de tokens final —
+   como quase todo componente do app já consome var(--text-primary),
+   var(--surface) etc., redefinir os tokens aqui propaga a mudança para as
+   páginas que não têm regra própria abaixo. Escopo: apenas tema claro; o
+   tema escuro não é tocado.
+   ============================================================================ */
+
+html:not([data-theme='dark']) {
+  --background: #f4f5f7;
+  --app-bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-soft: #f7f8fa;
+  --surface-muted: #ebecf0;
+  --surface-strong: #172b4d;
+  --text-primary: #172b4d;
+  --text-secondary: #5e6c84;
+  --text-muted: #7a869a;
+  --border: #dfe1e6;
+  --border-subtle: #ebecf0;
+  --primary: #d9a521;
+  --primary-hover: #b98b13;
+  --primary-soft: #fef3d9;
+  --accent: #d9a521;
+  --accent-strong: #b98b13;
+  --accent-soft: #fef3d9;
+  --success: #1f845a;
+  --success-soft: #e3fcef;
+  --warning: #b96a1e;
+  --warning-soft: #fff4e5;
+  --danger: #c9372c;
+  --danger-soft: #ffebe6;
+  --info: #0c66e4;
+  --info-soft: #e9f2ff;
+  --link: #0c66e4;
+  --sidebar: #1d2125;
+  --sidebar-hover: #282e33;
+  --shadow-sm: 0 1px 2px rgb(9 30 66 / 0.08);
+  --shadow-md: 0 8px 24px rgb(9 30 66 / 0.1);
+}
+
+html:not([data-theme='dark']) ::selection {
+  background: rgb(12 102 228 / 0.18);
+  color: var(--text-primary);
+}
+
+/* Sidebar — grafite neutro em vez do painel creme/dourado anterior. Item
+   ativo ganha um fundo sutil + texto/ícone na cor de destaque, sem virar um
+   bloco sólido amarelo. */
+html:not([data-theme='dark']) .app-sidebar,
+html:not([data-theme='dark']) .mobile-drawer {
+  background: var(--sidebar) !important;
+  border-right-color: rgb(255 255 255 / 0.08) !important;
+  border-color: rgb(255 255 255 / 0.08) !important;
+  color: rgb(255 255 255 / 0.7) !important;
+  box-shadow: none !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand {
+  border-bottom-color: rgb(255 255 255 / 0.08) !important;
+  background: transparent !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand img {
+  filter: none;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand h1 {
+  color: #ffffff !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-brand p {
+  color: #e6b73a !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(255 255 255 / 0.85);
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus:hover,
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus.is-active {
+  border-color: rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.1);
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-date {
+  background: #ffffff;
+  color: #0c66e4;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-copy small {
+  color: rgb(255 255 255 / 0.55);
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-copy strong {
+  color: #ffffff;
+}
+
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-copy em,
+html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus > svg {
+  color: rgb(255 255 255 / 0.5);
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-group > p {
+  color: rgb(255 255 255 / 0.38) !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item {
+  color: rgb(255 255 255 / 0.74) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item svg {
+  color: rgb(255 255 255 / 0.56) !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item:hover {
+  background: rgb(255 255 255 / 0.07) !important;
+  color: #ffffff !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item:hover svg {
+  color: #ffffff !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active {
+  border-color: transparent !important;
+  background: rgb(217 165 33 / 0.16) !important;
+  color: #f4c858 !important;
+  font-weight: 700 !important;
+  box-shadow: inset 3px 0 0 var(--accent) !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active svg,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active svg {
+  color: #f4c858 !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-sidebar-footer,
+html:not([data-theme='dark']) .mobile-drawer-footer {
+  border-color: rgb(255 255 255 / 0.08) !important;
+  background: rgb(0 0 0 / 0.16) !important;
+  color: rgb(255 255 255 / 0.55) !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-user-summary,
+html:not([data-theme='dark']) .mobile-drawer-footer > div {
+  background: rgb(255 255 255 / 0.05) !important;
+  border-color: rgb(255 255 255 / 0.09) !important;
+  color: rgb(255 255 255 / 0.62) !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-user-summary p:first-child,
+html:not([data-theme='dark']) .mobile-drawer-footer strong {
+  color: #ffffff !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-sync-status {
+  color: rgb(255 255 255 / 0.48) !important;
+}
+
+html:not([data-theme='dark']) .app-sidebar .app-admin-menu summary {
+  color: rgb(255 255 255 / 0.5) !important;
+}
+
+/* Header, superfícies e tabelas — fundo branco/neutro em vez do tom creme. */
+html:not([data-theme='dark']) .app-header {
+  background: rgb(255 255 255 / 0.92) !important;
+  border-bottom-color: var(--border-subtle) !important;
+  box-shadow: 0 1px 0 var(--border-subtle) !important;
+}
+
+html:not([data-theme='dark']) .data-table th,
+html:not([data-theme='dark']) .equipment-table-header {
+  background: var(--surface-muted) !important;
+}
+
+html:not([data-theme='dark']) .data-table tbody tr:hover,
+html:not([data-theme='dark']) .equipment-row:hover,
+html:not([data-theme='dark']) .inbox-message-row:hover {
+  background: var(--surface-soft) !important;
+}
+
+html:not([data-theme='dark']) .mini-agenda-calendar,
+html:not([data-theme='dark']) .inbox-list {
+  background: var(--surface-soft) !important;
+}
+
+html:not([data-theme='dark']) .erp-segmented-control {
+  background: var(--surface-muted) !important;
+}
+
+html:not([data-theme='dark']) .erp-segmented-control button.is-active {
+  background: #ffffff !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+html:not([data-theme='dark']) .finance-overview > *:first-child {
+  background: linear-gradient(145deg, #ffffff, #f7f9ff) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Cantos 8px em cards, painéis e tabelas — em vez do raio "aconchegante"
+   maior usado antes. */
+html:not([data-theme='dark']) .panel-surface,
+html:not([data-theme='dark']) .metric-card,
+html:not([data-theme='dark']) .modal-surface,
+html:not([data-theme='dark']) .crm-opportunity-card,
+html:not([data-theme='dark']) .lead-result-card,
+html:not([data-theme='dark']) .equipment-table-shell {
+  border-radius: 0.5rem !important;
+}
+
+html:not([data-theme='dark']) .app-button {
+  border-radius: 0.5rem !important;
+}
+
+html:not([data-theme='dark']) .app-button-secondary {
+  background: #ffffff !important;
+  border-color: var(--border) !important;
+  color: var(--text-secondary) !important;
+}
+
+html:not([data-theme='dark']) .app-button-secondary:hover:not(:disabled) {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Inputs com foco em anel azul, não dourado. */
+html:not([data-theme='dark']) .field-input:focus {
+  border-color: var(--link) !important;
+  box-shadow: 0 0 0 3px rgb(12 102 228 / 0.16) !important;
+}
+
+html:not([data-theme='dark']) .ff-select-trigger.is-open,
+html:not([data-theme='dark']) .ff-select-trigger:focus-visible {
+  border-color: var(--link) !important;
+  box-shadow: 0 0 0 3px rgb(12 102 228 / 0.16) !important;
+}
+
+html:not([data-theme='dark']) .searchable-select__search:focus-within {
+  border-color: var(--link) !important;
+  box-shadow: 0 0 0 3px rgb(12 102 228 / 0.16) !important;
+}
+
+/* Ícones dos cartões de métrica — cada tom (positivo/alerta/erro/neutro)
+   volta a usar a família de cor semântica em vez do dourado fixo em todos. */
+html:not([data-theme='dark']) .metric-card .metric-icon--positive {
+  background: var(--ff-green-soft) !important;
+  color: var(--ff-green-strong) !important;
+}
+
+html:not([data-theme='dark']) .metric-card .metric-icon--warning {
+  background: var(--ff-amber-soft) !important;
+  color: var(--ff-amber-strong) !important;
+}
+
+html:not([data-theme='dark']) .metric-card .metric-icon--danger {
+  background: var(--ff-rose-soft) !important;
+  color: var(--ff-rose-strong) !important;
+}
+
+html:not([data-theme='dark']) .metric-card .metric-icon--neutral {
+  background: var(--ff-blue-soft) !important;
+  color: var(--ff-blue-strong) !important;
+}
+
+/* Números alinhados em tabelas, métricas e financeiro. */
+.metric-card,
+.data-table td,
+.finance-overview strong,
+.dashboard-primary-metrics {
+  font-variant-numeric: tabular-nums;
+}
