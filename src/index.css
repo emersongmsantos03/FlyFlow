@@ -11571,9 +11571,15 @@ html:not([data-theme='dark']) ::selection {
   color: var(--text-primary);
 }
 
-/* Sidebar — grafite neutro em vez do painel creme/dourado anterior. Item
-   ativo ganha um fundo sutil + texto/ícone na cor de destaque, sem virar um
-   bloco sólido amarelo. */
+/* ============================================================================
+   Menu lateral — repaginado. Grafite sólido, sem overlays translúcidos (a
+   causa dos bugs de hover "ficando branco" em algumas máquinas). O ícone de
+   cada seção NUNCA muda de cor entre repouso/hover/ativo — ele mantém sua
+   própria identidade colorida (o "chip" nav-tint-*) o tempo todo; só o
+   fundo da linha e o peso do texto mudam de estado. Isso também corrige o
+   bug em que o hover forçava o SVG para branco sobre o chip claro do ícone,
+   apagando-o visualmente.
+   ============================================================================ */
 html:not([data-theme='dark']) .app-sidebar,
 html:not([data-theme='dark']) .mobile-drawer {
   background: var(--sidebar) !important;
@@ -11601,15 +11607,15 @@ html:not([data-theme='dark']) .app-sidebar .app-brand p {
 }
 
 html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus {
-  border-color: rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.06);
-  color: rgb(255 255 255 / 0.85);
+  border-color: rgb(255 255 255 / 0.1) !important;
+  background: #23272c !important;
+  color: rgb(255 255 255 / 0.85) !important;
 }
 
 html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus:hover,
 html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus.is-active {
-  border-color: rgb(255 255 255 / 0.18);
-  background: rgb(255 255 255 / 0.1);
+  border-color: rgb(255 255 255 / 0.18) !important;
+  background: #292e34 !important;
 }
 
 html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-date {
@@ -11630,18 +11636,30 @@ html:not([data-theme='dark']) .app-sidebar .sidebar-agenda-focus > svg {
   color: rgb(255 255 255 / 0.5);
 }
 
+html:not([data-theme='dark']) .app-sidebar .app-nav-group {
+  margin-bottom: 0.85rem !important;
+}
+
 html:not([data-theme='dark']) .app-sidebar .app-nav-group > p {
-  color: rgb(255 255 255 / 0.38) !important;
+  padding-inline: 0.6rem !important;
+  color: rgb(255 255 255 / 0.34) !important;
+  font-size: 0.63rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.09em !important;
 }
 
 html:not([data-theme='dark']) .app-sidebar .app-nav-item {
-  color: rgb(255 255 255 / 0.74) !important;
+  min-height: 2.6rem !important;
+  color: rgb(255 255 255 / 0.72) !important;
   background: transparent !important;
   border-color: transparent !important;
 }
 
-html:not([data-theme='dark']) .app-sidebar .app-nav-item svg {
-  color: rgb(255 255 255 / 0.56) !important;
+/* O ícone nunca é tocado por hover/active — herda a cor do próprio chip
+   .app-nav-icon (ver a regra "color: inherit !important" já existente,
+   escopada em ".app-nav-icon svg"), independente do estado da linha. */
+html:not([data-theme='dark']) .app-sidebar .app-nav-icon {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 html:not([data-theme='dark']) .app-sidebar .app-nav-item:hover {
@@ -11649,29 +11667,43 @@ html:not([data-theme='dark']) .app-sidebar .app-nav-item:hover {
   color: #ffffff !important;
 }
 
-html:not([data-theme='dark']) .app-sidebar .app-nav-item:hover svg {
-  color: #ffffff !important;
-}
-
 html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active,
 html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active {
   border-color: transparent !important;
-  background: rgb(217 165 33 / 0.16) !important;
-  color: #f4c858 !important;
+  background: #362c1a !important;
+  color: #f6cd6e !important;
   font-weight: 700 !important;
   box-shadow: inset 3px 0 0 var(--accent) !important;
 }
 
+/* Restaura o chip colorido do ícone sobre o item ativo — sem isso, uma
+   regra mais antiga (não escopada por tema) força um chip cinza-claro com
+   ícone marrom-escuro em todo item selecionado, apagando a identidade de
+   cor da seção. */
 html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active svg,
 html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active svg {
-  color: #f4c858 !important;
+  color: inherit !important;
 }
 
 html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon,
 html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon {
-  background: transparent !important;
-  color: inherit !important;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14) !important;
 }
+
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon.nav-tint-blue,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon.nav-tint-blue { background: var(--ff-blue-soft) !important; color: var(--ff-blue-strong) !important; }
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon.nav-tint-peach,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon.nav-tint-peach { background: var(--ff-peach-soft) !important; color: var(--ff-peach-strong) !important; }
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon.nav-tint-lavender,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon.nav-tint-lavender { background: var(--ff-lavender-soft) !important; color: var(--ff-lavender-strong) !important; }
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon.nav-tint-green,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon.nav-tint-green { background: var(--ff-green-soft) !important; color: var(--ff-green-strong) !important; }
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon.nav-tint-rose,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon.nav-tint-rose { background: var(--ff-rose-soft) !important; color: var(--ff-rose-strong) !important; }
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon.nav-tint-amber,
+html:not([data-theme='dark']) .app-sidebar .app-nav-item.is-active .app-nav-icon.nav-tint-gold,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon.nav-tint-amber,
+html:not([data-theme='dark']) .mobile-drawer .app-nav-item.is-active .app-nav-icon.nav-tint-gold { background: var(--ff-amber-soft) !important; color: var(--ff-amber-strong) !important; }
 
 html:not([data-theme='dark']) .app-sidebar .app-sidebar-footer,
 html:not([data-theme='dark']) .mobile-drawer-footer {
