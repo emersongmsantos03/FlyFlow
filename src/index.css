@@ -6891,7 +6891,11 @@ html[data-theme='dark'] .task-title-input,
 html[data-theme='dark'] .task-calendar-sync strong { color: #edf2ed; }
 
 /* Navigation: a calmer workspace with the agenda always one click away. */
-.page-shell { grid-template-columns: 18rem minmax(0, 1fr) !important; }
+.page-shell { grid-template-columns: 19rem minmax(0, 1fr) !important; }
+
+@media (min-width: 1600px) {
+  .page-shell { grid-template-columns: 20.5rem minmax(0, 1fr) !important; }
+}
 
 .app-sidebar {
   background:
@@ -7990,11 +7994,11 @@ html:not([data-theme='dark']) .app-sidebar .app-nav-group > p {
 }
 
 html:not([data-theme='dark']) .app-sidebar .app-nav-item {
-  min-height: 2.35rem !important;
+  min-height: 2.7rem !important;
   border-color: transparent !important;
   background: transparent !important;
   color: #69716b !important;
-  font-size: 0.7rem !important;
+  font-size: 0.82rem !important;
   font-weight: 620 !important;
   box-shadow: none !important;
   transform: none !important;
@@ -10743,6 +10747,60 @@ html[data-theme='dark'] .dashboard-page .dashboard-task:hover,
 html[data-theme='dark'] .dashboard-page .dashboard-list-card:hover,
 html[data-theme='dark'] .dashboard-page .dashboard-notification:hover { background: #20261f !important; }
 html[data-theme='dark'] .finance-page .finance-tabs .app-button-primary { background: #171a17 !important; }
+
+/* CRM opportunity drawer — warmth pass + dark-mode safety net. The drawer
+   renders outside .module-page/.modal-surface, so it never got the raw
+   Tailwind-gray-to-token remap the rest of the app has; scoping the same
+   remap to .crm-contact-drawer here catches it without touching every
+   className string in the component. */
+.crm-contact-drawer .rounded-lg,
+.crm-contact-drawer .rounded-xl { border-radius: 1rem !important; }
+
+.crm-contact-drawer .border-gray-200,
+.crm-contact-drawer .border-gray-300 { border-color: var(--border) !important; }
+.crm-contact-drawer .bg-gray-50,
+.crm-contact-drawer .bg-gray-100 { background: var(--surface-soft) !important; }
+.crm-contact-drawer .bg-white { background: var(--surface) !important; }
+.crm-contact-drawer .hover\:bg-gray-50:hover,
+.crm-contact-drawer .hover\:bg-white:hover { background: var(--surface-soft) !important; }
+.crm-contact-drawer .text-gray-950,
+.crm-contact-drawer .text-gray-900 { color: var(--text-primary) !important; }
+.crm-contact-drawer .text-gray-800,
+.crm-contact-drawer .text-gray-700,
+.crm-contact-drawer .text-gray-600 { color: var(--text-secondary) !important; }
+.crm-contact-drawer .text-gray-500,
+.crm-contact-drawer .text-gray-400,
+.crm-contact-drawer .text-gray-300 { color: var(--text-muted) !important; }
+.crm-contact-drawer .hover\:text-gray-950:hover,
+.crm-contact-drawer .hover\:text-gray-900:hover { color: var(--text-primary) !important; }
+
+.crm-contact-drawer .drawer-info-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.crm-contact-drawer .drawer-info-icon {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex-shrink: 0;
+  border-radius: 0.65rem;
+}
+.crm-contact-drawer .drawer-info-icon[data-tint='green'] { background: var(--ff-green-soft); color: var(--ff-green-strong); }
+.crm-contact-drawer .drawer-info-icon[data-tint='blue'] { background: var(--ff-blue-soft); color: var(--ff-blue-strong); }
+.crm-contact-drawer .drawer-info-icon[data-tint='peach'] { background: var(--ff-peach-soft); color: var(--ff-peach-strong); }
+.crm-contact-drawer .drawer-info-icon[data-tint='lavender'] { background: var(--ff-lavender-soft); color: var(--ff-lavender-strong); }
+.crm-contact-drawer .drawer-avatar {
+  width: 2.6rem;
+  height: 2.6rem;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.crm-contact-drawer .crm-drawer-tabs button.is-active {
+  border-color: var(--accent-strong) !important;
+  color: var(--accent-strong) !important;
+}
 
 /* ============================================================================
    Login screen — full rebuild (2026). Split hero/form layout, theme-aware,
