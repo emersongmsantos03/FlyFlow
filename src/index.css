@@ -11476,3 +11476,27 @@ html[data-theme='dark'] .crm-pipeline-column[data-stage='approval'] .crm-card-la
 html[data-theme='dark'] .crm-pipeline-column[data-stage='deposit'] .crm-card-label-stage { background: #ef8cc7; }
 html[data-theme='dark'] .crm-pipeline-column[data-stage='confirmed'] .crm-card-label-stage { background: #6adfab; }
 html[data-theme='dark'] .crm-pipeline-column[data-stage='future'] .crm-card-label-stage { background: #9aa5b8; }
+
+/* Opportunity detail — centered dialog instead of a side drawer sliding in
+   from the right (the lateral panel read as visually disconnected from the
+   board behind it). Keeps the same header/tabs/content markup, just
+   repositions and bounds the box like the rest of the app's modals. */
+.crm-contact-drawer {
+  position: fixed !important;
+  inset: auto !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  width: min(52rem, 94vw) !important;
+  max-width: 52rem !important;
+  max-height: min(44rem, calc(100dvh - 3rem)) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 1.35rem !important;
+  box-shadow: 0 30px 80px rgb(0 0 0 / 0.3) !important;
+}
+
+.crm-contact-drawer > header {
+  border-radius: 1.35rem 1.35rem 0 0 !important;
+}

@@ -947,8 +947,8 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
     ...state.statusHistory.filter((item) => (item.entityType === 'Contato' && item.entityId === lead.id) || quotes.some((quote) => item.entityType === 'Proposta' && item.entityId === quote.id) || projects.some((project) => item.entityType === 'Projeto' && item.entityId === project.id)).map((item) => ({ id: item.id, at: item.createdAt, title: item.action, description: item.details })),
   ].sort((a, b) => b.at.localeCompare(a.at))
 
-  return <>
-    <button className="fixed inset-0 z-40 cursor-default bg-black/20" aria-label="Fechar detalhes" type="button" onClick={onClose} />
+  return createPortal(<>
+    <button className="fixed inset-0 z-40 cursor-default bg-black/45" aria-label="Fechar detalhes" type="button" onClick={onClose} />
     <aside className="crm-contact-drawer">
       <header className="border-b border-gray-200 bg-white p-4">
         <div className="flex items-start justify-between gap-3">
@@ -1132,7 +1132,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
         </div>
       </Modal>
     ) : null}
-  </>
+  </>, document.body)
 }
 
 function LeadHunterDossier({ data, notes, hideWhatsApp = false }: { data: NonNullable<Lead['leadHunterData']>; notes: string; hideWhatsApp?: boolean }) {
