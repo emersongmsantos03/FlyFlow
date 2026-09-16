@@ -11791,3 +11791,47 @@ html:not([data-theme='dark']) .metric-card .metric-icon--neutral {
 .dashboard-primary-metrics {
   font-variant-numeric: tabular-nums;
 }
+
+/* Faixas escuras remanescentes de uma paleta anterior (verde-preto,
+   #151c17/#293229) que ainda apareciam soltas dentro do tema claro já
+   retemado — menu da conta, hero do Financeiro, toolbar do Inbox, hero de
+   Projetos internos e a barra lateral da proposta. Alinhadas ao mesmo
+   grafite do menu lateral/login para parecerem parte do mesmo sistema, em
+   vez de um fragmento da identidade antiga. Tema escuro não é tocado. */
+html:not([data-theme='dark']) .app-account-popover > header {
+  background: linear-gradient(120deg, #22262b, #1a1d21) !important;
+}
+
+html:not([data-theme='dark']) .finance-page .finance-overview {
+  background: linear-gradient(120deg, #22262b, #1a1d21) !important;
+}
+
+html:not([data-theme='dark']) .finance-page .finance-tabs button[class*='bg-gray-950'] {
+  background: #1d2125 !important;
+}
+
+html:not([data-theme='dark']) .inbox-page .inbox-toolbar {
+  background: linear-gradient(100deg, #22262b, #1a1d21) !important;
+}
+
+html:not([data-theme='dark']) .inbox-page .inbox-toolbar button[class*='bg-white'] {
+  color: #1d2125 !important;
+}
+
+html:not([data-theme='dark']) .inbox-compose-button {
+  background: #1d2125 !important;
+}
+
+html:not([data-theme='dark']) .internal-projects-page > section:first-child > div:first-child {
+  background: linear-gradient(110deg, #22262b, #1a1d21) !important;
+}
+
+html:not([data-theme='dark']) .proposal-workspace aside {
+  background: linear-gradient(150deg, #22262b, #1a1d21) !important;
+}
+
+@media (max-width: 639px) {
+  html:not([data-theme='dark']) .inbox-page .inbox-toolbar {
+    background: #1d2125 !important;
+  }
+}
