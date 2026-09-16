@@ -8670,67 +8670,70 @@ function LoginScreen({
   })
 
   return (
-    <main className="login-screen">
-      <section className="login-hero" aria-label="FlyFlow by Hero Drone">
-        <div className="login-brand">
-          <span className="login-logo"><img src={heroLogoSrc} alt="" /></span>
+    <main className="auth-screen">
+      <section className="auth-hero" aria-label="FlyFlow by Hero Drone">
+        <span className="auth-hero-glow auth-hero-glow-a" aria-hidden="true" />
+        <span className="auth-hero-glow auth-hero-glow-b" aria-hidden="true" />
+        <div className="auth-hero-brand">
+          <span className="auth-hero-logo"><img src={heroLogoSrc} alt="" /></span>
           <div>
-            <h1>{appShortName}</h1>
-            <p>{appSubtitle}</p>
+            <strong>{appShortName}</strong>
+            <small>{appSubtitle}</small>
           </div>
         </div>
-        <div className="login-pitch">
-          <span className="login-eyebrow">Workspace Hero Drone</span>
-          <h2>Toda a operação,<br /><strong>em um só lugar.</strong></h2>
+        <div className="auth-hero-body">
+          <span className="auth-hero-eyebrow">Workspace Hero Drone</span>
+          <h1>Toda a operação,<br />em um só lugar.</h1>
           <p>Clientes, projetos, agenda e financeiro organizados para sua equipe trabalhar com máxima precisão e clareza.</p>
-          <div className="login-hero-badges mt-6 flex flex-wrap gap-2.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-amber-200 backdrop-blur-md border border-white/10">
-              <ShieldCheck size={13} className="text-amber-400" /> Operação Privada
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-emerald-200 backdrop-blur-md border border-white/10">
-              <CheckCircle2 size={13} className="text-emerald-400" /> Multi-módulos
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-200 backdrop-blur-md border border-white/10">
-              <TrendingUp size={13} className="text-blue-400" /> Gestão Integrada
-            </span>
-          </div>
+          <ul className="auth-feature-list">
+            <li><span className="auth-feature-icon"><ShieldCheck size={15} /></span>Operação privada e segura</li>
+            <li><span className="auth-feature-icon"><CheckCircle2 size={15} /></span>Multi-módulos, tudo conectado</li>
+            <li><span className="auth-feature-icon"><TrendingUp size={15} /></span>Gestão do negócio em tempo real</li>
+          </ul>
         </div>
-        <div className="login-hero-footer">
+        <div className="auth-hero-foot">
           <span><ShieldCheck size={14} /> FlyFlow OS v2.5</span>
           <span>Curitiba · PR</span>
         </div>
       </section>
-      <section className="login-form-section">
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="login-form-heading">
-            <span className="login-form-icon"><ShieldCheck size={19} /></span>
+      <section className="auth-panel">
+        <div className="auth-panel-brand">
+          <span className="auth-hero-logo"><img src={heroLogoSrc} alt="" /></span>
+          <div>
+            <strong>{appShortName}</strong>
+            <small>{appSubtitle}</small>
+          </div>
+        </div>
+        <form className="auth-card" onSubmit={handleSubmit(onSubmit)}>
+          <div className="auth-card-head">
+            <span className="auth-card-icon"><ShieldCheck size={20} /></span>
             <div>
               <h2>Bem-vindo de volta</h2>
               <p>Use seus dados para acessar o FlyFlow.</p>
             </div>
           </div>
-          <div className="login-fields">
+          <div className="grid gap-3.5">
             <InputField label="E-mail" error={getError(errors.email?.message)}>
-              <span className="login-input-wrap"><Mail size={16} /><input autoComplete="username" autoFocus className="field-input" placeholder="nome@herodrone.com.br" type="email" {...register('email')} /></span>
+              <span className="auth-input-wrap"><Mail size={16} /><input autoComplete="username" autoFocus className="field-input" placeholder="nome@herodrone.com.br" type="email" {...register('email')} /></span>
             </InputField>
             <InputField label="Senha" error={getError(errors.password?.message)}>
-              <span className="login-password-field"><KeyRound size={16} /><input autoComplete="current-password" className="field-input" placeholder="Digite sua senha" type={showPassword ? 'text' : 'password'} {...register('password')} /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span>
+              <span className="auth-input-wrap"><KeyRound size={16} /><input autoComplete="current-password" className="field-input" placeholder="Digite sua senha" type={showPassword ? 'text' : 'password'} {...register('password')} /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span>
             </InputField>
-            <div className="login-options">
-              <label>
+            <div className="auth-options">
+              <label className="auth-remember">
                 <input type="checkbox" {...register('remember')} />
-                Manter conectado
+                <span>Manter conectado</span>
               </label>
               <button type="button" onClick={() => onPasswordReset(watch('email') || '')}>
                 Esqueci minha senha
               </button>
             </div>
-            <Button className="login-submit" disabled={isSubmitting} type="submit">
+            <Button className="auth-submit w-full" disabled={isSubmitting} type="submit">
               <span>{isSubmitting ? 'Entrando…' : 'Entrar no FlyFlow'}</span>
               {!isSubmitting ? <ArrowRight size={17} /> : null}
             </Button>
           </div>
-          <p className="login-access-note">Acesso exclusivo para a equipe Hero Drone.</p>
+          <p className="auth-note"><ShieldCheck size={13} /> Acesso exclusivo para a equipe Hero Drone.</p>
         </form>
       </section>
     </main>
@@ -9891,8 +9894,6 @@ function AgendaPage({
     return matchesResponsible && matchesType && matchesContact && matchesSearch && matchesStatus
   })
   const scheduledAppointments = visibleAppointments.filter((appointment) => appointment.appointmentType !== 'Tarefa')
-  const conflicts = findAppointmentConflicts(scheduledAppointments)
-  const conflictIds = new Set(conflicts.map((appointment) => appointment.id))
   const openCalendarItem = (appointment: Appointment) => {
     const task = taskByAppointmentId.get(appointment.id)
     if (task) onOpenTask(task)
@@ -9951,19 +9952,6 @@ function AgendaPage({
     window.addEventListener('keydown', handleCalendarShortcuts)
     return () => window.removeEventListener('keydown', handleCalendarShortcuts)
   }, [])
-  const focusFirstConflict = () => {
-    const firstConflict = conflicts[0]
-    if (!firstConflict) return
-    setCalendarDate(new Date(firstConflict.startAt))
-    onCalendarViewChange('diaria')
-    window.setTimeout(() => {
-      const target = [...document.querySelectorAll<HTMLElement>('[data-appointment-id]')]
-        .find((element) => element.dataset.appointmentId === firstConflict.id)
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
-      target?.focus({ preventScroll: true })
-    }, 120)
-  }
-
   return (
     <div className="agenda-page space-y-4">
       <section className="agenda-main-toolbar" aria-label="Controles da agenda">
@@ -10006,14 +9994,6 @@ function AgendaPage({
 
       <AgendaQuickTasks open={quickTasksOpen} tasks={state.tasks} onClose={closeQuickTasks} onCreate={onQuickCreateTask} onOpen={onOpenTask} onToggle={onToggleTask} />
 
-      {conflicts.length ? (
-        <button className="agenda-conflict-alert" type="button" onClick={focusFirstConflict}>
-          <AlertTriangle size={18} />
-          <span><strong>{conflicts.length} conflito(s) de horário detectado(s).</strong> Clique para ir ao primeiro horário sobreposto e ajustar os agendamentos.</span>
-          <ChevronRight size={18} />
-        </button>
-      ) : null}
-
       {calendarView === 'mensal' ? (
         <MonthCalendar
           appointments={visibleAppointments}
@@ -10037,7 +10017,6 @@ function AgendaPage({
           onToggleTask={onToggleTask}
           onResizeAppointment={onResizeAppointment}
           onMoveAppointment={onMoveAppointment}
-          conflictIds={conflictIds}
         />
       ) : null}
 
@@ -12490,7 +12469,6 @@ function TimeGridCalendar({
   onToggleTask,
   onResizeAppointment,
   onMoveAppointment,
-  conflictIds,
 }: {
   anchorDate: Date
   appointments: Appointment[]
@@ -12501,7 +12479,6 @@ function TimeGridCalendar({
   onToggleTask: (task: TaskItem) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
   onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
-  conflictIds: Set<string>
 }) {
   const start = view === 'semanal' ? getWeekStart(anchorDate) : new Date(anchorDate)
   const days = Array.from({ length: view === 'semanal' ? 7 : 1 }, (_, index) => {
@@ -12762,7 +12739,7 @@ function TimeGridCalendar({
                       <div
                         key={appointment.id}
                         data-appointment-id={appointment.id}
-                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${conflictIds.has(appointment.id) ? 'is-conflict' : ''} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
+                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md px-2 py-1.5 pb-3 text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
                         style={{
                           '--calendar-item-color': appointment.color || '#2563eb',
                           '--calendar-item-text': readableEventTextColor(appointment.color || '#2563eb'),
@@ -12819,22 +12796,6 @@ function getWeekStart(date: Date) {
   start.setDate(start.getDate() + diff)
   start.setHours(0, 0, 0, 0)
   return start
-}
-
-function findAppointmentConflicts(appointments: Appointment[]) {
-  const conflicts: Appointment[] = []
-  appointments.forEach((appointment, index) => {
-    const start = new Date(appointment.startAt).getTime()
-    const end = new Date(appointment.endAt).getTime()
-    const hasConflict = appointments.some((other, otherIndex) => {
-      if (index === otherIndex || appointment.status === 'Cancelado' || other.status === 'Cancelado') return false
-      const otherStart = new Date(other.startAt).getTime()
-      const otherEnd = new Date(other.endAt).getTime()
-      return start < otherEnd && end > otherStart
-    })
-    if (hasConflict) conflicts.push(appointment)
-  })
-  return conflicts
 }
 
 function createDefaultChecklist(projectId: string, createdAt: string): ProjectChecklistItem[] {
