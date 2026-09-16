@@ -11048,3 +11048,111 @@ html[data-theme='dark'] .auth-card { box-shadow: 0 24px 60px rgb(0 0 0 / 0.4); }
 @media (max-width: 420px) {
   .auth-card { padding: 1.4rem; border-radius: 1.1rem; }
 }
+
+/* ============================================================================
+   CRM Comercial — full redesign pass. Warmer, rounder, colored icon chips
+   for every stat/metric, avatar chips for people, softer hierarchy. Builds
+   on the .crm-* structure already in place rather than replacing it.
+   ============================================================================ */
+
+.crm-commercial-header {
+  border-radius: 1.25rem !important;
+}
+
+.crm-intelligence {
+  border-radius: 1.25rem !important;
+  overflow: hidden;
+}
+
+.crm-intelligence summary {
+  transition: background-color 150ms ease;
+}
+
+.crm-intelligence summary:hover {
+  background: var(--surface-soft);
+}
+
+.crm-intelligence summary > div > span:first-child {
+  border-radius: 0.75rem !important;
+}
+
+.crm-metrics {
+  border-radius: 1rem !important;
+}
+
+.crm-metrics > div {
+  display: flex !important;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.crm-metric-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 0.65rem;
+}
+
+.crm-metric-icon[data-tint='blue'] { background: var(--ff-blue-soft); color: var(--ff-blue-strong); }
+.crm-metric-icon[data-tint='green'] { background: var(--ff-green-soft); color: var(--ff-green-strong); }
+.crm-metric-icon[data-tint='amber'] { background: var(--ff-amber-soft); color: var(--ff-amber-strong); }
+.crm-metric-icon[data-tint='peach'] { background: var(--ff-peach-soft); color: var(--ff-peach-strong); }
+.crm-metric-icon[data-tint='rose'] { background: var(--ff-rose-soft); color: var(--ff-rose-strong); }
+.crm-metric-icon[data-tint='lavender'] { background: var(--ff-lavender-soft); color: var(--ff-lavender-strong); }
+
+.crm-stat-tile {
+  display: flex !important;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.9rem !important;
+}
+
+.crm-page .rounded-lg,
+.crm-page .rounded-xl {
+  border-radius: 0.9rem !important;
+}
+
+.crm-page .grid.gap-2 > .rounded-lg:hover,
+.crm-page .grid.gap-2 > .rounded-xl:hover {
+  background: var(--surface-muted) !important;
+}
+
+.crm-column-header h2 {
+  font-weight: 780 !important;
+  letter-spacing: -0.01em;
+}
+
+.crm-column-count {
+  font-weight: 750 !important;
+}
+
+.crm-opportunity-card {
+  border-radius: 1rem !important;
+}
+
+.crm-opportunity-card .avatar-chip {
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.crm-add-card {
+  border-radius: 0.8rem !important;
+}
+
+.crm-toolbar {
+  border-radius: 1.1rem !important;
+}
+
+.crm-toolbar-tabs {
+  border-radius: 0.85rem !important;
+  padding: 0.3rem !important;
+}
+
+.crm-toolbar-tabs button {
+  border-radius: 0.6rem !important;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+html[data-theme='dark'] .crm-toolbar-tabs { background: #1b1f1b !important; }
+html[data-theme='dark'] .crm-toolbar-tabs button.text-gray-950 { background: #262b26 !important; }

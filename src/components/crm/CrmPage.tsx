@@ -298,7 +298,7 @@ export function CrmPage({
       <details className="crm-intelligence rounded-xl border border-gray-200 bg-white shadow-sm">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="rounded-lg bg-blue-50 p-2 text-blue-600"><Sparkles size={17} /></span>
+            <span className="crm-metric-icon" data-tint="blue"><Sparkles size={17} /></span>
             <div className="min-w-0"><h2 className="text-sm font-black text-gray-950">Inteligência comercial</h2><p className="truncate text-xs text-gray-500">{contactsNeedingAction} precisam de ação · {commercialInsights.hygieneIssueCount} alertas no CRM</p></div>
           </div>
           <ChevronDown className="crm-intelligence-chevron shrink-0 text-gray-400" size={18} />
@@ -306,30 +306,33 @@ export function CrmPage({
         <div className="space-y-4 border-t border-gray-100 p-4">
           <div className="crm-metrics grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {[
-              ['Oportunidades', openLeads.length],
-              ['Valor potencial', formatCurrency(potentialValue)],
-              ['Previsão ponderada', formatCurrency(weightedValue)],
-              ['Propostas abertas', activeQuotes.length],
-              ['Precisam de ação', contactsNeedingAction],
-              ['Ciclo médio', `${averageAge} dias`],
-            ].map(([label, value]) => <div key={String(label)}><p>{label}</p><p>{value}</p></div>)}
+              ['Oportunidades', openLeads.length, <Briefcase key="i" size={15} />, 'blue'],
+              ['Valor potencial', formatCurrency(potentialValue), <CircleDollarSign key="i" size={15} />, 'green'],
+              ['Previsão ponderada', formatCurrency(weightedValue), <ArrowRight key="i" size={15} />, 'amber'],
+              ['Propostas abertas', activeQuotes.length, <FileText key="i" size={15} />, 'peach'],
+              ['Precisam de ação', contactsNeedingAction, <Clock3 key="i" size={15} />, 'rose'],
+              ['Ciclo médio', `${averageAge} dias`, <CalendarDays key="i" size={15} />, 'lavender'],
+            ].map(([label, value, icon, tint]) => <div key={label as string}><span className="crm-metric-icon" data-tint={tint as string}>{icon}</span><span className="min-w-0"><p>{label}</p><p>{value}</p></span></div>)}
           </div>
           {actionQueue.length ? <div>
             <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-black text-gray-950">Prioridades de hoje</h3><p className="text-xs text-gray-500">Ordem sugerida por urgência e potencial.</p></div><button className="text-xs font-bold text-blue-600" type="button" onClick={() => { setQuickFilter('action'); onViewChange('table') }}>Ver todas</button></div>
             <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
               {actionQueue.map(({ lead, priority }, index) => <article key={lead.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between gap-2"><span className="text-[0.65rem] font-black text-gray-400">#{index + 1}</span><strong className="text-xs text-blue-600">{priority.score} pts</strong></div>
-                <button className="mt-1 block w-full truncate text-left text-sm font-black text-gray-950 hover:underline" type="button" onClick={() => onOpenLead(lead)}>{displayName(lead)}</button>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="avatar-chip h-7 w-7 shrink-0 text-[0.6rem]" data-tint={avatarTint(lead.id)}>{initials(displayName(lead))}</span>
+                  <button className="min-w-0 flex-1 truncate text-left text-sm font-black text-gray-950 hover:underline" type="button" onClick={() => onOpenLead(lead)}>{displayName(lead)}</button>
+                </div>
                 <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-gray-500">{priority.reason}</p>
                 {lead.whatsapp ? <button className="mt-2 inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100" type="button" onClick={() => { setPriorityLead(lead); setWhatsAppContext('Primeiro contato'); setWhatsAppMessage(buildContextualWhatsAppMessage(lead, 'Primeiro contato')) }}><MessageCircle size={13} /> Preparar mensagem</button> : null}
               </article>)}
             </div>
           </div> : null}
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Taxa de contato</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.contactRate}%</strong></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Conversão geral</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.conversionRate}%</strong></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Abordagens WhatsApp</p><strong className="mt-1 block text-xl text-gray-950">{commercialInsights.outreach.attempts}</strong></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-500">Saúde do CRM</p><strong className={`mt-1 block text-xl ${commercialInsights.hygieneIssueCount ? 'text-amber-700' : 'text-emerald-700'}`}>{commercialInsights.hygieneIssueCount}</strong></div>
+            <div className="crm-stat-tile rounded-lg bg-gray-50 p-3"><span className="crm-metric-icon" data-tint="blue"><Phone size={14} /></span><span><p className="text-[0.65rem] font-bold uppercase text-gray-500">Taxa de contato</p><strong className="mt-0.5 block text-xl text-gray-950">{commercialInsights.contactRate}%</strong></span></div>
+            <div className="crm-stat-tile rounded-lg bg-gray-50 p-3"><span className="crm-metric-icon" data-tint="green"><ArrowRight size={14} /></span><span><p className="text-[0.65rem] font-bold uppercase text-gray-500">Conversão geral</p><strong className="mt-0.5 block text-xl text-gray-950">{commercialInsights.conversionRate}%</strong></span></div>
+            <div className="crm-stat-tile rounded-lg bg-gray-50 p-3"><span className="crm-metric-icon" data-tint="lavender"><MessageCircle size={14} /></span><span><p className="text-[0.65rem] font-bold uppercase text-gray-500">Abordagens WhatsApp</p><strong className="mt-0.5 block text-xl text-gray-950">{commercialInsights.outreach.attempts}</strong></span></div>
+            <div className="crm-stat-tile rounded-lg bg-gray-50 p-3"><span className="crm-metric-icon" data-tint={commercialInsights.hygieneIssueCount ? 'rose' : 'green'}><CheckCircle2 size={14} /></span><span><p className="text-[0.65rem] font-bold uppercase text-gray-500">Saúde do CRM</p><strong className={`mt-0.5 block text-xl ${commercialInsights.hygieneIssueCount ? 'text-amber-700' : 'text-emerald-700'}`}>{commercialInsights.hygieneIssueCount}</strong></span></div>
           </div>
           {commercialInsights.hygieneIssues.length ? <div><h3 className="text-sm font-black text-gray-950">Diagnóstico automático</h3><div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{commercialInsights.hygieneIssues.map((issue) => <div key={issue.id} className="rounded-lg bg-gray-50 px-3 py-2"><strong className="text-base text-gray-950">{issue.count}</strong><p className="text-xs text-gray-500">{issue.label}</p></div>)}</div></div> : null}
           {commercialInsights.outreach.attempts ? <div><h3 className="text-sm font-black text-gray-950">Desempenho das abordagens</h3><div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -343,9 +346,9 @@ export function CrmPage({
         </div>
       </details>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+      <section className="crm-toolbar rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="inline-flex w-full rounded-lg bg-gray-100 p-1 sm:w-auto">
+          <div className="crm-toolbar-tabs inline-flex w-full rounded-lg bg-gray-100 p-1 sm:w-auto">
             {([
               ['kanban', 'Quadro', LayoutGrid],
               ['table', 'Lista', Table2],
@@ -736,7 +739,7 @@ function CrmTable({ leads, state, onOpen, onEdit, onDelete, onLose, onAttachRece
           <thead><tr><th>Contato</th><th>Etapa</th><th>Serviço</th><th>Valor</th><th>Próxima ação</th><th>Ações</th></tr></thead>
           <tbody>{leads.map((lead) => {
             return <tr key={lead.id} className="cursor-pointer" onClick={() => onOpen(lead)}>
-              <td data-label="Contato"><strong>{displayName(lead)}</strong><p className="text-xs text-gray-500">{lead.phone || lead.email || lead.city}</p></td>
+              <td data-label="Contato"><div className="flex items-center gap-3"><span className="avatar-chip h-8 w-8 shrink-0 text-[0.6rem]" data-tint={avatarTint(lead.id)}>{initials(displayName(lead))}</span><div className="min-w-0"><strong className="block truncate">{displayName(lead)}</strong><p className="truncate text-xs text-gray-500">{lead.phone || lead.email || lead.city}</p></div></div></td>
               <td data-label="Etapa"><StatusBadge>{lead.pipelineStage}</StatusBadge></td>
               <td data-label="Serviço">{lead.serviceInterest}</td><td data-label="Valor">{formatCurrency(lead.estimatedValue)}</td>
               <td data-label="Próxima ação">{lead.nextContactAt ? formatDateTime(lead.nextContactAt) : 'Não definida'}</td>
@@ -785,9 +788,12 @@ function LostOpportunities({
         {leads.map((lead) => (
           <article key={lead.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3>
-                <p className="mt-1 text-xs text-gray-500">{lead.city || lead.phone || lead.email || 'Sem detalhes adicionais'}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="avatar-chip h-9 w-9 shrink-0 text-xs" data-tint={avatarTint(lead.id)}>{initials(displayName(lead))}</span>
+                <div className="min-w-0">
+                  <h3 className="truncate font-black text-gray-950">{displayName(lead)}</h3>
+                  <p className="mt-1 text-xs text-gray-500">{lead.city || lead.phone || lead.email || 'Sem detalhes adicionais'}</p>
+                </div>
               </div>
               <Ban className="shrink-0 text-amber-700" size={18} />
             </div>
