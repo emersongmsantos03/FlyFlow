@@ -37,6 +37,7 @@ import { buildGoogleBusinessUrl, buildInstagramUrl, leadOpportunitySummary } fro
 import { buildCommercialActionQueue, buildCommercialInsights } from '../../services/commercial/CommercialPriorityService'
 import { averageOpportunityAge, opportunityHealth, stageProbability, weightedPipelineValue } from '../../lib/crmIntelligence'
 import { downloadUrl, getBrowserSafeFileUrl, getFilePreviewMode, openUrlInNewTab, type FilePreviewMode } from '../../lib/files'
+import { buildContextualWhatsAppMessage, whatsappContexts, type WhatsAppContext } from '../../lib/whatsappMessages'
 import type { AppState, Lead, Payment, PipelineStage, Project, Quote, TaskItem } from '../../types'
 import { Button, Modal, Select, StatusBadge } from '../ui'
 
@@ -76,52 +77,6 @@ const columns: Array<{
 
 const displayName = (lead: Lead) => lead.companyName?.trim() || lead.fullName?.trim() || 'Contato sem nome'
 
-const buildPriorityWhatsAppMessage = (lead: Lead) => {
-  const data = lead.leadHunterData
-  const company = displayName(lead)
-  const contactName = data?.contactName?.trim()
-  const greeting = contactName && contactName.toLocaleLowerCase('pt-BR') !== company.toLocaleLowerCase('pt-BR')
-    ? `Olá, ${contactName.split(/\s+/)[0]}! Tudo bem?`
-    : 'Olá! Tudo bem?'
-
-  return [
-    greeting,
-    'Sou o Emerson, da Hero Drone. Produzimos fotos, vídeos e imagens aéreas para mostrar espaços de uma forma mais marcante e profissional.',
-    `Conheci a ${company} e achei que o ambiente de vocês tem muito potencial para um conteúdo visual especial.`,
-    'Posso compartilhar a ideia que tive?',
-  ].join(' ')
-}
-
-const whatsappContexts = [
-  'Primeiro contato',
-  'Acompanhamento',
-  'Sem resposta',
-  'Interesse demonstrado',
-  'Enviar portfólio',
-  'Enviar proposta',
-  'Retomada',
-] as const
-type WhatsAppContext = (typeof whatsappContexts)[number]
-
-const buildContextualWhatsAppMessage = (lead: Lead, context: WhatsAppContext) => {
-  const firstMessage = buildPriorityWhatsAppMessage(lead)
-  const company = displayName(lead)
-  const contactName = lead.leadHunterData?.contactName?.trim()
-  const greeting = contactName && contactName.toLocaleLowerCase('pt-BR') !== company.toLocaleLowerCase('pt-BR')
-    ? `Olá, ${contactName.split(/\s+/)[0]}!`
-    : 'Olá! Tudo bem?'
-  const service = (lead.leadHunterData?.recommendedService || lead.serviceInterest || 'produção de imagens com drone').toLocaleLowerCase('pt-BR')
-  const messages: Record<WhatsAppContext, string> = {
-    'Primeiro contato': firstMessage,
-    'Acompanhamento': `${greeting} Aqui é o Emerson, da Hero Drone. Passando para saber se você conseguiu ver minha mensagem sobre uma ideia de ${service} para a ${company}. Se fizer sentido, te explico de forma bem rápida por aqui.`,
-    'Sem resposta': `${greeting} Prometo ser breve: se melhorar a apresentação visual da ${company} estiver nos planos, posso te enviar uma sugestão objetiva de ${service}. Caso não seja o momento, sem problema algum.`,
-    'Interesse demonstrado': `${greeting} Que bom que a ideia fez sentido! Para eu preparar uma sugestão realmente útil para a ${company}, posso te fazer duas perguntas rápidas sobre o espaço e o objetivo do material?`,
-    'Enviar portfólio': `${greeting} Separei algumas referências para você visualizar como um trabalho de ${service} pode valorizar a ${company}. Posso te enviar o portfólio e, se gostar da linha, preparo uma ideia específica para vocês.`,
-    'Enviar proposta': `${greeting} Preparei uma proposta para a ${company} considerando o trabalho de ${service} que conversamos. Posso te enviar por aqui? Se quiser, também explico rapidamente cada etapa.`,
-    'Retomada': `${greeting} Aqui é o Emerson, da Hero Drone. Retomando nosso contato sobre a ${company}: surgiu uma ideia de ${service} que pode funcionar muito bem para vocês. Ainda faz sentido conversarmos sobre isso?`,
-  }
-  return messages[context]
-}
 const displayDetail = (lead: Lead) => lead.fullName && lead.companyName ? lead.fullName : lead.city || lead.whatsapp || lead.phone || 'Sem detalhes'
 
 const newestQuote = (state: AppState, leadId: string) =>

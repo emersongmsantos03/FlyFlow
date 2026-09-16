@@ -125,6 +125,7 @@ import {
   getFilePreviewMode,
   openUrlInNewTab,
 } from './lib/files'
+import { buildPriorityWhatsAppMessage } from './lib/whatsappMessages'
 import { allPermissions, can, canOpenPage, permissionLabels, permissionSummary, rolePermissionPresets } from './lib/permissions'
 import {
   addCalendarDays,
@@ -968,9 +969,6 @@ const contactDisplayName = (contact: Pick<Lead | Client, 'fullName' | 'companyNa
   contact.instagram ||
   contact.city ||
   'Contato sem nome'
-
-const buildQuickWhatsAppMessage = (lead: Lead) =>
-  `Olá! Tudo bem? Aqui é o Emerson, da Hero Drone. Gostaria de conversar sobre ${lead.serviceInterest.toLocaleLowerCase('pt-BR')}.`
 
 const projectContactLabel = (state: AppState, project: Project) => {
   const contact = projectClient(state, project)
@@ -2325,7 +2323,7 @@ Hero Drone`
     setEmailComposer({
       lead,
       whatsappUrl: lead.whatsapp || lead.phone
-        ? `${whatsappLink(lead.whatsapp || lead.phone)}?text=${encodeURIComponent(buildQuickWhatsAppMessage(lead))}`
+        ? `${whatsappLink(lead.whatsapp || lead.phone)}?text=${encodeURIComponent(buildPriorityWhatsAppMessage(lead))}`
         : undefined,
       to: lead.email,
       displayName: repairTextEncoding(contactDisplayName(lead)),
@@ -6873,7 +6871,7 @@ Hero Drone`,
                   setToast('Este contato não possui WhatsApp informado.')
                   return
                 }
-                window.open(`${whatsappLink(phone)}?text=${encodeURIComponent(buildQuickWhatsAppMessage(lead))}`, '_blank', 'noopener,noreferrer')
+                window.open(`${whatsappLink(phone)}?text=${encodeURIComponent(buildPriorityWhatsAppMessage(lead))}`, '_blank', 'noopener,noreferrer')
               }}
               onCompleteTask={(taskId) => { const task = state.tasks.find((item) => item.id === taskId); if (task) setTaskStatus(task, 'Concluída') }}
             />

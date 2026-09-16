@@ -11480,7 +11480,12 @@ html[data-theme='dark'] .crm-pipeline-column[data-stage='future'] .crm-card-labe
 /* Opportunity detail — centered dialog instead of a side drawer sliding in
    from the right (the lateral panel read as visually disconnected from the
    board behind it). Keeps the same header/tabs/content markup, just
-   repositions and bounds the box like the rest of the app's modals. */
+   repositions and bounds the box like the rest of the app's modals.
+   Centered on the content area to the right of the sidebar (not the full
+   viewport) from 1024px up, where the sidebar is permanently docked —
+   .page-shell's own 19rem/20.5rem breakpoints below decide the offset;
+   under 1024px the sidebar collapses into the mobile drawer, so the dialog
+   centers on the full viewport there instead. */
 .crm-contact-drawer {
   position: fixed !important;
   inset: auto !important;
@@ -11495,6 +11500,22 @@ html[data-theme='dark'] .crm-pipeline-column[data-stage='future'] .crm-card-labe
   border: 1px solid var(--border) !important;
   border-radius: 1.35rem !important;
   box-shadow: 0 30px 80px rgb(0 0 0 / 0.3) !important;
+}
+
+@media (min-width: 1024px) {
+  .crm-contact-drawer {
+    left: calc(50% + 9.5rem) !important;
+    width: min(52rem, 94vw, calc(100vw - 19rem - 3rem)) !important;
+    max-width: min(52rem, calc(100vw - 19rem - 3rem)) !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  .crm-contact-drawer {
+    left: calc(50% + 10.25rem) !important;
+    width: min(52rem, 94vw, calc(100vw - 20.5rem - 3rem)) !important;
+    max-width: min(52rem, calc(100vw - 20.5rem - 3rem)) !important;
+  }
 }
 
 .crm-contact-drawer > header {
