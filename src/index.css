@@ -10825,7 +10825,7 @@ html[data-theme='dark'] .finance-page .finance-tabs .app-button-primary { backgr
   justify-content: space-between;
   gap: 2.5rem;
   padding: clamp(2rem, 4vw, 3.5rem);
-  background: linear-gradient(160deg, #eecb74 0%, #c9a227 42%, #8a6510 78%, #55420c 100%);
+  background: linear-gradient(160deg, #22262b 0%, #1d2125 55%, #17191c 100%);
   color: #fff;
 }
 
@@ -10835,8 +10835,8 @@ html[data-theme='dark'] .finance-page .finance-tabs .app-button-primary { backgr
   pointer-events: none;
 }
 
-.auth-hero-glow-a { right: -12rem; top: -14rem; width: 32rem; height: 32rem; background: radial-gradient(circle, rgb(255 255 255 / 0.16), transparent 70%); }
-.auth-hero-glow-b { left: -8rem; bottom: -12rem; width: 26rem; height: 26rem; background: radial-gradient(circle, rgb(255 255 255 / 0.1), transparent 70%); }
+.auth-hero-glow-a { right: -12rem; top: -14rem; width: 32rem; height: 32rem; background: radial-gradient(circle, rgb(217 165 33 / 0.16), transparent 70%); }
+.auth-hero-glow-b { left: -8rem; bottom: -12rem; width: 26rem; height: 26rem; background: radial-gradient(circle, rgb(12 102 228 / 0.14), transparent 70%); }
 
 .auth-hero-brand {
   position: relative;
