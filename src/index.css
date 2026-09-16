@@ -7691,6 +7691,33 @@ html[data-theme='dark'] .modal-surface:has(.appointment-form) .modal-header,
 html[data-theme='dark'] .appointment-form__actions { background: #151a16 !important; }
 html[data-theme='dark'] .appointment-form__section { border-color: #292f2a; }
 
+html[data-theme='dark'] .appointment-form .field-label { color: #9aa39b !important; }
+html[data-theme='dark'] .appointment-form .field-input {
+  border-color: #33392f !important;
+  background: #1c211b !important;
+  color: #eef1ea !important;
+  box-shadow: none !important;
+}
+html[data-theme='dark'] .appointment-form .field-input:hover { border-color: #454c40 !important; background: #20261f !important; }
+html[data-theme='dark'] .appointment-form .field-input:focus { border-color: #d7b33f !important; background: #20261f !important; box-shadow: 0 0 0 2px rgb(215 179 63 / 0.18) !important; }
+html[data-theme='dark'] .appointment-form .field-input::placeholder { color: #6f7669 !important; }
+
+html[data-theme='dark'] .appointment-form__duration { background: #20261f !important; color: #eef1ea !important; }
+html[data-theme='dark'] .appointment-form__duration small { color: #9aa39b !important; }
+
+html[data-theme='dark'] .appointment-duration-presets > button {
+  border-color: #33392f !important;
+  background: #1c211b !important;
+  color: #cfd6c9 !important;
+}
+html[data-theme='dark'] .appointment-duration-presets > button:hover,
+html[data-theme='dark'] .appointment-duration-presets > button.is-active {
+  border-color: transparent !important;
+  background: #2a2338 !important;
+  color: #b199e0 !important;
+}
+html[data-theme='dark'] .appointment-duration-presets > small { color: #6f7669 !important; }
+
 /* Selected event colors remain meaningful without making the calendar noisy. */
 .calendar-event-block,
 .calendar-event-block.is-task {
@@ -10567,3 +10594,146 @@ html[data-theme='dark'] .app-button-primary {
 .modal-surface {
   border-radius: 1.3rem !important;
 }
+
+/* ============================================================================
+   Dark-mode gap fixes — several component clusters had hardcoded light
+   backgrounds/text colors from before the dark theme existed, and were
+   missed by the later per-page dark-mode passes (found via a full audit of
+   src/index.css). Fixed here as one more authoritative layer rather than
+   hand-editing each historic rule in place.
+   ============================================================================ */
+
+/* Users & access management page + "Novo usuário" modal */
+html[data-theme='dark'] .users-summary-strip { background: #171a17 !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .users-summary-strip > div { border-right-color: #232821 !important; }
+html[data-theme='dark'] .users-summary-strip > div > span { background: #20261f !important; color: #b8beb4 !important; }
+html[data-theme='dark'] .users-summary-strip > div.is-pending > span { background: #332a13 !important; color: #e8c65a !important; }
+html[data-theme='dark'] .users-summary-strip p { color: #858d82 !important; }
+html[data-theme='dark'] .users-summary-strip strong { color: #f0f2ed !important; }
+html[data-theme='dark'] .users-summary-strip small { color: #9aa39b !important; }
+
+html[data-theme='dark'] .users-directory { background: #171a17 !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .users-directory > header { background: #1b1f1b !important; border-color: #232821 !important; }
+html[data-theme='dark'] .users-directory > header h2 { color: #f0f2ed !important; }
+html[data-theme='dark'] .users-directory > header > small { background: #232821 !important; color: #9aa39b !important; }
+html[data-theme='dark'] .users-directory .data-table th { background: #171a17 !important; }
+html[data-theme='dark'] .users-identity strong { color: #f0f2ed !important; }
+html[data-theme='dark'] .users-identity small { color: #9aa39b !important; }
+html[data-theme='dark'] .users-awaiting-login { color: #9aa39b !important; }
+
+html[data-theme='dark'] .users-permission-grid > div { background: #1b1f1b !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .users-permission-grid > div > span { background: #332a13 !important; color: #e8c65a !important; }
+html[data-theme='dark'] .users-permission-grid strong { color: #f0f2ed !important; }
+html[data-theme='dark'] .users-permission-grid small { color: #9aa39b !important; }
+
+html[data-theme='dark'] .modal-surface:has(.user-create-form) { background: #171a17 !important; }
+html[data-theme='dark'] .user-create-error { background: #331f28 !important; border-color: #4a2530 !important; color: #f0a0b0 !important; }
+html[data-theme='dark'] .user-create-section { background: #1b1f1b !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .user-create-section > header { background: #1b1f1b !important; border-color: #232821 !important; }
+html[data-theme='dark'] .user-create-section > header strong { color: #f0f2ed !important; }
+html[data-theme='dark'] .user-create-section > header small { color: #9aa39b !important; }
+html[data-theme='dark'] .user-password-hint { background: #16301f !important; color: #a9c9b3 !important; }
+html[data-theme='dark'] .user-permission-selector label { background: #1b1f1b !important; border-color: #2c2b27 !important; color: #c9c5b8 !important; }
+html[data-theme='dark'] .user-permission-selector label:hover { border-color: #4a3f1f !important; background: #232821 !important; }
+html[data-theme='dark'] .user-permission-selector label.is-selected { border-color: #7a5f12 !important; background: #332a13 !important; color: #f0f2ed !important; }
+html[data-theme='dark'] .user-permission-selector label > span { background: #232821 !important; color: #9aa39b !important; }
+html[data-theme='dark'] .user-create-actions { background: rgb(23 26 23 / 0.95) !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .user-create-actions > div:first-child { color: #9aa39b !important; }
+
+/* Profile / my-account page */
+html[data-theme='dark'] .profile-photo-card { background: linear-gradient(110deg, #1a1917, #1e1c18) !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .profile-photo-card strong { color: #f0f2ed !important; }
+html[data-theme='dark'] .profile-photo-card p { color: #9aa39b !important; }
+html[data-theme='dark'] .profile-photo-card label,
+html[data-theme='dark'] .profile-photo-card button { background: #1b1f1b !important; border-color: #2c2b27 !important; color: #dcdfd9 !important; }
+html[data-theme='dark'] .profile-photo-card label:hover,
+html[data-theme='dark'] .profile-photo-card button:hover { background: #232821 !important; border-color: #4a3f1f !important; }
+
+html[data-theme='dark'] .profile-panel,
+html[data-theme='dark'] .profile-security { background: #171a17 !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .profile-panel > header,
+html[data-theme='dark'] .profile-security > header { background: linear-gradient(180deg, #1a1917, #171a17) !important; border-color: #232821 !important; }
+html[data-theme='dark'] .profile-panel header p,
+html[data-theme='dark'] .profile-security header p { color: #9aa39b !important; }
+html[data-theme='dark'] .profile-field-full > small { color: #6f7669 !important; }
+html[data-theme='dark'] .profile-security-note { background: #16301f !important; border-color: #1f4a2f !important; color: #a9c9b3 !important; }
+html[data-theme='dark'] .profile-security-note span { color: #8fb69c !important; }
+html[data-theme='dark'] .profile-feedback.is-error { background: #331f28 !important; border-color: #4a2530 !important; color: #f0a0b0 !important; }
+html[data-theme='dark'] .profile-feedback.is-success { background: #16301f !important; border-color: #1f4a2f !important; color: #8fd6a8 !important; }
+html[data-theme='dark'] .profile-mobile-save { background: rgb(23 26 23 / 0.9) !important; border-color: #2c2b27 !important; }
+
+/* Header account dropdown */
+html[data-theme='dark'] .app-account-trigger { background: #171a17 !important; border-color: #2c2b27 !important; color: #f0f2ed !important; }
+html[data-theme='dark'] .app-account-trigger:hover,
+html[data-theme='dark'] .app-account-trigger[aria-expanded='true'] { background: #1b1f1b !important; border-color: #4a3f1f !important; }
+html[data-theme='dark'] .app-account-trigger small { color: #9aa39b !important; }
+html[data-theme='dark'] .app-account-trigger > svg { color: #858d82 !important; }
+html[data-theme='dark'] .app-account-popover { background: #171a17 !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .app-account-popover > button { background: #171a17 !important; border-color: #232821 !important; color: #dcdfd9 !important; }
+html[data-theme='dark'] .app-account-popover > button:hover { background: #1b1f1b !important; }
+html[data-theme='dark'] .app-account-popover > button small { color: #9aa39b !important; }
+
+/* Quick task composer (next to the appointment/agenda modal) */
+html[data-theme='dark'] .task-quick-error { background: #332a13 !important; border-color: #4a3f1f !important; color: #e8c65a !important; }
+html[data-theme='dark'] .task-completion-toggle small { color: #9aa39b !important; }
+html[data-theme='dark'] .task-section-label { color: #9aa39b !important; }
+html[data-theme='dark'] .task-optional-details > summary { color: #cfd6c9 !important; }
+html[data-theme='dark'] .task-optional-details > summary span { color: #858d82 !important; }
+html[data-theme='dark'] .task-optional-details[open] > summary { border-color: #2c2b27 !important; }
+html[data-theme='dark'] .task-type-chips button,
+html[data-theme='dark'] .task-duration-chips button { background: #1b1f1b !important; border-color: #2c2b27 !important; color: #cfd6c9 !important; }
+html[data-theme='dark'] .task-type-chips button:hover,
+html[data-theme='dark'] .task-type-chips button.is-active,
+html[data-theme='dark'] .task-duration-chips button:hover,
+html[data-theme='dark'] .task-duration-chips button.is-active { border-color: transparent !important; background: #2a2338 !important; color: #b199e0 !important; }
+html[data-theme='dark'] .task-contact-picker { background: #1b1f1b !important; border-color: #2c2b27 !important; }
+html[data-theme='dark'] .task-contact-picker > summary { color: #cfd6c9 !important; }
+html[data-theme='dark'] .task-contact-picker > div { border-color: #2c2b27 !important; }
+html[data-theme='dark'] .task-contact-picker label:hover { background: #232821 !important; }
+html[data-theme='dark'] .task-contact-picker strong { color: #eef1ea !important; }
+html[data-theme='dark'] .task-contact-picker small { color: #858d82 !important; }
+html[data-theme='dark'] .task-calendar-sync i { background: #232821 !important; color: #cfd6c9 !important; }
+html[data-theme='dark'] .task-calendar-sync.is-active { border-color: #1f4a2f !important; background: #16301f !important; color: #8fd6a8 !important; }
+html[data-theme='dark'] .task-calendar-sync.is-active i { background: #1f4a2f !important; color: #8fd6a8 !important; }
+html[data-theme='dark'] .task-quick-actions { background: rgb(23 26 23 / 0.96) !important; border-color: #2c2b27 !important; }
+
+/* Appointment form — calendar-sync toggle */
+html[data-theme='dark'] .appointment-form__calendar-sync { background: #1c211b !important; border-color: #33392f !important; }
+html[data-theme='dark'] .appointment-form__calendar-sync > span { background: #232821 !important; color: #cfd6c9 !important; }
+html[data-theme='dark'] .appointment-form__calendar-sync strong { color: #eef1ea !important; }
+html[data-theme='dark'] .appointment-form__calendar-sync small { color: #9aa39b !important; }
+html[data-theme='dark'] .appointment-form__calendar-sync i { background: #232821 !important; color: #cfd6c9 !important; }
+html[data-theme='dark'] .appointment-form__calendar-sync.is-active { border-color: #1f4a2f !important; background: #16301f !important; }
+html[data-theme='dark'] .appointment-form__calendar-sync.is-active > span { background: #2f7a52 !important; color: #fff !important; }
+html[data-theme='dark'] .appointment-form__calendar-sync.is-active i { background: #1f4a2f !important; color: #8fd6a8 !important; }
+
+/* Agenda summary strip — metric icon chips */
+html[data-theme='dark'] .agenda-summary-strip > div:nth-child(2) .agenda-metric-icon { background: var(--ff-blue-soft) !important; color: var(--ff-blue-strong) !important; }
+html[data-theme='dark'] .agenda-summary-strip > div:nth-child(3) .agenda-metric-icon { background: var(--ff-green-soft) !important; color: var(--ff-green-strong) !important; }
+html[data-theme='dark'] .agenda-summary-strip > div:nth-child(4) .agenda-metric-icon { background: var(--ff-lavender-soft) !important; color: var(--ff-lavender-strong) !important; }
+html[data-theme='dark'] .agenda-summary-strip .is-warning .agenda-metric-icon,
+html[data-theme='dark'] .agenda-summary-strip .is-attention .agenda-metric-icon { background: var(--ff-peach-soft) !important; color: var(--ff-peach-strong) !important; }
+html[data-theme='dark'] .agenda-summary-strip > div.is-clickable:hover { background: #1b1f1b !important; }
+
+/* Inbox — attachment note, signature upload status, correspondent text */
+html[data-theme='dark'] .inbox-attachment-note { background: #1b1f1b !important; border-color: #2c2b27 !important; color: #9aa39b !important; }
+html[data-theme='dark'] .signature-upload-status.is-loading { border-color: #4a3f1f !important; background: #332a13 !important; color: #e8c65a !important; }
+html[data-theme='dark'] .signature-upload-status.is-success { border-color: #1f4a2f !important; background: #16301f !important; color: #8fd6a8 !important; }
+html[data-theme='dark'] .signature-upload-status.is-error { border-color: #4a2530 !important; background: #331f28 !important; color: #f0a0b0 !important; }
+html[data-theme='dark'] .inbox-page .inbox-correspondent strong { color: #eef1ea !important; }
+html[data-theme='dark'] .inbox-page .inbox-correspondent small,
+html[data-theme='dark'] .inbox-page .inbox-correspondent time { color: #9aa39b !important; }
+html[data-theme='dark'] .inbox-page .inbox-reader-subject h2 { color: #eef1ea !important; }
+html[data-theme='dark'] .inbox-page .inbox-reader-actions > span { background: #232821 !important; color: #cfd6c9 !important; }
+html[data-theme='dark'] .inbox-page .inbox-message-body { color: #dcdfd9 !important; }
+
+/* Overview family (Dashboard/Finance/Reports) — missed hover states */
+html[data-theme='dark'] .overview-page .page-toolbar-actions .app-button:hover,
+html[data-theme='dark'] .dashboard-page .dashboard-command-actions .app-button:hover { background: #1b1f1b !important; }
+html[data-theme='dark'] .dashboard-page .dashboard-task,
+html[data-theme='dark'] .dashboard-page .dashboard-list-card,
+html[data-theme='dark'] .dashboard-page .dashboard-notification { background: #1b1f1b !important; }
+html[data-theme='dark'] .dashboard-page .dashboard-task:hover,
+html[data-theme='dark'] .dashboard-page .dashboard-list-card:hover,
+html[data-theme='dark'] .dashboard-page .dashboard-notification:hover { background: #20261f !important; }
+html[data-theme='dark'] .finance-page .finance-tabs .app-button-primary { background: #171a17 !important; }
