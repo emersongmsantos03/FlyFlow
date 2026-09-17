@@ -681,17 +681,17 @@ const proposalPackages: Array<{
 
 type NavigationGroup = 'Visão geral' | 'Relacionamento' | 'Operação' | 'Gestão'
 type NavTint = 'gold' | 'peach' | 'lavender' | 'rose' | 'blue' | 'green' | 'amber'
+// Lead Hunter, Propostas e Equipamentos ficam fora do menu enquanto o negócio é
+// redefinido (saindo do serviço de drone); as páginas e os dados continuam
+// intactos para reativação futura.
 const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard; group: NavigationGroup; tint: NavTint }> = [
   { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Visão geral', tint: 'gold' },
   { page: 'leads', label: 'Comercial', icon: Handshake, group: 'Relacionamento', tint: 'peach' },
   { page: 'clients', label: 'Contatos', icon: ContactRound, group: 'Relacionamento', tint: 'lavender' },
-  { page: 'leadHunter', label: 'Lead Hunter', icon: Search, group: 'Relacionamento', tint: 'rose' },
   { page: 'inbox', label: 'Inbox', icon: Mail, group: 'Relacionamento', tint: 'blue' },
   { page: 'projects', label: 'Projetos', icon: Briefcase, group: 'Operação', tint: 'green' },
   { page: 'internalProjects', label: 'Projetos internos', icon: Wand2, group: 'Operação', tint: 'peach' },
   { page: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'Operação', tint: 'blue' },
-  { page: 'quotes', label: 'Propostas', icon: FileText, group: 'Operação', tint: 'rose' },
-  { page: 'equipment', label: 'Equipamentos', icon: PackageCheck, group: 'Operação', tint: 'amber' },
   { page: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Gestão', tint: 'green' },
   { page: 'reports', label: 'Relatórios', icon: BarChart3, group: 'Gestão', tint: 'blue' },
   { page: 'settings', label: 'Configurações', icon: Settings, group: 'Gestão', tint: 'lavender' },
@@ -5707,6 +5707,32 @@ ${companyName}`,
 
   const deleteLead = (lead: Lead) => deleteConnectedContact({ lead })
 
+  const clearAllRecords = (section: 'clients' | 'companies', label: string, count: number) => {
+    if (!count) {
+      setToast(`Não há ${label} cadastrados.`)
+      return
+    }
+    requestInput({
+      title: `Excluir todos os ${label}?`,
+      description: `Isso apaga permanentemente ${count} registro(s) de ${label} do banco de dados, sem backup. A ação não pode ser desfeita. Para confirmar, digite EXCLUIR.`,
+      label: 'Digite EXCLUIR para confirmar',
+      inputType: 'text',
+      required: true,
+      confirmLabel: 'Excluir tudo',
+      tone: 'danger',
+      onSubmit: (value) => {
+        if (value.trim().toUpperCase() !== 'EXCLUIR') {
+          setToast('Confirmação incorreta. Nada foi excluído.')
+          return
+        }
+        updateState((current) => ({ ...current, [section]: [] }), `Todos os ${label} foram excluídos permanentemente.`)
+      },
+    })
+  }
+
+  const clearAllContacts = () => clearAllRecords('clients', 'contatos', state.clients.length)
+  const clearAllCompanies = () => clearAllRecords('companies', 'empresas', state.companies.length)
+
   const closeLeadDeal = (values: CloseDealFormValues) => {
     const lead = state.leads.find((item) => item.id === values.leadId)
     if (!lead) {
@@ -7732,7 +7758,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
               regime={regime}
             />
           ) : null}
-          {page === 'settings' ? <SettingsPage state={state} onSubmit={updateSettings} /> : null}
+          {page === 'settings' ? <SettingsPage state={state} onSubmit={updateSettings} onClearContacts={clearAllContacts} onClearCompanies={clearAllCompanies} /> : null}
           {page === 'profile' ? (
             <ProfilePage
               user={currentUser}
@@ -11829,7 +11855,7 @@ function InboxPage({
   )
 }
 
-function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values: SettingsFormValues) => Promise<void> | void }) {
+function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { state: AppState; onSubmit: (values: SettingsFormValues) => Promise<void> | void; onClearContacts: () => void; onClearCompanies: () => void }) {
   const {
     register,
     handleSubmit,
@@ -11926,6 +11952,7 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
         <a href="#settings-google">Integrações</a>
         <a href="#settings-billing">Cobrança</a>
         <a href="#settings-travel">Deslocamento</a>
+        <a href="#settings-danger">Zona de risco</a>
       </nav>
       <form className="grid gap-4 xl:grid-cols-[1fr_0.72fr]" onSubmit={handleSubmit(saveSettings, reportInvalidSettings)}>
         <div className="space-y-4">
@@ -12121,6 +12148,21 @@ function SettingsPage({ state, onSubmit }: { state: AppState; onSubmit: (values:
           <Button className="w-full" disabled={savingSettings} type="submit">{savingSettings ? 'Salvando...' : 'Salvar configurações'}</Button>
         </div>
       </form>
+      <Panel id="settings-danger" title="Zona de risco" className="border-red-200">
+        <p className="text-xs text-gray-500">Ações permanentes e irreversíveis, sem backup. Use apenas ao reiniciar a base do zero.</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-red-200 bg-red-50/60 p-4">
+            <p className="text-sm font-bold text-gray-950">Excluir todos os contatos</p>
+            <p className="mt-1 text-xs text-gray-500">Remove permanentemente {state.clients.length} contato(s) de Contatos.</p>
+            <Button className="mt-3" variant="danger" type="button" onClick={onClearContacts}><Trash2 size={15} /> Excluir contatos</Button>
+          </div>
+          <div className="rounded-lg border border-red-200 bg-red-50/60 p-4">
+            <p className="text-sm font-bold text-gray-950">Excluir todas as empresas</p>
+            <p className="mt-1 text-xs text-gray-500">Remove permanentemente {state.companies.length} empresa(s) de Contatos.</p>
+            <Button className="mt-3" variant="danger" type="button" onClick={onClearCompanies}><Trash2 size={15} /> Excluir empresas</Button>
+          </div>
+        </div>
+      </Panel>
     </div>
   )
 }

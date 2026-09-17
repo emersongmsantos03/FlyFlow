@@ -9729,7 +9729,7 @@ html[data-theme='dark'] .projects-page div.border-dashed {
 }
 
 .internal-project-grid {
-  grid-template-columns: minmax(16rem, 1.6fr) 8.5rem 9rem 8rem 12rem 9rem 7rem;
+  grid-template-columns: minmax(16rem, 1.6fr) 8.5rem 9rem 8rem 12rem 9rem 10.5rem;
 }
 
 .internal-project-table .customer-project-group-title {
@@ -9770,6 +9770,18 @@ html[data-theme='dark'] .projects-page div.border-dashed {
   padding: 0;
 }
 
+.internal-project-table .internal-project-delete-action:hover {
+  border-color: #fecaca !important;
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+}
+
+html[data-theme='dark'] .internal-project-table .internal-project-delete-action:hover {
+  border-color: #7f1d1d !important;
+  background: rgb(127 29 29 / .35) !important;
+  color: #fca5a5 !important;
+}
+
 html[data-theme='dark'] .internal-project-table .internal-project-status-cell .internal-project-board-select {
   border-color: #435047 !important;
   background: #263029 !important;
@@ -9792,7 +9804,7 @@ html[data-theme='dark'] .internal-project-table .progress-cell > div {
   }
 
   .internal-project-grid {
-    grid-template-columns: minmax(15rem, 1.5fr) 7.5rem 8rem 7.5rem 11rem 8rem 6.5rem;
+    grid-template-columns: minmax(15rem, 1.5fr) 7.5rem 8rem 7.5rem 11rem 8rem 9.5rem;
   }
 }
 

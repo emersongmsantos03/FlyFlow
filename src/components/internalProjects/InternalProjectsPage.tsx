@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArchiveRestore,
   ArrowUpDown,
   CalendarDays,
   CheckCircle2,
@@ -365,7 +366,12 @@ export function InternalProjectsPage({
                             <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full" style={{ width: `${checklist.progress}%`, backgroundColor: color }} /></div>
                             <small>{checklist.completed}/{checklist.total} · {checklist.progress}%</small>
                           </div>
-                          <div className="customer-project-cell customer-project-actions"><button type="button" onClick={() => setEditing({ ...project })}>Abrir</button><button className="internal-project-edit-action focus-ring" type="button" onClick={() => setEditing({ ...project })} aria-label={`Editar ${project.name}`}><Pencil size={15} /></button></div>
+                          <div className="customer-project-cell customer-project-actions">
+                            <button type="button" onClick={() => setEditing({ ...project })}>Abrir</button>
+                            <button className="internal-project-edit-action focus-ring" type="button" onClick={() => setEditing({ ...project })} aria-label={`Editar ${project.name}`} title="Editar"><Pencil size={15} /></button>
+                            <button className="internal-project-edit-action focus-ring" type="button" onClick={() => patch(project.id, { archivedAt: project.archivedAt ? undefined : new Date().toISOString() }, project.archivedAt ? 'Projeto restaurado.' : 'Projeto arquivado.')} aria-label={project.archivedAt ? `Restaurar ${project.name}` : `Arquivar ${project.name}`} title={project.archivedAt ? 'Restaurar' : 'Arquivar'}>{project.archivedAt ? <ArchiveRestore size={15} /> : <Archive size={15} />}</button>
+                            <button className="internal-project-edit-action internal-project-delete-action focus-ring" type="button" onClick={() => remove(project.id)} aria-label={`Excluir ${project.name}`} title="Excluir"><Trash2 size={15} /></button>
+                          </div>
                         </div>
                       )
                     })}
