@@ -308,6 +308,10 @@ export const sendGoogleWorkspaceEmail = async (input: {
   htmlBody?: string
   signatureImageUrl?: string
   attachments?: GoogleEmailAttachment[]
+  /** Conta que envia. Sem valor, vale o e-mail de domínio quando ele estiver conectado. */
+  via?: 'gmail' | 'domain'
+  /** Resposta: mantém a conversa agrupada no Gmail e no cliente de quem recebe. */
+  reply?: { threadId?: string; messageId?: string; references?: string }
 }) => {
   const recipients = [...new Set(input.to.map((email) => email.trim()).filter(Boolean))]
   if (!recipients.length) throw new Error('Informe pelo menos um destinatário.')
@@ -379,6 +383,7 @@ export const sendGoogleWorkspaceEmail = async (input: {
   const raw = [
     `To: ${recipients.join(', ')}`,
     `Subject: ${encodeMimeHeader(input.subject)}`,
+    ...(input.reply?.messageId ? [`In-Reply-To: ${input.reply.messageId}`, `References: ${[input.reply.references, input.reply.messageId].filter(Boolean).join(' ')}`] : []),
     'MIME-Version: 1.0',
     ...(attachments.length
       ? [
@@ -397,7 +402,8 @@ export const sendGoogleWorkspaceEmail = async (input: {
         ? [`Content-Type: multipart/related; boundary="${relatedBoundary}"`, '', relatedBody]
       : [`Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`, '', bodyParts]),
   ].join('\r\n')
-  if (getDomainMailConnection().connected) {
+  const useDomain = input.via ? input.via === 'domain' : getDomainMailConnection().connected
+  if (useDomain) {
     return domainMailRequest<{ id: string; threadId: string; warning?: string }>('/send', {
       method: 'POST', body: JSON.stringify({ to: recipients, raw: bytesToBase64(new TextEncoder().encode(raw)) }),
     })
@@ -408,7 +414,7 @@ export const sendGoogleWorkspaceEmail = async (input: {
       Authorization: `Bearer ${await requireToken()}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ raw: encodeBase64Url(raw) }),
+    body: JSON.stringify({ raw: encodeBase64Url(raw), ...(input.reply?.threadId ? { threadId: input.reply.threadId } : {}) }),
   })
   if (!response.ok) {
     const failure = await response.json().catch(() => null) as {
@@ -540,8 +546,10 @@ export const listGoogleWorkspaceEmails = async (input: {
   box: 'inbox' | 'sent'
   query?: string
   maxResults?: number
+  /** Sem valor, usa o e-mail de domínio quando ele estiver conectado. */
+  account?: 'gmail' | 'domain'
 }) => {
-  if (getDomainMailConnection().connected) return domainMailRequest<GoogleMailboxMessage[]>(`/messages?box=${input.box}&limit=${input.maxResults || 30}`)
+  if (input.account ? input.account === 'domain' : getDomainMailConnection().connected) return domainMailRequest<GoogleMailboxMessage[]>(`/messages?box=${input.box}&limit=${input.maxResults || 30}`)
   const params = new URLSearchParams({
     maxResults: String(Math.min(Math.max(input.maxResults || 30, 1), 50)),
     ...(input.query?.trim() ? { q: input.query.trim() } : {}),
@@ -555,4 +563,20 @@ export const listGoogleWorkspaceEmails = async (input: {
   const messages = await mapWithConcurrency(list.messages || [], 3, async ({ id }) =>
     mapGmailMessage(await fetchGmailMessage(id)))
   return messages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+}
+
+/** Chamada de leitura à Gmail API com a autorização renovada pelo backend. */
+export const gmailApi = async <T,>(path: string): Promise<T> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+      headers: { Authorization: `Bearer ${await requireToken()}` },
+    })
+    if (response.ok) return response.json() as Promise<T>
+    if (response.status === 401) throw new Error('A autorização do Gmail expirou. Conecte o Gmail novamente.')
+    if (response.status === 403) throw new Error('O Google não liberou a leitura do Gmail. Conecte o Gmail novamente e aceite todas as permissões.')
+    if (response.status !== 429 && response.status < 500) throw new Error(`O Gmail recusou a leitura (${response.status}).`)
+    if (attempt === 2) throw new Error('O Gmail está lento agora. Tente atualizar em instantes.')
+    await wait(700 * (attempt + 1))
+  }
+  throw new Error('Não foi possível ler o Gmail.')
 }

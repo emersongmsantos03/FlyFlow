@@ -3,7 +3,9 @@ import { AgendaQuickTasks } from './components/AgendaQuickTasks'
 import { EventPeek, MiniMonth, QuickCreatePopover, type AnchorRect } from './components/agenda/AgendaParts'
 import { MailAccountSettings } from './components/MailAccountSettings'
 import { refreshDomainMail } from './services/domainMail'
+import { InboxPage } from './components/inbox/InboxPage'
 import { getEmailConnection } from './services/googleWorkspace'
+import { MAIL_STATE_EVENT, notifiedMailIds, readMailIds } from './services/gmailInbox'
 import {
   AlertTriangle,
   Archive,
@@ -27,7 +29,6 @@ import {
   Copy,
   DollarSign,
   Download,
-  ExternalLink,
   Eye,
   EyeOff,
   FileText,
@@ -243,7 +244,6 @@ import {
   sendGoogleWorkspaceEmail,
   setGoogleWorkspaceEmailSignature,
   uploadGoogleWorkspaceEmailSignature,
-  type GoogleMailboxMessage,
 } from './services/googleWorkspace'
 import { isSupabaseConfigured, supabase } from './services/supabase'
 import {
@@ -414,6 +414,9 @@ interface InputDialogState {
 }
 
 interface EmailComposerState {
+  /** Conta que envia; vem do Inbox quando é uma resposta. */
+  via?: 'gmail' | 'domain'
+  reply?: { threadId?: string; messageId?: string; references?: string }
   lead?: Lead
   whatsappUrl?: string
   quote?: Quote
@@ -1316,10 +1319,12 @@ function App() {
   const [inputDialog, setInputDialog] = useState<InputDialogState | null>(null)
   const [emailComposer, setEmailComposer] = useState<EmailComposerState | null>(null)
   const [toast, setToast] = useState('')
-  const [unreadEmailCount, setUnreadEmailCount] = useState(0)
+  const [unreadEmailIds, setUnreadEmailIds] = useState<string[]>([])
   const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error' | 'conflict'>('saved')
   const [viewedClientId, setViewedClientId] = useState('')
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false)
+  // O que estava pendente ao abrir o sino: o contador zera, mas o painel ainda mostra o que era novo.
+  const [notificationHighlights, setNotificationHighlights] = useState<{ emails: number; systemIds: string[] }>({ emails: 0, systemIds: [] })
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [googleConnectionRevision, setGoogleConnectionRevision] = useState(0)
   const observedInboxIds = useRef<Set<string> | null>(null)
@@ -1392,8 +1397,9 @@ function App() {
         const messages = await listGoogleWorkspaceEmails({ box: 'inbox', maxResults: 10 })
         if (cancelled) return
         const currentIds = new Set(messages.map((message) => message.id))
-        const unread = messages.filter((message) => message.unread)
-        setUnreadEmailCount(unread.length)
+        const handled = new Set([...readMailIds.get(), ...notifiedMailIds.get()])
+        const unread = messages.filter((message) => message.unread && !handled.has(message.id))
+        setUnreadEmailIds(unread.map((message) => message.id))
         if (observedInboxIds.current) {
           const newUnread = unread.filter((message) => !observedInboxIds.current?.has(message.id))
           if (newUnread.length) {
@@ -1415,6 +1421,15 @@ function App() {
       window.clearInterval(interval)
     }
   }, [authSession])
+
+  useEffect(() => {
+    const dropHandledEmails = () => {
+      const handled = new Set([...readMailIds.get(), ...notifiedMailIds.get()])
+      setUnreadEmailIds((current) => current.filter((id) => !handled.has(id)))
+    }
+    window.addEventListener(MAIL_STATE_EVENT, dropHandledEmails)
+    return () => window.removeEventListener(MAIL_STATE_EVENT, dropHandledEmails)
+  }, [])
 
   useEffect(() => {
     if (!isFirebaseConfigured && !isSupabaseConfigured) void ensurePrimaryAuthAccount()
@@ -1742,7 +1757,7 @@ function App() {
     [activeUserId, state.notifications],
   )
   const unreadSystemNotificationCount = visibleSystemNotifications.filter((item) => !item.read).length
-  const totalUnreadNotificationCount = unreadSystemNotificationCount + unreadEmailCount
+  const totalUnreadNotificationCount = unreadSystemNotificationCount + unreadEmailIds.length
   const availableNavigation = useMemo(
     () => navigation.filter((item) => canOpenPage(currentUser, item.page) && moduleEnabled(state.companySettings, item.module)),
     [currentUser, state.companySettings],
@@ -2193,6 +2208,8 @@ ${companyName}`
       htmlBody,
       signatureImageUrl: state.companySettings.emailSignatureImageUrl,
       attachments: composer.attachment ? [composer.attachment] : [],
+      via: composer.via,
+      reply: composer.reply,
     })
     const now = new Date().toISOString()
     updateState((current) => ({
@@ -6196,6 +6213,23 @@ ${companyName}`
     .filter((appointment) => appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === sidebarTodayKey)
     .sort((left, right) => left.startAt.localeCompare(right.startAt))
   const sidebarNextAppointment = sidebarTodayAppointments.find((appointment) => new Date(appointment.endAt).getTime() >= Date.now())
+  const toggleNotificationCenter = () => {
+    if (notificationCenterOpen) {
+      setNotificationCenterOpen(false)
+      return
+    }
+    const systemIds = visibleSystemNotifications.filter((item) => !item.read).map((item) => item.id)
+    setNotificationHighlights({ emails: unreadEmailIds.length, systemIds })
+    setNotificationCenterOpen(true)
+    if (unreadEmailIds.length) notifiedMailIds.add(unreadEmailIds)
+    if (systemIds.length) {
+      updateState((current) => ({
+        ...current,
+        notifications: current.notifications.map((item) => systemIds.includes(item.id) ? { ...item, read: true } : item),
+      }), '')
+    }
+  }
+
   const openSystemNotification = (notification: AppState['notifications'][number]) => {
     updateState((current) => ({
       ...current,
@@ -6313,7 +6347,7 @@ ${companyName}`
                 <button
                   className="app-header-icon relative"
                   type="button"
-                  onClick={() => setNotificationCenterOpen((open) => !open)}
+                  onClick={toggleNotificationCenter}
                   aria-expanded={notificationCenterOpen}
                   aria-label={`${totalUnreadNotificationCount} notificação(ões) não lida(s)`}
                 >
@@ -6327,14 +6361,13 @@ ${companyName}`
                 {notificationCenterOpen ? (
                   <div className="notification-center absolute right-0 top-12 z-50 w-[min(23rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
                     <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                      <div><h3 className="text-sm font-semibold text-gray-950">Notificações</h3><p className="mt-0.5 text-[0.68rem] text-gray-500">{totalUnreadNotificationCount ? `${totalUnreadNotificationCount} não lida(s)` : 'Tudo em dia'}</p></div>
-                      {unreadSystemNotificationCount ? <button className="text-[0.68rem] font-bold text-gray-600 hover:text-gray-950" type="button" onClick={() => updateState((current) => ({ ...current, notifications: current.notifications.map((item) => ({ ...item, read: true })) }), '')}>Marcar como lidas</button> : null}
+                      <div><h3 className="text-sm font-semibold text-gray-950">Notificações</h3><p className="mt-0.5 text-[0.68rem] text-gray-500">{notificationHighlights.emails + notificationHighlights.systemIds.length ? `${notificationHighlights.emails + notificationHighlights.systemIds.length} nova(s)` : 'Tudo em dia'}</p></div>
                     </div>
                     <div className="max-h-[26rem] overflow-y-auto p-2">
-                      {unreadEmailCount ? (
+                      {notificationHighlights.emails ? (
                         <button className="flex w-full gap-3 rounded-xl p-3 text-left hover:bg-gray-50" type="button" onClick={() => { setNotificationCenterOpen(false); setPage('inbox') }}>
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><Mail size={16} /></span>
-                          <span className="min-w-0"><strong className="block text-xs text-gray-950">{unreadEmailCount} e-mail(s) não lido(s)</strong><small className="mt-1 block text-[0.68rem] leading-4 text-gray-500">Abra o Inbox para visualizar as novas mensagens.</small></span>
+                          <span className="min-w-0"><strong className="block text-xs text-gray-950">{notificationHighlights.emails} e-mail(s) novo(s)</strong><small className="mt-1 block text-[0.68rem] leading-4 text-gray-500">Abra o Inbox para visualizar as novas mensagens.</small></span>
                           <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600" />
                         </button>
                       ) : null}
@@ -6342,10 +6375,10 @@ ${companyName}`
                         <button key={notification.id} className="flex w-full gap-3 rounded-xl p-3 text-left hover:bg-gray-50" type="button" onClick={() => openSystemNotification(notification)}>
                           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${notification.notificationType === 'Financeiro' ? 'bg-emerald-50 text-emerald-700' : notification.notificationType === 'Projeto' ? 'bg-amber-50 text-amber-700' : 'bg-violet-50 text-violet-700'}`}><AlertTriangle size={16} /></span>
                           <span className="min-w-0 flex-1"><strong className="block text-xs text-gray-950">{notification.title}</strong><small className="mt-1 block text-[0.68rem] leading-4 text-gray-500">{notification.message}</small></span>
-                          {!notification.read ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-600" /> : null}
+                          {notificationHighlights.systemIds.includes(notification.id) ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-red-600" /> : null}
                         </button>
                       ))}
-                      {!unreadEmailCount && !visibleSystemNotifications.length ? <div className="px-4 py-10 text-center"><CheckCircle2 className="mx-auto text-emerald-500" size={28} /><p className="mt-3 text-sm font-semibold text-gray-900">Nenhum alerta pendente</p><p className="mt-1 text-xs text-gray-500">Novos avisos do sistema aparecerão aqui.</p></div> : null}
+                      {!notificationHighlights.emails && !visibleSystemNotifications.length ? <div className="px-4 py-10 text-center"><CheckCircle2 className="mx-auto text-emerald-500" size={28} /><p className="mt-3 text-sm font-semibold text-gray-900">Nenhum alerta pendente</p><p className="mt-1 text-xs text-gray-500">Novos avisos do sistema aparecerão aqui.</p></div> : null}
                     </div>
                   </div>
                 ) : null}
@@ -6444,18 +6477,25 @@ ${companyName}`
           ) : null}
           {page === 'inbox' ? (
             <InboxPage
-              state={state}
+              leads={state.leads}
+              companyEmail={state.companySettings.email}
+              googleClientId={state.companySettings.googleOAuthClientId}
               connectionRevision={googleConnectionRevision}
               onOpenLead={(lead) => {
                 setSelectedLeadId(lead.id)
                 setModal('leadDetail')
               }}
-              onReply={(message) => {
-                const counterpart = message.sent ? message.to : message.from
-                const to = counterpart.match(/<([^>]+)>/)?.[1] || counterpart.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0] || ''
-                setEmailComposer({ to, displayName: counterpart, subject: /^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`, body: `\n\nEm ${message.date ? new Date(message.date).toLocaleString('pt-BR') : 'mensagem anterior'}, ${message.from} escreveu:\n${message.body}`, lead: state.leads.find((lead) => lead.email.toLowerCase() === to.toLowerCase()) })
-              }}
-              onComposeNew={() => setEmailComposer({
+              onReply={(draft) => setEmailComposer({
+                to: draft.to,
+                displayName: draft.displayName,
+                subject: draft.subject,
+                body: draft.quoted,
+                via: draft.via,
+                reply: draft.reply,
+                lead: state.leads.find((lead) => lead.email.trim().toLowerCase() === draft.to.toLowerCase()),
+              })}
+              onComposeNew={(via) => setEmailComposer({
+                via,
                 to: '',
                 displayName: 'novo destinatário',
                 subject: '',
@@ -10750,136 +10790,6 @@ function ReportsPage({
         <div className="report-insight-card"><span className="report-insight-icon"><TrendingUp size={18} /></span><div><p className="text-xs font-bold uppercase text-gray-500">Saúde financeira</p><strong className="mt-1 block text-gray-950">{metrics.netProfit > 0 ? 'Resultado positivo' : metrics.netProfit < 0 ? 'Resultado negativo' : 'Ponto de equilíbrio'}</strong><p className="mt-1 text-xs leading-5 text-gray-500">{metrics.margin >= 25 ? 'A margem está em uma faixa saudável.' : 'Revise preços e custos para melhorar a margem.'}</p></div></div>
         <div className="report-insight-card"><span className="report-insight-icon"><CalendarDays size={18} /></span><div><p className="text-xs font-bold uppercase text-gray-500">Compromissos fixos</p><strong className="mt-1 block text-gray-950">{formatCurrency(metrics.recurringMonthlyExpenses)} por mês</strong><p className="mt-1 text-xs leading-5 text-gray-500">{recurringExpenses.length} despesa(s) recorrente(s) ativa(s), convertidas para média mensal.</p></div></div>
         <div className="report-insight-card"><span className="report-insight-icon"><AlertTriangle size={18} /></span><div><p className="text-xs font-bold uppercase text-gray-500">Atenção necessária</p><strong className="mt-1 block text-gray-950">{metrics.overdueExpenses + metrics.overduePayments} pendência(s) vencida(s)</strong><p className="mt-1 text-xs leading-5 text-gray-500">Inclui despesas vencidas e recebimentos atrasados.</p></div></div>
-      </section>
-    </div>
-  )
-}
-
-function InboxPage({
-  state,
-  connectionRevision,
-  onOpenLead,
-  onReply,
-  onComposeNew,
-}: {
-  state: AppState
-  connectionRevision: number
-  onOpenLead: (lead: Lead) => void
-  onReply: (message: GoogleMailboxMessage) => void
-  onComposeNew: () => void
-}) {
-  const [box, setBox] = useState<'inbox' | 'sent'>('inbox')
-  const [messages, setMessages] = useState<GoogleMailboxMessage[]>([])
-  const [selectedId, setSelectedId] = useState('')
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const connection = getEmailConnection()
-
-  const loadMessages = async (targetBox = box) => {
-    setLoading(true)
-    setError('')
-    try {
-      const result = await listGoogleWorkspaceEmails({ box: targetBox, maxResults: 30 })
-      setMessages(result)
-      setSelectedId((current) => result.some((message) => message.id === current) ? current : result[0]?.id || '')
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar os e-mails.')
-      setMessages([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (connection.connected) void loadMessages(box)
-    // A troca de caixa é a ação que dispara a sincronização.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [box, connection.connected, connectionRevision])
-
-  const extractEmail = (value: string) => (value.match(/<([^>]+)>/)?.[1] || value.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0] || '').toLowerCase()
-  const findLead = (message: GoogleMailboxMessage) => {
-    const counterpart = extractEmail(message.sent ? message.to : message.from)
-    return state.leads.find((lead) => lead.email.trim().toLowerCase() === counterpart)
-  }
-  const filtered = messages.filter((message) => !search.trim() || matches(`${message.subject} ${message.from} ${message.to} ${message.snippet}`, search))
-  const selected = filtered.find((message) => message.id === selectedId) || filtered[0]
-  const selectedLead = selected ? findLead(selected) : undefined
-  const unreadCount = messages.filter((message) => message.unread).length
-  const linkedCount = messages.filter((message) => findLead(message)).length
-  const senderLabel = (value: string) => {
-    const named = value.match(/^"?([^"<]+)"?\s*</)?.[1]?.trim()
-    return named || extractEmail(value) || value
-  }
-  const senderInitials = (value: string) => senderLabel(value).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
-
-  if (!connection.connected) {
-    return <div className="inbox-page module-page space-y-4"><PageToolbar title="Inbox" description="E-mails recebidos e enviados conectados ao CRM." /><div className="inbox-connect-state rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center"><Mail className="mx-auto text-gray-300" size={36} /><h2 className="mt-3 font-black text-gray-950">Conecte sua conta de e-mail</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">Abra Configurações → E-mail com domínio próprio para configurar SMTP e IMAP, ou conecte o Gmail na seção Google Workspace.</p><a className="app-button app-button-secondary mt-4 inline-flex" href={webmailUrl(state.companySettings.email)} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Abrir webmail</a></div></div>
-  }
-
-  return (
-    <div className="inbox-page module-page space-y-4">
-      <PageToolbar
-        title="Inbox"
-        description="Acompanhe conversas comerciais sem sair do FlyFlow."
-        action={<div className="flex gap-2"><Button variant="secondary" type="button" disabled={loading} onClick={() => void loadMessages()}>{loading ? 'Sincronizando...' : 'Atualizar'}</Button><Button type="button" onClick={onComposeNew}><Plus size={16} /> Novo e-mail</Button></div>}
-      />
-      <section className="inbox-shell overflow-hidden rounded-xl border shadow-sm">
-        {error ? <p className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-        <div className="inbox-workspace grid min-h-[650px] lg:grid-cols-[13rem_23rem_minmax(0,1fr)]">
-          <aside className="inbox-sidebar">
-            <button className="inbox-compose-button" type="button" onClick={onComposeNew}><Plus size={17} /> Escrever e-mail</button>
-            <nav>
-              <button className={box === 'inbox' ? 'is-active' : ''} type="button" onClick={() => setBox('inbox')}><Mail size={17} /><span>Recebidos</span>{unreadCount ? <strong>{unreadCount}</strong> : null}</button>
-              <button className={box === 'sent' ? 'is-active' : ''} type="button" onClick={() => setBox('sent')}><ArrowRight size={17} /><span>Enviados</span></button>
-            </nav>
-            <div className="inbox-account-card">
-              <span>{senderInitials(connection.email)}</span>
-              <div><small>CONTA CONECTADA</small><strong>{connection.email}</strong></div>
-            </div>
-            <div className="inbox-mini-stats"><div><strong>{messages.length}</strong><span>mensagens</span></div><div><strong>{linkedCount}</strong><span>no CRM</span></div></div>
-          </aside>
-          <div className="inbox-list-column">
-            <header>
-              <div><h2>{box === 'inbox' ? 'Recebidos' : 'Enviados'}</h2><span>{filtered.length} mensagem(ns)</span></div>
-              <button title="Atualizar mensagens" type="button" disabled={loading} onClick={() => void loadMessages()}><Clock className={loading ? 'animate-spin' : ''} size={16} /></button>
-            </header>
-            <label className="inbox-local-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar nesta caixa…" /></label>
-            <div className="inbox-list overflow-y-auto">
-            {loading && !filtered.length ? <div className="inbox-loading-state"><span /><span /><span /></div> : null}
-            {filtered.map((message) => {
-              const lead = findLead(message)
-              const active = selected?.id === message.id
-              const counterpart = message.sent ? message.to : message.from
-              return <button key={message.id} className={`inbox-message-row ${active ? 'is-active' : ''} ${message.unread ? 'is-unread' : ''}`} type="button" onClick={() => setSelectedId(message.id)}>
-                <span className="inbox-sender-avatar" data-tint={avatarTint(counterpart)}>{senderInitials(counterpart)}</span>
-                <span className="inbox-message-copy">
-                  <span className="inbox-message-meta"><strong>{senderLabel(counterpart)}</strong><time>{message.date ? new Date(message.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : ''}</time></span>
-                  <b>{message.subject || 'Sem assunto'}</b>
-                  <small>{message.snippet || 'Mensagem sem prévia disponível.'}</small>
-                  <span className="inbox-message-badges">{message.unread ? <i>Nova</i> : null}{lead ? <em>CRM</em> : null}{message.hasAttachments ? <span><Paperclip size={11} /> Anexo</span> : null}</span>
-                </span>
-              </button>
-            })}
-            {!loading && !filtered.length ? <p className="p-8 text-center text-sm text-gray-400">Nenhum e-mail encontrado.</p> : null}
-            </div>
-          </div>
-          <div className="inbox-reader min-w-0">
-            {selected ? <>
-              <div className="inbox-reader-header">
-                <div className="inbox-reader-subject"><span>{selected.sent ? 'E-MAIL ENVIADO' : 'CONVERSA RECEBIDA'}</span><h2>{selected.subject || 'Sem assunto'}</h2></div>
-                <div className="inbox-reader-actions">{selectedLead ? <Button variant="secondary" type="button" onClick={() => onOpenLead(selectedLead)}><Users size={15} /> Ver contato</Button> : <span>Contato não vinculado</span>}<Button type="button" onClick={() => onReply(selected)}><ArrowRight size={15} /> Responder</Button></div>
-              </div>
-              <div className="inbox-correspondent">
-                <span className="inbox-sender-avatar is-large" data-tint={avatarTint(selected.sent ? selected.to : selected.from)}>{senderInitials(selected.sent ? selected.to : selected.from)}</span>
-                <div><strong>{senderLabel(selected.sent ? selected.to : selected.from)}</strong><small>{selected.sent ? `Para: ${selected.to}` : `De: ${selected.from}`}</small></div>
-                <time>{selected.date ? formatDateTime(new Date(selected.date).toISOString()) : ''}</time>
-              </div>
-              <article className="inbox-message-body">{selected.body || selected.snippet || 'Mensagem sem conteúdo textual disponível.'}</article>
-              {selected.hasAttachments ? <div className="inbox-attachment-note"><Paperclip size={15} /><span>Esta mensagem possui anexos. Abra o webmail do seu provedor para visualizar os arquivos originais.</span></div> : null}
-            </> : <div className="grid h-full place-items-center text-center"><div><Mail className="mx-auto text-gray-200" size={42} /><p className="mt-3 text-sm font-bold text-gray-400">Selecione uma mensagem para ler.</p></div></div>}
-          </div>
-        </div>
       </section>
     </div>
   )
