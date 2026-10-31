@@ -1,6 +1,6 @@
 # FlyFlow by Hero Drone
 
-CRM, projetos e gestao financeira para uma empresa de servicos com drones.
+ERP e CRM da Hero Drone: comercial, contatos, projetos, agenda, financeiro, planejamento de mídias sociais e métricas de marketing.
 
 ## Stack
 
@@ -165,6 +165,14 @@ Para envio real de recuperacao de senha por e-mail, conecte o Supabase Auth. No 
 - Relatorios basicos com exportacao CSV.
 - Configuracoes da empresa e simulacao de deslocamento.
 - Usuarios internos com perfis, permissoes, ativacao/desativacao e redefinicao de senha.
+- Mídias sociais: calendário, quadro de produção, pilares de conteúdo e adaptação entre canais.
+- Métricas de e-mail, redes, site e anúncios, alimentadas por rotina externa ou lançamento manual.
+- Integrações: tokens de acesso, estado de cada canal e histórico de coletas.
+- Contatos com visão 360 e importação/exportação CSV; backup JSON do workspace.
+
+## Métricas e integrações
+
+As métricas ficam em tabelas próprias do D1 (`worker/migrations/`), fora do snapshot do workspace: assim a rotina grava a qualquer hora sem gerar conflito de versão nas sessões abertas. O contrato de envio e a instrução pronta para a rotina estão em [docs/ROTINA_METRICAS.md](docs/ROTINA_METRICAS.md).
 
 ## Fluxo operacional integrado
 
@@ -188,7 +196,10 @@ src/
   App.tsx                 # telas e fluxo do MVP
   components/ui.tsx       # componentes reutilizaveis
   components/crm/         # CRM, quadro, lista, tarefas e painel lateral
+  components/marketing/   # mídias sociais, métricas e integrações
+  styles/                 # tokens, tema e estilos por módulo
   data/demoData.ts        # dados ficticios iniciais
+  lib/marketing.ts        # canais, agregação de métricas e planejamento
   lib/financial.ts        # calculos financeiros e series de graficos
   lib/format.ts           # moeda, datas, telefone, WhatsApp e mapas
   lib/permissions.ts      # perfis e permissoes
@@ -231,33 +242,8 @@ VITE_FIREBASE_MEASUREMENT_ID=
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_GOOGLE_MAPS_API_KEY=
-VITE_LEAD_HUNTER_API_URL=
+VITE_API_URL=
 ```
-
-### OpenAI no Lead Hunter
-
-A chave da OpenAI fica somente na Firebase Function. Nunca use `VITE_OPENAI_API_KEY`.
-
-```bash
-cd functions
-npm install
-cd ..
-firebase functions:secrets:set OPENAI_API_KEY
-```
-
-Informe a chave nova quando solicitado. Depois publique a função e configure no frontend:
-
-```bash
-firebase deploy --only functions:leadApi
-```
-
-```bash
-VITE_LEAD_HUNTER_API_URL=https://southamerica-east1-flyflow-a97ab.cloudfunctions.net/leadApi
-```
-
-O OpenStreetMap continua sendo a fonte inicial gratuita. A OpenAI pesquisa contatos
-públicos para até dez resultados por lote e mantém campos vazios quando não encontra
-evidência confiável.
 
 Para usar busca de endereços e mapas, habilite na mesma chave do Google Cloud:
 
