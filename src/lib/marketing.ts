@@ -199,7 +199,7 @@ export interface MetricPost {
 export interface MetricConnection {
   source: string
   account: string
-  status: 'ok' | 'error'
+  status: 'ok' | 'error' | 'pending'
   lastSyncAt?: string | null
   lastError?: string | null
 }
@@ -208,7 +208,7 @@ export interface MetricRun {
   id: string
   source: string
   account: string
-  status: 'ok' | 'error'
+  status: 'ok' | 'error' | 'pending'
   pointsCount: number
   postsCount: number
   message: string
@@ -382,6 +382,7 @@ export const activeMetricKeys = (points: MetricPoint[], channel: ChannelDefiniti
 export const connectionHealth = (connection: MetricConnection | undefined, now = new Date()) => {
   if (!connection) return { tone: 'idle' as const, label: 'Aguardando conexão' }
   if (connection.status === 'error') return { tone: 'danger' as const, label: 'Falha na última coleta' }
+  if (connection.status === 'pending' && !connection.lastSyncAt) return { tone: 'ok' as const, label: 'Conectado' }
   if (!connection.lastSyncAt) return { tone: 'idle' as const, label: 'Sem coleta ainda' }
   const hours = (now.getTime() - new Date(connection.lastSyncAt).getTime()) / 3_600_000
   return hours > 36 ? { tone: 'warning' as const, label: 'Coleta atrasada' } : { tone: 'ok' as const, label: 'Atualizado' }

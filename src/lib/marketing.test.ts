@@ -46,6 +46,7 @@ describe('saúde da conexão', () => {
     expect(connectionHealth(undefined, now).tone).toBe('idle')
     expect(connectionHealth({ source: 'x', account: '', status: 'ok', lastSyncAt: '2026-10-30T02:00:00Z' }, now).tone).toBe('ok')
     expect(connectionHealth({ source: 'x', account: '', status: 'ok', lastSyncAt: '2026-10-20T02:00:00Z' }, now).tone).toBe('warning')
+    expect(connectionHealth({ source: 'x', account: '', status: 'pending', lastSyncAt: null }, now)).toEqual({ tone: 'ok', label: 'Conectado' })
     expect(connectionHealth({ source: 'x', account: '', status: 'error', lastError: 'x' }, now).tone).toBe('danger')
   })
 })

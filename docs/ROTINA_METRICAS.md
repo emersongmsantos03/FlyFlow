@@ -77,6 +77,18 @@ Avise em vez de ficar em silêncio: o alerta aparece em Métricas e Integraçõe
 { "source": "youtube", "run": { "status": "error", "message": "Token do YouTube expirou", "agent": "rotina-claude" } }
 ```
 
+### Conta conectada, mas ainda sem dados
+
+Quando a conta está conectada na fonte (por exemplo, no Metricool) mas ela ainda não devolveu
+histórico, envie `pending` em vez de `error`. O card aparece como **Conectado**, com o motivo
+embaixo, e não vira alerta de falha. Nunca envie zeros para ocupar o lugar.
+
+```json
+{ "source": "instagram", "account": "hero.dronecwb", "run": { "status": "pending", "message": "Metricool ainda sem histórico", "agent": "rotina-claude" } }
+```
+
+Quando chegarem os primeiros números, o envio normal troca o card para **Atualizado**.
+
 ## Consultar o estado
 
 `GET /integrations/context` com o mesmo token devolve as contas conhecidas, a última
