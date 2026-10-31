@@ -75,6 +75,16 @@ if (app && firebaseConfig.measurementId && typeof window !== 'undefined') {
     .catch(() => undefined)
 }
 
+// Depois de um recarregamento (Cmd+R) o app abre com a sessão salva no
+// navegador antes de o Firebase terminar de restaurar o usuário. Esperar o
+// authStateReady evita que as telas que carregam dados logo ao abrir recebam
+// currentUser = null e mostrem "Sessão de login indisponível".
+const restoredFirebaseUser = async () => {
+  if (!firebaseAuth) return null
+  if (!firebaseAuth.currentUser) await firebaseAuth.authStateReady()
+  return firebaseAuth.currentUser
+}
+
 export const signInWithFirebase = async (email: string, password: string, remember: boolean) => {
   if (!firebaseAuth) throw new Error('Firebase não configurado.')
   await setPersistence(firebaseAuth, remember ? browserLocalPersistence : browserSessionPersistence)
@@ -91,15 +101,17 @@ export const requestFirebasePasswordReset = async (email: string) => {
 }
 
 export const updateCurrentFirebasePassword = async (password: string) => {
-  if (!firebaseAuth?.currentUser) throw new Error('Sua sessão não está disponível. Entre novamente para alterar a senha.')
-  await updatePassword(firebaseAuth.currentUser, password)
+  const user = await restoredFirebaseUser()
+  if (!user) throw new Error('Sua sessão não está disponível. Entre novamente para alterar a senha.')
+  await updatePassword(user, password)
 }
 
 export const updateFirebaseUserTemporaryPassword = async (email: string, password: string) => {
-  if (!firebaseAuth?.currentUser || !firebaseConfig.projectId) {
+  const user = await restoredFirebaseUser()
+  if (!user || !firebaseConfig.projectId) {
     throw new Error('Entre novamente antes de alterar a senha.')
   }
-  const token = await firebaseAuth.currentUser.getIdToken()
+  const token = await user.getIdToken()
   const workerBaseUrl = cloudflareWorkerBaseUrl()
   const response = await safeFetch(
     `${workerBaseUrl}/admin/temporary-password`,
@@ -117,9 +129,10 @@ export const updateFirebaseUserTemporaryPassword = async (email: string, passwor
 }
 
 export const claimFirebaseWorkspaceInvitation = async () => {
-  if (!firebaseAuth?.currentUser) throw new Error('Sessão de login indisponível.')
+  const user = await restoredFirebaseUser()
+  if (!user) throw new Error('Sessão de login indisponível.')
   const workerBaseUrl = cloudflareWorkerBaseUrl()
-  const token = await firebaseAuth.currentUser.getIdToken()
+  const token = await user.getIdToken()
   const response = await safeFetch(`${workerBaseUrl}/auth/claim-invitation`, {
     method: 'POST',
     headers: {
@@ -132,8 +145,9 @@ export const claimFirebaseWorkspaceInvitation = async () => {
 }
 
 export const cloudflareAuthorization = async () => {
-  if (!firebaseAuth?.currentUser) throw new Error('Sessão de login indisponível.')
-  return `Bearer ${await firebaseAuth.currentUser.getIdToken()}`
+  const user = await restoredFirebaseUser()
+  if (!user) throw new Error('Sessão de login indisponível. Entre novamente.')
+  return `Bearer ${await user.getIdToken()}`
 }
 
 export const bootstrapCloudflareWorkspace = async (state: AppState) => {
