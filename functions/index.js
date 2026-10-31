@@ -3,12 +3,10 @@ import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
-import OpenAI from 'openai'
 import { validateAccount, publicAccount, verifyAccount, listMail, sendMail } from './mail.js'
 
 initializeApp()
 
-const openaiApiKey = defineSecret('OPENAI_API_KEY')
 const googleOAuthClientId = defineSecret('GOOGLE_OAUTH_CLIENT_ID')
 const googleOAuthClientSecret = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET')
 const allowedOrigins = new Set([
@@ -19,68 +17,6 @@ const allowedOrigins = new Set([
   'http://localhost:5173',
 ])
 
-const clean = (value, max = 300) => [...String(value || '')]
-  .map((character) => character.charCodeAt(0) < 32 || character === '<' || character === '>' ? ' ' : character)
-  .join('').replace(/\s+/g, ' ').trim().slice(0, max)
-const leadSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    leads: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          id: { type: 'string' },
-          contactName: { type: 'string' },
-          address: { type: 'string' },
-          phone: { type: 'string' },
-          whatsapp: { type: 'string' },
-          email: { type: 'string' },
-          website: { type: 'string' },
-          instagram: { type: 'string' },
-          airbnbUrl: { type: 'string' },
-          bookingUrl: { type: 'string' },
-          aiSummary: { type: 'string' },
-          aiApproach: { type: 'string' },
-          aiOpportunityLevel: { type: 'string', enum: ['Excelente', 'Boa', 'Média', 'Ruim'] },
-          aiSocialInsight: { type: 'string' },
-          aiContactHook: { type: 'string' },
-          aiFirstMessage: { type: 'string' },
-          visualAssessment: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              hasDroneImages: { type: ['boolean', 'null'] },
-              professionalImages: { type: ['boolean', 'null'] },
-              simpleImages: { type: ['boolean', 'null'] },
-              largeOutdoorArea: { type: ['boolean', 'null'] },
-              strikingNature: { type: ['boolean', 'null'] },
-              poolLakeOrView: { type: ['boolean', 'null'] },
-              activeInstagram: { type: ['boolean', 'null'] },
-              professionalWebsite: { type: ['boolean', 'null'] },
-              goodVisualIdentity: { type: ['boolean', 'null'] },
-              beautifulArchitecture: { type: ['boolean', 'null'] },
-              lake: { type: ['boolean', 'null'] },
-              pool: { type: ['boolean', 'null'] },
-              forest: { type: ['boolean', 'null'] },
-              panoramicView: { type: ['boolean', 'null'] },
-              river: { type: ['boolean', 'null'] },
-              worthCommercialTime: { type: ['boolean', 'null'] },
-              opportunityReasons: { type: 'array', items: { type: 'string' }, maxItems: 5 },
-            },
-            required: ['hasDroneImages', 'professionalImages', 'simpleImages', 'largeOutdoorArea', 'strikingNature', 'poolLakeOrView', 'activeInstagram', 'professionalWebsite', 'goodVisualIdentity', 'beautifulArchitecture', 'lake', 'pool', 'forest', 'panoramicView', 'river', 'worthCommercialTime', 'opportunityReasons'],
-          },
-          sourceUrls: { type: 'array', items: { type: 'string' } },
-        },
-        required: ['id', 'contactName', 'address', 'phone', 'whatsapp', 'email', 'website', 'instagram', 'airbnbUrl', 'bookingUrl', 'aiSummary', 'aiApproach', 'aiOpportunityLevel', 'aiSocialInsight', 'aiContactHook', 'aiFirstMessage', 'visualAssessment', 'sourceUrls'],
-      },
-    },
-  },
-  required: ['leads'],
-}
-
 const setCors = (request, response) => {
   const origin = request.get('origin')
   if (origin && allowedOrigins.has(origin)) response.set('Access-Control-Allow-Origin', origin)
@@ -88,107 +24,6 @@ const setCors = (request, response) => {
   response.set('Access-Control-Allow-Headers', 'Authorization, Content-Type')
   response.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
 }
-
-export const leadApi = onRequest(
-  { region: 'southamerica-east1', secrets: [openaiApiKey], timeoutSeconds: 120, memory: '512MiB', maxInstances: 5 },
-  async (request, response) => {
-    setCors(request, response)
-    if (request.method === 'OPTIONS') return response.status(204).send('')
-    if (request.method !== 'POST' || request.path !== '/lead-enrichment') return response.status(404).json({ error: 'Rota não encontrada.' })
-    try {
-      const authHeader = request.get('authorization') || ''
-      if (!authHeader.startsWith('Bearer ')) return response.status(401).json({ error: 'Autenticação obrigatória.' })
-      await getAuth().verifyIdToken(authHeader.slice(7))
-      const inputLeads = Array.isArray(request.body?.leads) ? request.body.leads.slice(0, 3) : []
-      if (!inputLeads.length) return response.status(400).json({ error: 'Envie ao menos um lead.' })
-      const leads = inputLeads.map((lead) => ({
-        id: clean(lead.id, 100),
-        name: clean(lead.name, 160),
-        city: clean(lead.city, 100),
-        categoryName: clean(lead.categoryName, 100),
-        address: clean(lead.address),
-        phone: clean(lead.phone, 60),
-        whatsapp: clean(lead.whatsapp, 60),
-        email: clean(lead.email, 160),
-        website: clean(lead.website, 240),
-        instagram: clean(lead.instagram, 160),
-        googleMapsUrl: clean(lead.googleMapsUrl, 400),
-        sourceUrls: Array.isArray(lead.sourceUrls) ? lead.sourceUrls.slice(0, 5).map((url) => clean(url, 400)) : [],
-      })).filter((lead) => lead.id && lead.name)
-      const client = new OpenAI({ apiKey: openaiApiKey.value() })
-      const result = await client.responses.create({
-        model: 'gpt-5.6-luna',
-        reasoning: { effort: 'none' },
-        store: false,
-        tools: [{ type: 'web_search', search_context_size: 'low' }],
-        include: ['web_search_call.action.sources'],
-        instructions: [
-          'Você enriquece leads B2B brasileiros usando somente informações públicas verificáveis.',
-          'Pesquise cada empresa pelo nome, cidade, site e perfil fornecido do Google Maps/Google Business. Procure proprietário, gerente comercial ou responsável publicamente identificado.',
-          'Procure contatos no Google Business, site oficial, Instagram oficial, bio, Linktree e Facebook comercial.',
-          'No site oficial, verifique cabeçalho, rodapé, páginas Contato/Fale Conosco/Reservas e botões flutuantes. Extraia o destino de links wa.me, api.whatsapp.com e whatsapp:// mesmo quando o número não aparece no texto.',
-          'No perfil do Google Business/Maps, procure telefone, site e links de mensagem; abra o site oficial encontrado para confirmar o WhatsApp.',
-          'Sempre preencha website com o domínio oficial confirmado quando ele for encontrado.',
-          'Confirme também o endereço comercial completo, com rua, número, bairro, cidade e estado quando publicado. Não use endereço de diretório, sede de rede ou empresa homônima.',
-          'Para cada telefone, WhatsApp ou e-mail retornado, inclua em sourceUrls a página exata onde o dado aparece. Não use agregadores sem confirmação cruzada com Google Business, site ou rede oficial.',
-          'Diferencie telefone de WhatsApp: só preencha whatsapp quando houver botão, link wa.me/api.whatsapp.com ou indicação pública explícita de atendimento por WhatsApp.',
-          'Busque links wa.me, api.whatsapp.com ou indicação explícita de WhatsApp. Telefone comum não deve ser marcado como WhatsApp sem evidência pública.',
-          'Nunca invente dados. Deixe o campo vazio quando não houver evidência confiável.',
-          'Não substitua um dado recebido por outro sem evidência mais forte. WhatsApp deve ser um número publicamente anunciado como WhatsApp.',
-          'Não retorne dados pessoais sensíveis nem contatos encontrados somente em bases vazadas.',
-          'sourceUrls deve conter URLs públicas que comprovem os dados retornados.',
-          'Abra o site oficial e procure galeria, fotos, vídeos, Instagram, Facebook, WhatsApp, Airbnb e Booking.com.',
-          'Analise apenas evidências visíveis e públicas: frequência do Instagram, qualidade das fotos, vídeos, imagens aéreas, área externa, natureza, piscina, lago, rio, bosque, vista e arquitetura.',
-          'Use null para todo sinal visual que não puder ser verificado. Nunca trate ausência de evidência como resposta negativa.',
-          'airbnbUrl e bookingUrl só podem conter o anúncio exato da propriedade; caso contrário, deixe vazio.',
-          'Marque hasDroneImages=true quando houver evidência clara de tomadas aéreas. Se o banco aéreo já for excelente e recente, worthCommercialTime deve ser false.',
-          'Crie aiSummary em português, factual e curto. aiApproach deve sugerir uma abordagem específica citando um diferencial observado.',
-          'opportunityReasons deve ter no máximo cinco razões curtas e comprovadas. aiFirstMessage deve ser personalizada, profissional e não fingir familiaridade prévia.',
-        ].join(' '),
-        input: JSON.stringify(leads),
-        text: {
-          format: { type: 'json_schema', name: 'lead_enrichment', strict: true, schema: leadSchema },
-          verbosity: 'low',
-        },
-        max_output_tokens: 1000,
-      })
-      const parsed = JSON.parse(result.output_text)
-      const requestedIds = new Set(leads.map((lead) => lead.id))
-      const enriched = (Array.isArray(parsed.leads) ? parsed.leads : [])
-        .filter((lead) => requestedIds.has(lead.id))
-        .map((lead) => ({
-          id: clean(lead.id, 100),
-          contactName: clean(lead.contactName, 160),
-          address: clean(lead.address, 300),
-          phone: clean(lead.phone, 60),
-          whatsapp: clean(lead.whatsapp, 60),
-          email: clean(lead.email, 160),
-          website: clean(lead.website, 240),
-          instagram: clean(lead.instagram, 160),
-          airbnbUrl: clean(lead.airbnbUrl, 400),
-          bookingUrl: clean(lead.bookingUrl, 400),
-          aiSummary: clean(lead.aiSummary, 700),
-          aiApproach: clean(lead.aiApproach, 700),
-          aiOpportunityLevel: ['Excelente', 'Boa', 'Média', 'Ruim'].includes(lead.aiOpportunityLevel) ? lead.aiOpportunityLevel : 'Média',
-          aiSocialInsight: clean(lead.aiSocialInsight, 500),
-          aiContactHook: clean(lead.aiContactHook, 500),
-          aiFirstMessage: clean(lead.aiFirstMessage, 900),
-          visualAssessment: {
-            ...lead.visualAssessment,
-            opportunityReasons: Array.isArray(lead.visualAssessment?.opportunityReasons)
-              ? lead.visualAssessment.opportunityReasons.slice(0, 5).map((reason) => clean(reason, 180))
-              : [],
-          },
-          sourceUrls: Array.isArray(lead.sourceUrls) ? lead.sourceUrls.filter((url) => /^https?:\/\//i.test(url)).slice(0, 8) : [],
-        }))
-      return response.json({ leads: enriched, tokenUsage: result.usage?.total_tokens || 0 })
-    } catch (error) {
-      console.error('lead-enrichment failed', error)
-      const status = error?.status === 429 ? 429 : 500
-      return response.status(status).json({ error: status === 429 ? 'Créditos ou limite da OpenAI atingidos.' : 'Falha ao pesquisar os contatos públicos.' })
-    }
-  },
-)
 
 const googleScopes = [
   'https://www.googleapis.com/auth/calendar.events',

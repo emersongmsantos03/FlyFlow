@@ -12,7 +12,6 @@
     "imapflow": "^2.0.2",
     "ipaddr.js": "^2.5.0",
     "mailparser": "^3.9.24",
-    "nodemailer": "^10.0.3",
-    "openai": "^5.20.0"
+    "nodemailer": "^10.0.3"
   }
 }
