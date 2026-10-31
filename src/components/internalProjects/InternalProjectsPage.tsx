@@ -240,7 +240,7 @@ export function InternalProjectsPage({
             <span className="flex items-center gap-1.5"><ListChecks size={13} /> {checklist.total ? `${checklist.completed}/${checklist.total} tarefas` : 'Adicionar checklist'}</span>
             <span>{checklist.progress}%</span>
           </button>
-          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[var(--ink)] text-[var(--on-ink)] transition-all" style={{ width: `${checklist.progress}%` }} /></div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-[var(--ink)] text-[color:var(--on-ink)] transition-all" style={{ width: `${checklist.progress}%` }} /></div>
         </div>
         {isExpanded && (project.checklist || []).length > 0 ? (
           <div className="mt-3 space-y-2 rounded-lg border border-gray-100 bg-gray-50/70 p-2.5 text-xs">
@@ -294,8 +294,8 @@ export function InternalProjectsPage({
               <button className={`rounded-md px-3 py-1.5 text-xs font-semibold ${scope === 'archived' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500'}`} type="button" onClick={() => setScope('archived')}>Arquivados</button>
             </div>
             <div className="flex rounded-lg border border-gray-200 p-1">
-              <button className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${view === 'list' ? 'bg-[var(--ink)] text-[var(--on-ink)]' : 'text-gray-500'}`} type="button" onClick={() => setView('list')}><LayoutList size={14} /> Quadro principal</button>
-              <button className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${view === 'board' ? 'bg-[var(--ink)] text-[var(--on-ink)]' : 'text-gray-500'}`} type="button" onClick={() => setView('board')}><Columns3 size={14} /> Kanban</button>
+              <button className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${view === 'list' ? 'bg-[var(--ink)] text-[color:var(--on-ink)]' : 'text-gray-500'}`} type="button" onClick={() => setView('list')}><LayoutList size={14} /> Quadro principal</button>
+              <button className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${view === 'board' ? 'bg-[var(--ink)] text-[color:var(--on-ink)]' : 'text-gray-500'}`} type="button" onClick={() => setView('board')}><Columns3 size={14} /> Kanban</button>
             </div>
           </div>
           <div className="flex flex-1 gap-2 lg:max-w-xl">
@@ -312,7 +312,7 @@ export function InternalProjectsPage({
 
       {!visible.length ? (
         <section className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center">
-          <Sparkles className="mx-auto text-[var(--accent-text)]" size={32} />
+          <Sparkles className="mx-auto text-[color:var(--accent-text)]" size={32} />
           <h2 className="mt-3 text-base font-semibold text-gray-950">{search ? 'Nenhum projeto encontrado' : scope === 'archived' ? 'Nenhum projeto arquivado' : 'Sua próxima ideia começa aqui'}</h2>
           <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">{search ? 'Tente outro termo ou limpe a busca.' : 'Crie um projeto interno para organizar melhorias, campanhas, produtos e experimentos.'}</p>
           {!search && scope === 'active' ? <Button className="mt-5" type="button" onClick={() => setEditing(newProject())}><Plus size={15} /> Criar primeiro projeto</Button> : null}

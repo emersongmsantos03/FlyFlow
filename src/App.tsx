@@ -1276,7 +1276,7 @@ function App() {
     return stored === 'table' || stored === 'tasks' || stored === 'lost' ? stored : 'kanban'
   })
   const [financeTab, setFinanceTab] = useState<FinanceTab>('dashboard')
-  const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>('semanal')
+  const [calendarView, setCalendarView] = useState<'mensal' | 'semanal' | 'diaria' | 'lista'>(() => (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches ? 'diaria' : 'semanal'))
   const [quickActionsOpen, setQuickActionsOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   useEffect(() => {
@@ -6773,7 +6773,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
             <button
               key={item.page}
               className={`mobile-nav-item ${page === item.page ? 'is-active' : ''} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${
-                page === item.page ? 'text-[var(--accent-text)]' : 'text-gray-500'
+                page === item.page ? 'text-[color:var(--accent-text)]' : 'text-gray-500'
               }`}
               type="button"
               onClick={() => setPage(item.page)}
@@ -6783,7 +6783,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
             </button>
           )
         })}
-        <button className={`mobile-nav-item ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? '' : 'is-active'} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? 'text-gray-500' : 'text-[var(--accent-text)]'}`} type="button" aria-label="Abrir menu completo" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />Menu</button>
+        <button className={`mobile-nav-item ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? '' : 'is-active'} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? 'text-gray-500' : 'text-[color:var(--accent-text)]'}`} type="button" aria-label="Abrir menu completo" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />Menu</button>
       </nav>
 
       <div className="quick-actions-dock fixed bottom-20 right-4 z-40 lg:bottom-6">
@@ -7421,7 +7421,7 @@ function EmailComposer({
       <form className="email-composer-surface flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border shadow-2xl" onSubmit={submit}>
         <header className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--ink)] text-[var(--on-ink)] text-gray-950"><Mail size={19} /></div>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--ink)] text-[color:var(--on-ink)] text-gray-950"><Mail size={19} /></div>
             <div className="min-w-0">
               <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Nova mensagem</p>
               <h2 id="email-composer-title" className="truncate text-lg font-black text-gray-950">E-mail para {composer.displayName}</h2>
@@ -7447,7 +7447,7 @@ function EmailComposer({
 
           <label className="mt-4 block">
             <span className="flex items-center justify-between gap-3">
-              <span className="field-label inline-flex items-center gap-1.5"><Wand2 size={13} className="text-[var(--accent-text)]" /> Mensagem personalizada</span>
+              <span className="field-label inline-flex items-center gap-1.5"><Wand2 size={13} className="text-[color:var(--accent-text)]" /> Mensagem personalizada</span>
               <button className="text-xs font-bold text-gray-500 hover:text-gray-900" type="button" onClick={restoreSuggestion}>Restaurar sugestão</button>
             </span>
             <div className="email-editor-wrap mt-2 overflow-hidden rounded-xl border">
@@ -7650,14 +7650,14 @@ function PublicProposalPage({ token }: { token: string }) {
     <main className="public-proposal-page min-h-screen">
       <header className="public-proposal-header">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <div className="flex min-w-0 items-center gap-3"><img className="h-12 w-12 object-contain" src={heroLogoSrc} alt="Hero Drone" /><div><strong className="block text-base">{proposal.companyName}</strong><span className="text-xs font-bold text-[var(--accent-text)]">Proposta comercial</span></div></div>
+          <div className="flex min-w-0 items-center gap-3"><img className="h-12 w-12 object-contain" src={heroLogoSrc} alt="Hero Drone" /><div><strong className="block text-base">{proposal.companyName}</strong><span className="text-xs font-bold text-[color:var(--accent-text)]">Proposta comercial</span></div></div>
           <span className="public-proposal-reference">Referência {proposal.quoteNumber}</span>
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-4 py-7 sm:px-8 sm:py-10">
         <section className="public-proposal-hero">
           <div className="relative z-10 max-w-2xl">
-            <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-[var(--accent-text)]">Proposta comercial para</p>
+            <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-[color:var(--accent-text)]">Proposta comercial para</p>
             <h1 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">{proposal.customerName}</h1>
             <div className="mt-4 flex flex-wrap gap-3 text-xs text-white/65"><span>Emissão {formatDate(proposal.issueDate)}</span><span>•</span><span>Válida até {formatDate(proposal.expirationDate)}</span></div>
           </div>
@@ -7667,11 +7667,11 @@ function PublicProposalPage({ token }: { token: string }) {
         <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_0.8fr]">
           <section className="public-proposal-card">
             <div className="public-proposal-card-heading"><div><p className="public-proposal-eyebrow">Investimento</p><h2>Serviços incluídos</h2></div><span>{proposal.items.length} {proposal.items.length === 1 ? 'item' : 'itens'}</span></div>
-            <div className="mt-5 divide-y divide-[#ece8dc]">{proposal.items.map((item, index) => <div key={`${item.description}-${index}`} className="flex items-start justify-between gap-5 py-4 first:pt-0"><div><strong className="text-[0.95rem]">{item.description}</strong><p className="mt-1 text-xs text-[var(--text-muted)]">{item.pricingLabel ? `${item.quantity} × ${item.pricingLabel}` : `${item.quantity} × ${formatCurrency(item.unitPrice)}`}</p></div><strong className="whitespace-nowrap">{item.pricingLabel || formatCurrency(item.totalPrice)}</strong></div>)}</div>
+            <div className="mt-5 divide-y divide-[#ece8dc]">{proposal.items.map((item, index) => <div key={`${item.description}-${index}`} className="flex items-start justify-between gap-5 py-4 first:pt-0"><div><strong className="text-[0.95rem]">{item.description}</strong><p className="mt-1 text-xs text-[color:var(--text-muted)]">{item.pricingLabel ? `${item.quantity} × ${item.pricingLabel}` : `${item.quantity} × ${formatCurrency(item.unitPrice)}`}</p></div><strong className="whitespace-nowrap">{item.pricingLabel || formatCurrency(item.totalPrice)}</strong></div>)}</div>
             <dl className="ml-auto mt-4 grid max-w-sm gap-2 border-t border-[var(--border)] pt-4 text-sm">
-              <div className="flex justify-between text-[var(--text-muted)]"><dt>Subtotal</dt><dd>{formatCurrency(proposal.subtotal)}</dd></div>
+              <div className="flex justify-between text-[color:var(--text-muted)]"><dt>Subtotal</dt><dd>{formatCurrency(proposal.subtotal)}</dd></div>
               {proposal.discount ? <div className="flex justify-between text-emerald-700"><dt>Desconto</dt><dd>- {formatCurrency(proposal.discount)}</dd></div> : null}
-              {proposal.travelFee ? <div className="flex justify-between text-[var(--text-muted)]"><dt>Deslocamento</dt><dd>{formatCurrency(proposal.travelFee)}</dd></div> : null}
+              {proposal.travelFee ? <div className="flex justify-between text-[color:var(--text-muted)]"><dt>Deslocamento</dt><dd>{formatCurrency(proposal.travelFee)}</dd></div> : null}
               <div className="mt-2 flex justify-between border-t border-[var(--border)] pt-4 text-xl font-black"><dt>Total</dt><dd>{formatCurrency(proposal.totalValue)}</dd></div>
               <div className="flex justify-between rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-sm"><dt>Sinal de reserva</dt><dd className="font-black">{formatCurrency(proposal.depositValue)}</dd></div>
             </dl>
@@ -7680,8 +7680,8 @@ function PublicProposalPage({ token }: { token: string }) {
           <div className="grid gap-5">
             <section className="public-proposal-card">
               <p className="public-proposal-eyebrow">Informações</p><h2 className="mt-1">Condições comerciais</h2>
-              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[var(--text-muted)]">{proposal.paymentTerms || 'Conforme combinado.'}</p>
-              {proposal.serviceLocation ? <div className="mt-5 border-t border-[var(--border)] pt-4 text-sm"><p><span className="block text-xs font-bold text-[var(--text-muted)]">Local do serviço</span><strong>{proposal.serviceLocation}</strong></p></div> : null}
+              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[color:var(--text-muted)]">{proposal.paymentTerms || 'Conforme combinado.'}</p>
+              {proposal.serviceLocation ? <div className="mt-5 border-t border-[var(--border)] pt-4 text-sm"><p><span className="block text-xs font-bold text-[color:var(--text-muted)]">Local do serviço</span><strong>{proposal.serviceLocation}</strong></p></div> : null}
             </section>
           </div>
         </div>
@@ -7689,12 +7689,12 @@ function PublicProposalPage({ token }: { token: string }) {
         <section className={`public-proposal-acceptance mt-5 ${approved ? 'is-approved' : ''}`}>
           {approved ? <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-center"><div className="public-proposal-check"><CheckCircle2 size={30} /></div><div><p className="public-proposal-eyebrow">Aceite eletrônico confirmado</p><h2 className="mt-1 text-2xl font-black">Proposta aceita</h2><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3"><div><dt>Responsável</dt><dd>{proposal.acceptedBy || 'Cliente'}</dd></div><div><dt>CPF/CNPJ</dt><dd>{proposal.acceptanceDocument || 'Documento não registrado'}</dd></div><div><dt>Data e hora do aceite</dt><dd>{formatDateTime(proposal.acceptedAt)}</dd></div></dl></div></div> : (
             <form className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]" onSubmit={accept}>
-              <div><p className="public-proposal-eyebrow">Próximo passo</p><h2 className="mt-1 text-2xl font-black">Aprovar esta proposta</h2><p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">Informe os dados do responsável. O nome, CPF ou CNPJ e a data do aceite ficarão registrados nesta proposta.</p></div>
+              <div><p className="public-proposal-eyebrow">Próximo passo</p><h2 className="mt-1 text-2xl font-black">Aprovar esta proposta</h2><p className="mt-3 text-sm leading-6 text-[color:var(--text-muted)]">Informe os dados do responsável. O nome, CPF ou CNPJ e a data do aceite ficarão registrados nesta proposta.</p></div>
               <div className="grid gap-3 sm:grid-cols-2"><InputField label="Nome completo"><input className="field-input" value={acceptedBy} onChange={(event) => setAcceptedBy(event.target.value)} required minLength={3} /></InputField><InputField label="CPF ou CNPJ"><input className="field-input" value={document} onChange={(event) => setDocument(event.target.value)} required inputMode="numeric" placeholder="Digite somente os números" /></InputField><div className="sm:col-span-2"><Button className="w-full" disabled={accepting || acceptedBy.trim().length < 3 || !isValidAcceptanceDocument(document)} type="submit"><CheckCircle2 size={17} /> {accepting ? 'Registrando aceite…' : 'Aceitar proposta'}</Button>{error ? <p className="mt-3 text-sm font-bold text-red-600">{error}</p> : null}</div></div>
             </form>
           )}
         </section>
-        <p className="mt-7 text-center text-xs text-[var(--text-muted)]">Proposta digital segura · Hero Drone · FlyFlow</p>
+        <p className="mt-7 text-center text-xs text-[color:var(--text-muted)]">Proposta digital segura · Hero Drone · FlyFlow</p>
       </div>
     </main>
   )
@@ -7836,7 +7836,7 @@ function FirstLoginPasswordScreen({
     <main className="flex min-h-screen items-center justify-center bg-[var(--sidebar)] p-4 sm:p-8">
       <form className="w-full max-w-lg rounded-2xl border border-white/10 bg-white p-6 shadow-2xl sm:p-8" onSubmit={submit}>
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-800"><KeyRound size={23} /></div>
-        <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-[var(--accent-text)]">Primeiro acesso</p>
+        <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-[color:var(--accent-text)]">Primeiro acesso</p>
         <h1 className="mt-2 text-2xl font-black text-gray-950">Crie sua nova senha</h1>
         <p className="mt-2 text-sm leading-6 text-gray-600">Olá, {user.name}. A senha informada pelo administrador é temporária. Para continuar no FlyFlow, cadastre uma senha pessoal.</p>
         {error ? <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div> : null}
@@ -8870,7 +8870,7 @@ function ProjectWorkspace({
 
         {tab === 'summary' ? <div className="space-y-3">
           <div className="project-workspace-stats grid grid-cols-3 rounded-xl border border-gray-200"><div><p>Total do projeto</p><strong>{formatCurrency(project.totalValue)}</strong></div><div><p>Valor recebido</p><strong className="text-emerald-700">{formatCurrency(profit.paid)}</strong></div><div><p>Saldo pendente</p><strong>{formatCurrency(pending)}</strong></div></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div className="project-workspace-info-card rounded-xl border border-gray-200 p-4"><div className="flex items-center gap-2 text-gray-500"><CalendarDays size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Captação</p></div><p className="mt-3 text-base font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-3 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[var(--accent-text)]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`project-workspace-info-card rounded-xl border p-4 ${deadline.boxClass}`}><div className="flex items-center gap-2 text-gray-500"><Clock size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Prazo de entrega</p></div><p className={`mt-3 text-base font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[var(--accent-text)]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><div className="project-workspace-info-card rounded-xl border border-gray-200 p-4"><div className="flex items-center gap-2 text-gray-500"><CalendarDays size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Captação</p></div><p className="mt-3 text-base font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-3 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[color:var(--accent-text)]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`project-workspace-info-card rounded-xl border p-4 ${deadline.boxClass}`}><div className="flex items-center gap-2 text-gray-500"><Clock size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Prazo de entrega</p></div><p className={`mt-3 text-base font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[color:var(--accent-text)]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
           <div className="flex flex-wrap gap-2">{location ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={mapsLink(location)} target="_blank" rel="noreferrer"><MapPin size={15} /> Abrir mapa</a> : null}{project.links[0] ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={project.links[0]} target="_blank" rel="noreferrer"><FileText size={15} /> Arquivos</a> : null}{project.projectStatus === 'Aguardando aprovação do cliente' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onAddAdjustment}>Registrar ajuste</Button> : null}{project.projectStatus === 'Aguardando pagamento final' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onExceptionalDelivery}>Liberar entrega</Button> : null}</div>
         </div> : null}
 
@@ -10965,7 +10965,7 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies, onTo
                 <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-400">Nenhuma assinatura configurada.</div>
               )}
               <div className="flex flex-wrap gap-2">
-                <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg bg-[var(--ink)] text-[var(--on-ink)] px-4 text-sm font-black text-gray-950 hover:bg-[var(--ink-hover)]">
+                <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg bg-[var(--ink)] text-[color:var(--on-ink)] px-4 text-sm font-black text-gray-950 hover:bg-[var(--ink-hover)]">
                   <Paperclip size={16} /> Escolher imagem
                   <input
                     className="hidden"
@@ -11240,7 +11240,7 @@ function MapsAddressField({
                   setSuggestions([])
                 }}
               >
-                <MapPin className="mt-0.5 shrink-0 text-[var(--accent-text)]" size={16} />
+                <MapPin className="mt-0.5 shrink-0 text-[color:var(--accent-text)]" size={16} />
                 <span className="font-bold text-gray-800">{suggestion.description}</span>
               </button>
             ))}
@@ -12179,7 +12179,7 @@ function ClosedServiceForm({
             <input className="field-input" name="deliveryDeadline" type="date" value={deliveryDeadline} onChange={(event) => updateDeliveryDeadline(event.currentTarget.value)} required />
             <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
               <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
-              {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[var(--accent-text)]" type="button" onClick={() => updateDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
+              {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[color:var(--accent-text)]" type="button" onClick={() => updateDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
             </div>
           </InputField>
         </div>
@@ -12460,7 +12460,7 @@ function ProjectForm({
         <input type="hidden" {...register('deliveryDaysAfterCapture')} />
         <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
           <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
-          {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[var(--accent-text)]" type="button" onClick={() => changeProjectDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
+          {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[color:var(--accent-text)]" type="button" onClick={() => changeProjectDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
         </div>
       </InputField>
       <InputField label="Cidade" error={getError(errors.city?.message)}><input className="field-input" {...register('city')} /></InputField>
@@ -12913,7 +12913,7 @@ function QuoteDepositForm({
         </InputField>
         <InputField label="Número da transação"><input className="field-input" value={transactionNumber} onChange={(event) => setTransactionNumber(event.target.value)} /></InputField>
         <InputField label="Comprovante">
-          <input className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[var(--ink)] text-[var(--on-ink)] file:px-3 file:py-1.5 file:font-bold" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => void attachFile(event.currentTarget.files?.[0])} />
+          <input className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[var(--ink)] text-[color:var(--on-ink)] file:px-3 file:py-1.5 file:font-bold" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => void attachFile(event.currentTarget.files?.[0])} />
         </InputField>
       </div>
       {fileName ? <p className="text-sm font-bold text-gray-500">Arquivo selecionado: {fileName}</p> : null}
@@ -12973,7 +12973,7 @@ function ReceiptForm({
 
       <InputField label="Arquivo do comprovante">
         <input
-          className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[var(--ink)] text-[var(--on-ink)] file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-black"
+          className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[var(--ink)] text-[color:var(--on-ink)] file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-black"
           type="file"
           multiple
           accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"

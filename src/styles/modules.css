@@ -52,7 +52,7 @@ button.detail-row:hover { background: var(--surface-2); }
 .contact-detail__head h2 { font-size: 1.15rem; font-weight: 600; }
 .contact-detail__head p { font-size: 0.8125rem; color: var(--text-muted); }
 .contact-detail__actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.contact-detail__columns { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); align-items: start; }
+.contact-detail__columns { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr)); align-items: start; }
 .detail-section header { display: flex; align-items: center; justify-content: space-between; min-height: 1.9rem; margin-bottom: 0.2rem; }
 .detail-section h3 { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8125rem; font-weight: 600; }
 .detail-section h3 svg { color: var(--text-muted); }
@@ -367,7 +367,7 @@ button.detail-row:hover { background: var(--surface-2); }
 
 /* Métricas ---------------------------------------------------------------- */
 .metrics-page .toolbar-row { justify-content: space-between; }
-.channel-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); }
+.channel-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(min(19rem, 100%), 1fr)); }
 .channel-card { display: grid; gap: 0.6rem; padding: 0.875rem 1rem 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); text-align: left; }
 .channel-card:hover { border-color: var(--border-strong); }
 .channel-card > header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.875rem; }
@@ -393,12 +393,12 @@ button.detail-row:hover { background: var(--surface-2); }
 .manual-row { display: grid; grid-template-columns: minmax(0, 1fr) 7rem auto; gap: 0.4rem; align-items: center; }
 
 /* Integrações ------------------------------------------------------------- */
-.integration-grid { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+.integration-grid { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr)); }
 .integration-card { display: grid; gap: 0.3rem; padding: 0.75rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .integration-card header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.875rem; }
 .integration-card p { font-size: 0.76rem; color: var(--text-secondary); }
 .integration-card small { font-size: 0.7rem; color: var(--text-muted); }
-.integrations-columns { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); align-items: start; }
+.integrations-columns { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); align-items: start; }
 .token-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: end; }
 .token-list { display: grid; }
 .token-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0; border-top: 1px solid var(--border-subtle); }
