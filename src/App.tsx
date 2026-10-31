@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AgendaQuickTasks } from './components/AgendaQuickTasks'
+import { EventPeek, MiniMonth, QuickCreatePopover, type AnchorRect } from './components/agenda/AgendaParts'
 import { MailAccountSettings } from './components/MailAccountSettings'
 import { refreshDomainMail } from './services/domainMail'
 import { getEmailConnection } from './services/googleWorkspace'
@@ -21,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Upload,
   ContactRound,
   Copy,
   DollarSign,
@@ -33,12 +35,14 @@ import {
   ImagePlus,
   Italic,
   LayoutDashboard,
+  LineChart as LineChartIcon,
   Landmark,
   KeyRound,
   Link2,
   List,
   LogOut,
   Mail,
+  Megaphone,
   Menu,
   MapPin,
   MessageCircle,
@@ -47,6 +51,7 @@ import {
   Palette,
   Paperclip,
   Pencil,
+  Plug,
   Plus,
   Search,
   Settings,
@@ -62,7 +67,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
-import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useController, useForm, type Control, type FieldValues, type Path } from 'react-hook-form'
 import {
@@ -80,10 +85,17 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Button, EmptyState, InputField, MetricCard, Modal, Panel, Select, StatusBadge, Tag, Toast, type SelectOption } from './components/ui'
+import { Button, EmptyState, InputField, MetricCard, Modal, PageToolbar, Panel, Select, StatusBadge, Tag, Toast, type SelectOption } from './components/ui'
 import { CrmPage, type CrmView } from './components/crm/CrmPage'
+import { ContactDetail } from './components/crm/ContactDetail'
 import { InternalProjectsPage } from './components/internalProjects/InternalProjectsPage'
-const LeadHunterPage = lazy(() => import('./components/leadHunter/LeadHunterPage').then((module) => ({ default: module.LeadHunterPage })))
+import { ContentPlannerPage } from './components/marketing/ContentPlannerPage'
+import { IntegrationsPage } from './components/marketing/IntegrationsPage'
+import { MetricsPage } from './components/marketing/MetricsPage'
+import { contactsToCsv, importContactsFromCsv } from './lib/contactsCsv'
+import { isContentOverdue } from './lib/marketing'
+import { applyTrackingEvents } from './lib/trackingEvents'
+import { ackTrackingEvents, loadPendingTrackingEvents } from './services/marketingMetrics'
 import {
   buildLeadSourceSeries,
   buildMonthlySeries,
@@ -110,6 +122,7 @@ import {
 } from './lib/financial'
 import {
   avatarTint,
+  capitalize,
   formatCurrency,
   formatDate,
   formatDateTime,
@@ -185,23 +198,6 @@ import {
   updateUserPassword,
 } from './services/auth'
 import { createId, loadAppState, normalizeAppState, resetAppState, saveAppState } from './services/storage'
-import { OpenStreetMapLeadProvider } from './services/leadHunter/OpenStreetMapProvider'
-import type { LeadSearchProviderResult } from './services/leadHunter/providers'
-import { discoverLeadsFromBackend, enrichLeadsWithOpenAI, isOpenAILeadEnrichmentConfigured } from './services/leadHunter/OpenAILeadEnricher'
-import { findLeadDuplicates, normalizeLeadText } from './services/leadHunter/LeadDeduplicationService'
-import { buildGoogleBusinessUrl, buildInstagramUrl, buildLeadWhatsAppMessage, buildLeadWhatsAppUrl, leadContactPriority, recommendLeadService, refineLeadOpportunity } from './services/leadHunter/LeadOpportunityService'
-import { calculateVisualOpportunityScore } from './services/leadHunter/LeadScoringService'
-import { buildLeadLearningProfile, learningAdjustmentForLead, validateLeadContacts } from './services/leadHunter/LeadLearningService'
-import { qualifyLead } from './services/leadHunter/LeadQualificationService'
-import { remainingAiCalls, shouldSkipManualEnrichment } from './services/leadHunter/LeadAiUsage'
-import { isEligibleLeadSegment, leadSegmentPriorityPoints } from './services/leadHunter/LeadTargetingPolicy'
-import {
-  assessLeadEmailConfidence,
-  assessLeadPreferredChannel,
-  buildLeadOutreachEmail,
-  leadOutreachIdempotencyKey,
-} from './services/leadHunter/LeadOutreachAutomation'
-import { buildLeadHunterNoResultsMessage, resolveLeadHunterSearchScope } from './services/leadHunter/LeadSearchPlanning'
 import { loadCloudAppState, saveCloudAppState } from './services/cloudStorage'
 import {
   firebaseAuth,
@@ -211,6 +207,7 @@ import {
   saveCloudflareWorkspace,
   isFirebaseConfigured,
   observeFirebaseAuth,
+  provisionFirebaseAuthUser,
   requestFirebasePasswordReset,
   completeCloudflareFirstLogin,
   signInWithFirebase,
@@ -224,6 +221,7 @@ import {
   createFirebaseWorkspaceUser,
   ensureFirebaseWorkspace,
   firebasePasswordChangeRequired,
+  getActiveFirebaseWorkspaceId,
   loadFirebaseAppState,
   observeFirebaseWorkspace,
   removeFirebaseEmailSignature,
@@ -285,7 +283,6 @@ import {
   type Equipment,
   type Expense,
   type Lead,
-  type LeadHunterProspect,
   type Payment,
   type PipelineStage,
   type Project,
@@ -302,8 +299,10 @@ type Page =
   | 'dashboard'
   | 'leads'
   | 'clients'
-  | 'leadHunter'
   | 'inbox'
+  | 'content'
+  | 'metrics'
+  | 'integrations'
   | 'projects'
   | 'internalProjects'
   | 'agenda'
@@ -319,8 +318,10 @@ const pageToPath: Record<Page, string> = {
   dashboard: '/',
   leads: '/comercial',
   clients: '/clientes',
-  leadHunter: '/lead-hunter',
   inbox: '/inbox',
+  content: '/midias',
+  metrics: '/metricas',
+  integrations: '/integracoes',
   projects: '/projetos',
   internalProjects: '/projetos-internos',
   agenda: '/agenda',
@@ -333,8 +334,11 @@ const pageToPath: Record<Page, string> = {
   users: '/usuarios',
 }
 
+const basePath = import.meta.env.BASE_URL.replace(/\/+$/, '')
+
 const pathToPage = (pathname: string): Page => {
-  const normalized = pathname.toLowerCase().replace(/\/+$/, '') || '/'
+  const withoutBase = basePath && pathname.startsWith(basePath) ? pathname.slice(basePath.length) : pathname
+  const normalized = withoutBase.toLowerCase().replace(/\/+$/, '') || '/'
   const entry = Object.entries(pageToPath).find(([_, path]) => path.toLowerCase() === normalized)
   if (entry) return entry[0] as Page
   if (normalized === '/dashboard') return 'dashboard'
@@ -349,7 +353,6 @@ const pathToPage = (pathname: string): Page => {
   if (normalized === '/usuarios' || normalized === '/users') return 'users'
   if (normalized === '/equipamentos' || normalized === '/equipment') return 'equipment'
   if (normalized === '/agenda') return 'agenda'
-  if (normalized === '/lead-hunter') return 'leadHunter'
   return 'dashboard'
 }
 
@@ -413,7 +416,6 @@ interface InputDialogState {
 
 interface EmailComposerState {
   lead?: Lead
-  sourceProspectId?: string
   whatsappUrl?: string
   quote?: Quote
   to: string
@@ -581,36 +583,6 @@ type GoogleAutocompleteService = {
   ) => void
 }
 
-type GooglePlaceSearchResult = {
-  place_id?: string
-  name?: string
-  formatted_address?: string
-  formatted_phone_number?: string
-  international_phone_number?: string
-  website?: string
-  url?: string
-  rating?: number
-  user_ratings_total?: number
-  business_status?: string
-  types?: string[]
-  geometry?: {
-    location?: {
-      lat: () => number
-      lng: () => number
-    }
-  }
-}
-
-type GooglePlacesService = {
-  textSearch: (
-    request: { query: string; region?: string; language?: string },
-    callback: (results: GooglePlaceSearchResult[] | null, status: string) => void,
-  ) => void
-  getDetails: (
-    request: { placeId: string; fields: string[]; language?: string; region?: string },
-    callback: (result: GooglePlaceSearchResult | null, status: string) => void,
-  ) => void
-}
 
 declare global {
   interface Window {
@@ -618,7 +590,6 @@ declare global {
       maps?: {
         places?: {
           AutocompleteService: new () => GoogleAutocompleteService
-          PlacesService: new (container: HTMLDivElement) => GooglePlacesService
         }
       }
     }
@@ -679,27 +650,41 @@ const proposalPackages: Array<{
   },
 ]
 
-type NavigationGroup = 'Visão geral' | 'Relacionamento' | 'Operação' | 'Gestão'
-type NavTint = 'gold' | 'peach' | 'lavender' | 'rose' | 'blue' | 'green' | 'amber'
-// Lead Hunter, Propostas e Equipamentos ficam fora do menu enquanto o negócio é
-// redefinido (saindo do serviço de drone); as páginas e os dados continuam
-// intactos para reativação futura.
-const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard; group: NavigationGroup; tint: NavTint }> = [
-  { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Visão geral', tint: 'gold' },
-  { page: 'leads', label: 'Comercial', icon: Handshake, group: 'Relacionamento', tint: 'peach' },
-  { page: 'clients', label: 'Contatos', icon: ContactRound, group: 'Relacionamento', tint: 'lavender' },
-  { page: 'inbox', label: 'Inbox', icon: Mail, group: 'Relacionamento', tint: 'blue' },
-  { page: 'projects', label: 'Projetos', icon: Briefcase, group: 'Operação', tint: 'green' },
-  { page: 'internalProjects', label: 'Projetos internos', icon: Wand2, group: 'Operação', tint: 'peach' },
-  { page: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'Operação', tint: 'blue' },
-  { page: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Gestão', tint: 'green' },
-  { page: 'reports', label: 'Relatórios', icon: BarChart3, group: 'Gestão', tint: 'blue' },
-  { page: 'settings', label: 'Configurações', icon: Settings, group: 'Gestão', tint: 'lavender' },
-  { page: 'users', label: 'Usuários', icon: UserCog, group: 'Gestão', tint: 'peach' },
+type NavigationGroup = 'Visão geral' | 'Relacionamento' | 'Marketing' | 'Operação' | 'Gestão'
+const navigation: Array<{ page: Page; label: string; icon: typeof LayoutDashboard; group: NavigationGroup; module?: 'quotes' | 'equipment' }> = [
+  { page: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Visão geral' },
+  { page: 'leads', label: 'Comercial', icon: Handshake, group: 'Relacionamento' },
+  { page: 'clients', label: 'Contatos', icon: ContactRound, group: 'Relacionamento' },
+  { page: 'quotes', label: 'Propostas', icon: FileText, group: 'Relacionamento', module: 'quotes' },
+  { page: 'inbox', label: 'Inbox', icon: Mail, group: 'Relacionamento' },
+  { page: 'content', label: 'Mídias sociais', icon: Megaphone, group: 'Marketing' },
+  { page: 'metrics', label: 'Métricas', icon: LineChartIcon, group: 'Marketing' },
+  { page: 'projects', label: 'Projetos', icon: Briefcase, group: 'Operação' },
+  { page: 'internalProjects', label: 'Projetos internos', icon: Wand2, group: 'Operação' },
+  { page: 'agenda', label: 'Agenda', icon: CalendarDays, group: 'Operação' },
+  { page: 'equipment', label: 'Equipamentos', icon: PackageCheck, group: 'Operação', module: 'equipment' },
+  { page: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Gestão' },
+  { page: 'reports', label: 'Relatórios', icon: BarChart3, group: 'Gestão' },
+  { page: 'integrations', label: 'Integrações', icon: Plug, group: 'Gestão' },
+  { page: 'settings', label: 'Configurações', icon: Settings, group: 'Gestão' },
+  { page: 'users', label: 'Usuários', icon: UserCog, group: 'Gestão' },
 ]
-const navigationGroups: NavigationGroup[] = ['Visão geral', 'Relacionamento', 'Operação', 'Gestão']
+const navigationGroups: NavigationGroup[] = ['Visão geral', 'Relacionamento', 'Marketing', 'Operação', 'Gestão']
 
-const chartColors = ['#2563eb', '#0d9488', '#7c3aed', '#e11d48', '#f59e0b', '#64748b']
+// Propostas e Equipamentos ficam fora do menu por padrão enquanto o negócio é
+// redefinido; podem ser religados em Configurações, sem perder dados.
+const moduleEnabled = (settings: AppState['companySettings'], module?: 'quotes' | 'equipment') => !module || Boolean(settings.enabledModules?.[module])
+
+const chartColors = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)', 'var(--series-5)', 'var(--series-6)']
+
+// Cada fatia mantém a cor do slot; a partir do sexto item tudo vira "Outros" em vez de repetir matiz.
+const foldChartSlices = <T extends { total: number }>(items: T[], labelKey: keyof T): T[] => {
+  if (items.length <= chartColors.length) return items
+  const sorted = [...items].sort((left, right) => right.total - left.total)
+  const head = sorted.slice(0, chartColors.length - 1)
+  const rest = sorted.slice(chartColors.length - 1)
+  return [...head, { ...rest[0], [labelKey]: 'Outros', total: rest.reduce((sum, item) => sum + item.total, 0) }]
+}
 const heroLogoSrc = './hero-drone-logo.png'
 const appName = 'FlyFlow by Hero Drone'
 const appShortName = 'FlyFlow'
@@ -757,132 +742,13 @@ const loadGoogleMapsPlaces = () => {
   return window.__flyFlowGoogleMapsPromise
 }
 
-const searchGooglePlacesLeads = async ({
-  city,
-  categories,
-  limit,
-}: {
-  city: string
-  categories: string[]
-  limit: number
-}): Promise<LeadSearchProviderResult> => {
-  if (!googleMapsApiKey || limit <= 0) return { leads: [], sources: [], warnings: [] }
-  const ready = await loadGoogleMapsPlaces()
-  const PlacesService = window.google?.maps?.places?.PlacesService
-  if (!ready || !PlacesService) {
-    return { leads: [], sources: [], warnings: ['Google Places não foi carregado. Verifique se a API está habilitada para esta chave.'] }
-  }
-
-  const container = document.createElement('div')
-  const service = new PlacesService(container)
-  const leads: LeadSearchProviderResult['leads'] = []
-  const warnings: string[] = []
-  const categoryQueries = [...new Set(categories.map((category) => category.trim()).filter(Boolean))].slice(0, 2)
-
-  const getDetails = (placeId: string) => new Promise<GooglePlaceSearchResult | null>((resolve) => {
-    let settled = false
-    const finish = (result: GooglePlaceSearchResult | null) => {
-      if (settled) return
-      settled = true
-      window.clearTimeout(timeout)
-      resolve(result)
-    }
-    const timeout = window.setTimeout(() => finish(null), 6_000)
-    service.getDetails({
-      placeId,
-      fields: ['place_id', 'name', 'formatted_address', 'formatted_phone_number', 'international_phone_number', 'website', 'url', 'rating', 'user_ratings_total', 'business_status', 'geometry'],
-      language: 'pt-BR',
-      region: 'br',
-    }, (result, status) => finish(status === 'OK' ? result : null))
-  })
-
-  for (const category of categoryQueries) {
-    const results = await new Promise<GooglePlaceSearchResult[]>((resolve) => {
-      let settled = false
-      const finish = (items: GooglePlaceSearchResult[]) => {
-        if (settled) return
-        settled = true
-        window.clearTimeout(timeout)
-        resolve(items)
-      }
-      const timeout = window.setTimeout(() => {
-        warnings.push(`Google Places: a consulta de “${category}” excedeu o tempo limite.`)
-        finish([])
-      }, 6_000)
-      service.textSearch(
-        { query: `${category} em ${city}, Paraná, Brasil`, region: 'br', language: 'pt-BR' },
-        (items, status) => {
-          if (status === 'OK' || status === 'ZERO_RESULTS') finish(items ?? [])
-          else {
-            warnings.push(`Google Places: consulta de “${category}” não concluída (${status}).`)
-            finish([])
-          }
-        },
-      )
-    })
-
-    const remaining = Math.max(0, limit - leads.length)
-    const detailedResults = await Promise.all(
-      results.slice(0, remaining).map(async (summary) => ({
-        summary,
-        details: summary.place_id ? await getDetails(summary.place_id) : null,
-      })),
-    )
-    for (const { summary, details } of detailedResults) {
-      const place = { ...summary, ...(details || {}) }
-      if (!place.place_id || !place.name || place.business_status === 'CLOSED_PERMANENTLY') continue
-      const latitude = place.geometry?.location?.lat()
-      const longitude = place.geometry?.location?.lng()
-      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${encodeURIComponent(place.place_id)}`
-      const reviewPoints = place.rating && place.user_ratings_total
-        ? Math.min(12, Math.round(place.rating * 1.5 + Math.log10(place.user_ratings_total + 1) * 2))
-        : 0
-      leads.push({
-        id: `google-${place.place_id}`,
-        externalIds: { googlePlaces: place.place_id },
-        name: place.name.trim(),
-        normalizedName: normalizeLeadText(place.name),
-        categoryName: category,
-        recommendedService: recommendLeadService(category),
-        city,
-        neighborhood: '',
-        address: place.formatted_address?.trim() || '',
-        latitude,
-        longitude,
-        phone: (place.international_phone_number || place.formatted_phone_number || '').trim(),
-        whatsapp: '',
-        email: '',
-        instagram: '',
-        website: place.website?.trim() || '',
-        googleMapsUrl,
-        googleRating: place.rating,
-        googleReviewCount: place.user_ratings_total,
-        sources: ['Google Places'],
-        sourceUrls: [...new Set([googleMapsUrl, place.website || '', place.url || ''].filter(Boolean))],
-        score: Math.min(88, 60 + reviewPoints),
-        scoreReasons: [
-          { id: 'google-confirmed', label: 'Empresa e categoria confirmadas no Google', points: 60, evidence: `Google Place ID ${place.place_id}` },
-          ...(reviewPoints ? [{ id: 'google-reputation', label: 'Avaliação e volume de comentários no Google', points: reviewPoints, evidence: `${place.rating} · ${place.user_ratings_total} avaliações` }] : []),
-        ],
-      })
-      if (leads.length >= limit) break
-    }
-    if (leads.length >= limit) break
-  }
-
-  return {
-    leads,
-    sources: leads.length ? ['Google Places'] : [],
-    warnings,
-  }
-}
-
 const getError = (message: unknown) => (typeof message === 'string' ? message : undefined)
 
+// Sempre no fuso local: toISOString() viraria o dia às 21h no horário de Brasília.
 const dateInput = (offset = 0) => {
   const date = new Date()
   date.setDate(date.getDate() + offset)
-  return date.toISOString().slice(0, 10)
+  return dateInputFromDate(date)
 }
 
 const dateTimeInput = (offset = 0, hour = 9, minute = 0) => {
@@ -1299,9 +1165,6 @@ const hasWorkspaceData = (candidate: AppState) =>
   candidate.leads.length > 0 ||
   candidate.leadInteractions.length > 0 ||
   candidate.clients.length > 0 ||
-  (candidate.leadHunterProspects?.length ?? 0) > 0 ||
-  (candidate.leadHunterSearches?.length ?? 0) > 0 ||
-  (candidate.leadHunterRoutes?.length ?? 0) > 0 ||
   candidate.projects.length > 0 ||
   candidate.appointments.length > 0 ||
   candidate.quotes.length > 0 ||
@@ -1334,8 +1197,7 @@ const resolveFirebaseState = (cloudState: AppState | null, localState: AppState)
 
     const recordSections = [
       'users', 'leads', 'leadInteractions', 'clients', 'companies',
-      'leadHunterCities', 'leadHunterCategories', 'leadHunterProspects',
-      'leadHunterSearches', 'leadHunterRoutes', 'services', 'projects',
+      'services', 'projects', 'internalProjects', 'contentItems', 'contentPillars',
       'projectChecklistItems', 'appointments', 'quotes', 'quoteItems',
       'payments', 'expenses', 'recurringExpenses', 'bankAccounts',
       'bankTransfers', 'files', 'projectRevisions', 'equipment',
@@ -1384,7 +1246,7 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const targetPath = pageToPath[page] || '/'
+    const targetPath = `${basePath}${pageToPath[page] || '/'}` || '/'
     if (window.location.pathname !== targetPath) {
       window.history.pushState({ page }, '', targetPath)
     }
@@ -1456,6 +1318,8 @@ function App() {
   const [emailComposer, setEmailComposer] = useState<EmailComposerState | null>(null)
   const [toast, setToast] = useState('')
   const [unreadEmailCount, setUnreadEmailCount] = useState(0)
+  const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error' | 'conflict'>('saved')
+  const [viewedClientId, setViewedClientId] = useState('')
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [googleConnectionRevision, setGoogleConnectionRevision] = useState(0)
@@ -1467,6 +1331,17 @@ function App() {
     window.addEventListener('flyflow-mail-changed', refresh)
     return () => window.removeEventListener('flyflow-mail-changed', refresh)
   }, [firebaseAuthReady, authSession])
+  const globalSearchRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        globalSearchRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', focusSearch)
+    return () => window.removeEventListener('keydown', focusSearch)
+  }, [])
   const googleRestoreAttempted = useRef('')
   const latestState = useRef(state)
   const firebaseSaveQueue = useRef<Promise<void>>(Promise.resolve())
@@ -1523,10 +1398,9 @@ function App() {
         if (observedInboxIds.current) {
           const newUnread = unread.filter((message) => !observedInboxIds.current?.has(message.id))
           if (newUnread.length) {
-            setPage('inbox')
             setToast(newUnread.length === 1
-              ? `Novo e-mail de ${newUnread[0].from || 'um contato'}. Inbox aberto.`
-              : `${newUnread.length} novos e-mails. Inbox aberto.`)
+              ? `Novo e-mail de ${newUnread[0].from || 'um contato'}.`
+              : `${newUnread.length} novos e-mails no Inbox.`)
           }
         }
         observedInboxIds.current = currentIds
@@ -1728,6 +1602,47 @@ function App() {
     }
   }, [authSession, cloudflareDataReady, firebaseAuthReady])
 
+  // Eventos de e-mail ficam no D1 até o FlyFlow aplicá-los ao CRM. A confirmação só
+  // sai depois de salvar; se falhar, o próximo ciclo reprocessa sem duplicar.
+  useEffect(() => {
+    if (!cloudflareDataReady) return
+    let running = false
+    const syncTrackingEvents = async () => {
+      if (running) return
+      running = true
+      try {
+        const events = await loadPendingTrackingEvents()
+        if (!events.length) return
+        const result = applyTrackingEvents(latestState.current, events)
+        const { leads, clients, leadInteractions, tasks, notifications } = result.changed
+        if (leads.length || clients.length || leadInteractions.length || tasks.length || notifications.length) {
+          const nextState = synchronizeOperationalState(result.state)
+          skipNextCloudflareStateSave.current = true
+          latestState.current = nextState
+          saveAppState(nextState)
+          setState(nextState)
+          const save = cloudflareSaveQueue.current.catch(() => undefined).then(async () => {
+            const updatedAt = await saveCloudflareRecordMutation({ upserts: { leads, clients, leadInteractions, tasks, notifications } }, cloudflareVersion.current)
+            if (updatedAt) cloudflareVersion.current = updatedAt
+          })
+          cloudflareSaveQueue.current = save
+          await save
+        }
+        await ackTrackingEvents(result.processedIds)
+      } catch {
+        // Sem confirmação os eventos seguem pendentes e voltam no próximo ciclo.
+      } finally {
+        running = false
+      }
+    }
+    const firstRun = window.setTimeout(() => void syncTrackingEvents(), 4_000)
+    const interval = window.setInterval(() => void syncTrackingEvents(), 5 * 60_000)
+    return () => {
+      window.clearTimeout(firstRun)
+      window.clearInterval(interval)
+    }
+  }, [cloudflareDataReady])
+
   useEffect(() => {
     const refreshAutomations = () => setState((current) => synchronizeOperationalState(current))
     const interval = window.setInterval(refreshAutomations, 30 * 60_000)
@@ -1762,14 +1677,19 @@ function App() {
         skipNextCloudflareStateSave.current = false
         return () => window.clearTimeout(localTimeout)
       }
+      setSyncStatus((current) => current === 'conflict' ? current : 'saving')
       const timeout = window.setTimeout(() => {
         cloudflareSaveQueue.current = cloudflareSaveQueue.current
           .then(async () => {
             const updatedAt = await saveCloudflareWorkspace(state, cloudflareVersion.current)
             cloudflareVersion.current = updatedAt
+            setSyncStatus('saved')
           })
           .catch((error) => {
-            setToast(error instanceof Error ? error.message : 'Não foi possível sincronizar com o Cloudflare.')
+            const message = error instanceof Error ? error.message : 'Não foi possível sincronizar com o Cloudflare.'
+            // Após um conflito todo salvamento seguinte também falharia; o aviso fixo substitui o toast repetido.
+            setSyncStatus(/outra sessão/i.test(message) ? 'conflict' : 'error')
+            if (!/outra sessão/i.test(message)) setToast(message)
           })
       }, 900)
       return () => {
@@ -1805,7 +1725,7 @@ function App() {
 
   useEffect(() => {
     if (!toast) return
-    const timeout = window.setTimeout(() => setToast(''), 2800)
+    const timeout = window.setTimeout(() => setToast(''), Math.min(8_000, 2_800 + toast.length * 30))
     return () => window.clearTimeout(timeout)
   }, [toast])
 
@@ -1828,8 +1748,8 @@ function App() {
   const unreadSystemNotificationCount = visibleSystemNotifications.filter((item) => !item.read).length
   const totalUnreadNotificationCount = unreadSystemNotificationCount + unreadEmailCount
   const availableNavigation = useMemo(
-    () => navigation.filter((item) => canOpenPage(currentUser, item.page)),
-    [currentUser],
+    () => navigation.filter((item) => canOpenPage(currentUser, item.page) && moduleEnabled(state.companySettings, item.module)),
+    [currentUser, state.companySettings],
   )
   const availableMobileNavigation = useMemo(
     () => availableNavigation.filter((item) => ['dashboard', 'leads', 'projects', 'agenda', 'finance'].includes(item.page)),
@@ -1974,68 +1894,6 @@ function App() {
     setToast(message)
   }
 
-  const forceLeadHunterSync = async () => {
-    if (!isFirebaseConfigured || !authSession) {
-      throw new Error('Entre na sua conta antes de sincronizar o LeadHunter.')
-    }
-
-    try {
-      const localState = loadAppState()
-      const currentState = latestState.current
-      const cloudState = await loadFirebaseAppState(currentState)
-      if (!cloudState) throw new Error('Não foi possível carregar os dados do Firebase.')
-
-      const mergeById = <T extends { id: string; updatedAt?: string }>(...groups: T[][]) => {
-        const merged = new Map<string, T>()
-        groups.flat().forEach((item) => {
-          const existing = merged.get(item.id)
-          if (!existing || (item.updatedAt || '') >= (existing.updatedAt || '')) merged.set(item.id, item)
-        })
-        return [...merged.values()]
-      }
-
-      const nextState = normalizeAppState({
-        ...cloudState,
-        leadHunterProspects: mergeById(
-          cloudState.leadHunterProspects || [],
-          localState.leadHunterProspects || [],
-          currentState.leadHunterProspects || [],
-        ),
-        leadHunterSearches: mergeById(
-          cloudState.leadHunterSearches || [],
-          localState.leadHunterSearches || [],
-          currentState.leadHunterSearches || [],
-        ),
-        leadHunterRoutes: mergeById(
-          cloudState.leadHunterRoutes || [],
-          localState.leadHunterRoutes || [],
-          currentState.leadHunterRoutes || [],
-        ),
-        leadHunterCities: mergeById(
-          cloudState.leadHunterCities || [],
-          localState.leadHunterCities || [],
-          currentState.leadHunterCities || [],
-        ),
-        leadHunterCategories: mergeById(
-          cloudState.leadHunterCategories || [],
-          localState.leadHunterCategories || [],
-          currentState.leadHunterCategories || [],
-        ),
-        leadHunterSettings: currentState.leadHunterSettings || localState.leadHunterSettings || cloudState.leadHunterSettings,
-      })
-
-      await saveFirebaseAppState(nextState)
-      saveAppState(nextState)
-      latestState.current = nextState
-      setState(nextState)
-      setToast(`${nextState.leadHunterProspects?.length || 0} leads sincronizados com o Firebase.`)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Não foi possível sincronizar o LeadHunter.'
-      setToast(message)
-      throw error
-    }
-  }
-
   const requestConfirm = (dialog: ConfirmDialogState) => {
     setConfirmDialog(dialog)
   }
@@ -2176,13 +2034,6 @@ function App() {
             tags: isContact ? [...new Set([...item.tags.filter((tag) => tag !== 'A abordar'), 'Contato iniciado'])] : item.tags,
             updatedAt: now,
           } : item),
-          leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.leadId === lead.id && isContact ? {
-            ...prospect,
-            status: 'Contatado' as const,
-            lastContactAt: now,
-            isNew: false,
-            updatedAt: now,
-          } : prospect),
           leadInteractions: [{ id: createId('int'), leadId: lead.id, interactionType, description, interactionDate: now, userId: activeUserId, createdAt: now }, ...current.leadInteractions],
           statusHistory: [createStatusHistory('Contato', lead.id, interactionType, description, activeUserId, lead.pipelineStage, nextStage, now), ...current.statusHistory],
         }), `${interactionType} registrado.`)
@@ -2191,6 +2042,10 @@ function App() {
   }
 
   const sendCommercialWhatsAppApproach = (lead: Lead, message: string, context: string) => {
+    if (lead.doNotContact) {
+      setToast('Não foi possível enviar: este contato pediu para não ser contatado.')
+      return
+    }
     const number = lead.whatsapp || lead.phone
     if (!number) {
       setToast('Este contato não possui WhatsApp informado.')
@@ -2273,13 +2128,6 @@ function App() {
           ])],
           updatedAt: now,
         } : item),
-        leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.leadId === lead.id ? {
-          ...prospect,
-          status: 'Contatado' as const,
-          lastContactAt: now,
-          isNew: false,
-          updatedAt: now,
-        } : prospect),
         leadInteractions: [{
           id: createId('int'),
           leadId: lead.id,
@@ -2306,6 +2154,10 @@ function App() {
   }
 
   const sendCommercialEmail = (lead: Lead) => {
+    if (lead.doNotContact) {
+      setToast('Não foi possível enviar: este contato pediu para não ser contatado.')
+      return
+    }
     if (!lead.email) {
       setToast('Este contato não possui e-mail informado.')
       return
@@ -2313,10 +2165,9 @@ function App() {
     const senderName = currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'
     const companyName = state.companySettings.companyName || 'Hero Drone'
     const subject = `Uma ideia visual para ${repairTextEncoding(contactDisplayName(lead))}`
-    const opportunityHook = lead.leadHunterData?.aiContactHook?.trim()
     const body = `Olá! Tudo bem?
 
-Aqui é o ${senderName}, da ${companyName}. ${opportunityHook || `Vi uma oportunidade de valorizar a apresentação da ${contactDisplayName(lead)} com imagens aéreas profissionais.`}
+Aqui é o ${senderName}, da ${companyName}. Vi uma oportunidade de valorizar a apresentação da ${contactDisplayName(lead)} com imagens aéreas profissionais.
 
 Pensei em um trabalho de ${lead.serviceInterest.toLocaleLowerCase('pt-BR')} para destacar o espaço, a localização e os diferenciais do negócio de uma forma mais marcante nas redes sociais e no Google.
 
@@ -2337,343 +2188,8 @@ ${companyName}`
     })
   }
 
-  const sendLeadHunterEmail = (prospect: LeadHunterProspect) => {
-    importLeadHunterProspects([prospect.id])
-    const senderName = currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'
-    const companyName = state.companySettings.companyName || 'Hero Drone'
-    const businessName = repairTextEncoding(prospect.name.trim())
-    const service = prospect.recommendedService || 'vídeo institucional com drone'
-    const storedOpportunityHook = prospect.aiContactHook?.trim() || prospect.aiSummary?.trim()
-    const opportunityHook = storedOpportunityHook && !/cadastrad[oa]\s+manualmente|fluxo comercial|para teste/i.test(storedOpportunityHook)
-      ? storedOpportunityHook
-      : ''
-    setEmailComposer({
-      sourceProspectId: prospect.id,
-      whatsappUrl: prospect.whatsapp
-        ? buildLeadWhatsAppUrl(prospect, buildLeadWhatsAppMessage(prospect))
-        : undefined,
-      to: prospect.email || '',
-      displayName: businessName,
-      subject: `Uma ideia visual para ${businessName}`,
-      body: `Olá! Tudo bem?
-
-Aqui é o ${senderName}, da ${companyName}. ${opportunityHook || `Conheci o trabalho da ${businessName} e identifiquei uma oportunidade de fortalecer a apresentação do negócio com imagens aéreas profissionais.`}
-
-Preparei uma ideia de ${service.toLocaleLowerCase('pt-BR')} pensada para destacar o espaço, a localização e os diferenciais da ${businessName} nas redes sociais e no Google.
-
-Posso te apresentar essa proposta em uma conversa rápida, sem compromisso?
-
-Abraço,
-${senderName}
-${companyName}`,
-    })
-  }
-
-  const automateLeadHunterOutreach = async (prospectIds: string[]) => {
-    const summary: {
-      sent: number
-      prepared: number
-      review: number
-      skipped: number
-      failed: number
-      actions: Array<{ prospectId: string; name: string; channel: 'WhatsApp' | 'Instagram'; url: string; message: string; phone?: string }>
-    } = { sent: 0, prepared: 0, review: 0, skipped: 0, failed: 0, actions: [] }
-    for (const prospectId of [...new Set(prospectIds)]) {
-      let prospect = (latestState.current.leadHunterProspects || []).find((item) => item.id === prospectId)
-      if (!prospect) {
-        summary.skipped += 1
-        continue
-      }
-
-      // O contato pode ter sido completado posteriormente no CRM. Reúna esses
-      // dados antes de decidir o canal para não cair no Instagram quando já há
-      // um WhatsApp válido vinculado ao mesmo lead/contato.
-      const linkedLead = latestState.current.leads.find((item) =>
-        item.id === prospect?.leadId ||
-        item.leadHunterData?.id === prospectId,
-      )
-      const linkedContact = latestState.current.clients.find((item) =>
-        item.id === prospect?.contactId ||
-        item.id === linkedLead?.contactId,
-      )
-      const hasExplicitCrmLink = Boolean(linkedLead || linkedContact)
-      const trustedSources = hasExplicitCrmLink
-        ? prospect.sources
-        : prospect.sources.filter((source) => source !== 'CRM vinculado')
-      const crmMergedProspect: LeadHunterProspect = {
-        ...prospect,
-        sources: trustedSources,
-        contactName: prospect.contactName || linkedContact?.fullName || linkedLead?.fullName,
-        phone: prospect.phone || linkedContact?.phone || linkedLead?.phone || '',
-        whatsapp:
-          prospect.whatsapp ||
-          linkedContact?.whatsapp ||
-          linkedLead?.whatsapp ||
-          '',
-        email: prospect.email || linkedContact?.email || linkedLead?.email || '',
-        instagram: prospect.instagram || linkedContact?.instagram || linkedLead?.instagram || '',
-        address: prospect.address || linkedContact?.address || linkedLead?.address || '',
-        neighborhood: prospect.neighborhood || linkedContact?.neighborhood || linkedLead?.neighborhood || '',
-      }
-      const crmAddedContact = (
-        crmMergedProspect.phone !== prospect.phone ||
-        crmMergedProspect.whatsapp !== prospect.whatsapp ||
-        crmMergedProspect.email !== prospect.email ||
-        crmMergedProspect.instagram !== prospect.instagram ||
-        crmMergedProspect.sources.length !== prospect.sources.length
-      )
-      if (crmAddedContact) {
-        const mergedAt = new Date().toISOString()
-        crmMergedProspect.sources = hasExplicitCrmLink
-          ? [...new Set([...trustedSources, 'CRM vinculado'])]
-          : trustedSources
-        crmMergedProspect.contactValidation = validateLeadContacts(crmMergedProspect, mergedAt)
-        crmMergedProspect.updatedAt = mergedAt
-        prospect = crmMergedProspect
-        updateState((current) => ({
-          ...current,
-          leadHunterProspects: (current.leadHunterProspects || []).map((item) =>
-            item.id === prospectId ? crmMergedProspect : item,
-          ),
-        }), `Contatos de ${prospect.name} sincronizados com o CRM.`)
-      }
-
-      const existingKey = prospect.email ? leadOutreachIdempotencyKey(prospect) : ''
-      if (
-        prospect.lastContactAt ||
-        prospect.outreachEmail?.status === 'Enviado' ||
-        (prospect.outreachEmail?.status === 'Enviando' && prospect.outreachEmail.idempotencyKey === existingKey)
-      ) {
-        summary.skipped += 1
-        continue
-      }
-
-      if (
-        isOpenAILeadEnrichmentConfigured &&
-        (
-          !prospect.whatsapp ||
-          !prospect.email ||
-          !prospect.instagram ||
-          !prospect.contactValidation ||
-          assessLeadPreferredChannel(prospect).confidence !== 'Alta'
-        ) &&
-        remainingAiCalls(latestState.current.leadHunterSearches || [], latestState.current.leadHunterSettings || { maxDailyCalls: 50 }) > 0
-      ) {
-        try {
-          const enrichment = await enrichLeadsWithOpenAI([prospect], AbortSignal.timeout(110_000))
-          const found = enrichment.leads.find((item) => item.id === prospectId)
-          if (found) {
-            const now = new Date().toISOString()
-            const enrichedProspect: LeadHunterProspect = {
-              ...prospect,
-              contactName: found.contactName || prospect.contactName,
-              address: found.address || prospect.address,
-              phone: found.phone || prospect.phone,
-              whatsapp: found.whatsapp || prospect.whatsapp,
-              email: found.email || prospect.email,
-              website: found.website || prospect.website,
-              instagram: found.instagram || prospect.instagram,
-              aiSummary: found.aiSummary || prospect.aiSummary,
-              aiApproach: found.aiApproach || prospect.aiApproach,
-              aiOpportunityLevel: found.aiOpportunityLevel || prospect.aiOpportunityLevel,
-              aiSocialInsight: found.aiSocialInsight || prospect.aiSocialInsight,
-              aiContactHook: found.aiContactHook || prospect.aiContactHook,
-              aiFirstMessage: found.aiFirstMessage || prospect.aiFirstMessage,
-              sources: [...new Set([...prospect.sources, 'OpenAI Web Search'])],
-              sourceUrls: [...new Set([...prospect.sourceUrls, ...found.sourceUrls])],
-              status: 'Analisado',
-              lastAnalyzedAt: now,
-              updatedAt: now,
-            }
-            enrichedProspect.contactValidation = validateLeadContacts(enrichedProspect, now)
-            prospect = enrichedProspect
-            updateState((current) => ({
-              ...current,
-              leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? enrichedProspect : item),
-            }), `Dados de ${prospect.name} pesquisados e validados.`)
-          }
-        } catch {
-          // Se a pesquisa externa falhar, a cascata ainda tenta todos os
-          // canais já disponíveis antes de encaminhar o lead para revisão.
-        }
-      }
-
-      const preferred = assessLeadPreferredChannel(prospect)
-      const key = prospect.email ? leadOutreachIdempotencyKey(prospect) : `lead-hunter:first-email:v1:${prospect.id}:sem-email`
-      if (!preferred.canProceed || !preferred.channel) {
-        const now = new Date().toISOString()
-        updateState((current) => ({
-          ...current,
-          leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
-            ...item,
-            outreachEmail: {
-              status: 'Revisão', idempotencyKey: key, confidence: preferred.confidence,
-              reason: preferred.reason, attemptedAt: now,
-            },
-            updatedAt: now,
-          } : item),
-        }), `${prospect.name} ficou para revisão: ${preferred.reason}`)
-        summary.review += 1
-        continue
-      }
-
-      if (preferred.channel === 'WhatsApp') {
-        const message = buildLeadWhatsAppMessage(prospect)
-        summary.actions.push({
-          prospectId: prospect.id,
-          name: prospect.name,
-          channel: 'WhatsApp',
-          url: buildLeadWhatsAppUrl(prospect, message),
-          message,
-          phone: prospect.whatsapp || prospect.phone,
-        })
-        summary.prepared += 1
-        continue
-      }
-
-      if (preferred.channel === 'Instagram') {
-        const message = buildLeadWhatsAppMessage(prospect)
-        summary.actions.push({
-          prospectId: prospect.id,
-          name: prospect.name,
-          channel: 'Instagram',
-          url: buildInstagramUrl(prospect.instagram),
-          message,
-        })
-        summary.prepared += 1
-        continue
-      }
-
-      const assessment = assessLeadEmailConfidence(prospect)
-      const message = buildLeadOutreachEmail(prospect)
-      const reservedAt = new Date().toISOString()
-      updateState((current) => ({
-        ...current,
-        leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
-          ...item,
-          outreachEmail: {
-            status: 'Enviando', idempotencyKey: key, confidence: assessment.confidence,
-            reason: assessment.reason, subject: message.subject, attemptedAt: reservedAt,
-          },
-          updatedAt: reservedAt,
-        } : item),
-      }), `Envio para ${prospect.name} reservado com proteção contra duplicidade.`)
-
-      try {
-        const result = await sendGoogleWorkspaceEmail({
-          to: [prospect.email],
-          subject: repairTextEncoding(message.subject),
-          body: message.body,
-          signatureImageUrl: latestState.current.companySettings.emailSignatureImageUrl,
-        })
-        importLeadHunterProspects([prospect.id])
-        const sentAt = new Date().toISOString()
-        updateState((current) => {
-          const importedProspect = (current.leadHunterProspects || []).find((item) => item.id === prospectId)
-          const associatedLead = current.leads.find((item) =>
-            item.id === importedProspect?.leadId || item.leadHunterData?.id === prospectId,
-          )
-          return {
-            ...current,
-            leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
-              ...item,
-              status: 'Contatado',
-              isNew: false,
-              lastContactAt: sentAt,
-              outreachEmail: {
-                status: 'Enviado', idempotencyKey: key, confidence: 'Alta',
-                reason: assessment.reason, subject: message.subject,
-                messageId: result.id, attemptedAt: reservedAt, sentAt,
-              },
-              updatedAt: sentAt,
-            } : item),
-            leads: associatedLead ? current.leads.map((item) => item.id === associatedLead.id ? {
-              ...item,
-              lastContactAt: sentAt,
-              pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
-              tags: [...new Set([...item.tags.filter((tag) => tag !== 'A abordar'), 'Contato iniciado'])],
-              updatedAt: sentAt,
-            } : item) : current.leads,
-            leadInteractions: associatedLead ? [{
-              id: createId('int'),
-              leadId: associatedLead.id,
-              interactionType: 'E-mail · Bot Lead Hunter',
-              description: `Assunto: ${message.subject}\nMensagem: ${message.body}\nID do e-mail: ${result.id}\nChave: ${key}`,
-              interactionDate: sentAt,
-              userId: activeUserId,
-              createdAt: sentAt,
-            }, ...current.leadInteractions] : current.leadInteractions,
-          }
-        }, `E-mail enviado para ${prospect.name} e registrado no histórico.`)
-        summary.sent += 1
-      } catch (error) {
-        const attemptedAt = new Date().toISOString()
-        const errorMessage = error instanceof Error ? error.message : 'Falha não identificada no envio.'
-        updateState((current) => ({
-          ...current,
-          leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
-            ...item,
-            outreachEmail: {
-              status: 'Revisão', idempotencyKey: key, confidence: assessment.confidence,
-              reason: 'WhatsApp e Instagram estavam indisponíveis, e o envio por e-mail não foi confirmado.',
-              subject: message.subject, attemptedAt, error: errorMessage,
-            },
-            updatedAt: attemptedAt,
-          } : item),
-        }), `${prospect.name}: nenhum canal concluiu o contato; enviado para revisão.`)
-        summary.failed += 1
-        summary.review += 1
-      }
-    }
-    return summary
-  }
-
-  const confirmLeadHunterExternalOutreach = (
-    prospectId: string,
-    channel: 'WhatsApp' | 'Instagram',
-    message: string,
-  ) => {
-    const prospectName = (latestState.current.leadHunterProspects || []).find((item) => item.id === prospectId)?.name || 'lead'
-    importLeadHunterProspects([prospectId])
-    const now = new Date().toISOString()
-    updateState((current) => {
-      const prospect = (current.leadHunterProspects || []).find((item) => item.id === prospectId)
-      const associatedLead = current.leads.find((item) =>
-        item.id === prospect?.leadId || item.leadHunterData?.id === prospectId,
-      )
-      return {
-        ...current,
-        leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospectId ? {
-          ...item,
-          status: 'Contatado',
-          isNew: false,
-          lastContactAt: now,
-          updatedAt: now,
-        } : item),
-        leads: associatedLead ? current.leads.map((item) => item.id === associatedLead.id ? {
-          ...item,
-          lastContactAt: now,
-          pipelineStage: item.pipelineStage === 'Entrada' ? 'Contato realizado' : item.pipelineStage,
-          tags: [...new Set([...item.tags.filter((tag) => tag !== 'A abordar'), 'Contato iniciado'])],
-          updatedAt: now,
-        } : item) : current.leads,
-        leadInteractions: associatedLead ? [{
-          id: createId('int'),
-          leadId: associatedLead.id,
-          interactionType: `${channel} · Bot Lead Hunter`,
-          description: `Mensagem confirmada pelo usuário:\n${message}`,
-          interactionDate: now,
-          userId: activeUserId,
-          createdAt: now,
-        }, ...current.leadInteractions] : current.leadInteractions,
-      }
-    }, `${channel} de ${prospectName} registrado como enviado.`)
-  }
-
   const submitCommercialEmail = async (composer: EmailComposerState, subject: string, body: string, htmlBody?: string) => {
-    const associatedLead = composer.lead || (composer.sourceProspectId
-      ? state.leads.find((lead) => lead.leadHunterData?.id === composer.sourceProspectId)
-      : undefined)
+    const associatedLead = composer.lead
     const result = await sendGoogleWorkspaceEmail({
       to: [composer.to],
       subject: repairTextEncoding(subject),
@@ -2810,7 +2326,7 @@ ${companyName}`,
           try {
             await bootstrapCloudflareWorkspace(loadAppState())
             cloudflareWorkspace = await loadCloudflareWorkspace()
-          } catch (err) {
+          } catch {
             // Se o Worker rejeitar (por exemplo, falta de credenciais FIREBASE_SERVICE_ACCOUNT_JSON),
             // não bloqueie o login — cair para o fluxo do Firebase.
             cloudflareAvailable = false
@@ -3054,7 +2570,6 @@ ${companyName}`,
           return {
             ...current,
             clients: current.clients.map((contact) => contact.id === syncedContact.id ? syncedContact : contact),
-            leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.contactId === syncedContact.id ? { ...prospect, contactName: syncedContact.fullName, name: syncedContact.companyName || syncedContact.fullName, phone: syncedContact.phone, whatsapp: syncedContact.whatsapp, email: syncedContact.email, instagram: syncedContact.instagram, city: syncedContact.city, neighborhood: syncedContact.neighborhood, address: syncedContact.address, updatedAt: now } : prospect),
             leads: current.leads.map((lead) =>
               lead.id === existing.id
                 ? {
@@ -3119,6 +2634,7 @@ ${companyName}`,
     setSelectedLeadId('')
     setToast(wasEditing ? 'Oportunidade salva.' : 'Oportunidade criada.')
     try {
+      if (cloudflareDataReady) return
       if (isFirebaseConfigured && authSession) {
         const cloudSave = firebaseSaveQueue.current
           .catch(() => undefined)
@@ -3147,8 +2663,11 @@ ${companyName}`,
     const duplicate = state.clients.find(
       (client) =>
         client.id !== selectedClientId &&
-        (normalizedWhatsapp.length > 0 && normalizedWhatsapp === client.whatsapp.replace(/\D/g, '')) ||
-        (normalizedValues.email && normalizedValues.email === client.email),
+        !client.archived &&
+        (
+          (normalizedWhatsapp.length > 0 && normalizedWhatsapp === client.whatsapp.replace(/\D/g, '')) ||
+          Boolean(normalizedValues.email && normalizedValues.email.toLowerCase() === client.email.toLowerCase())
+        ),
     )
     if (duplicate && !forceCreate) {
       requestConfirm({
@@ -3167,7 +2686,6 @@ ${companyName}`,
       ...current,
       clients: current.clients.map((client) => client.id === selectedClientId ? { ...client, ...normalizedValues, updatedAt: now } : client),
       leads: current.leads.map((lead) => lead.contactId === selectedClientId ? { ...lead, fullName: normalizedValues.fullName, companyName: (current.companies || []).find((company) => company.id === normalizedValues.companyId)?.tradeName || normalizedValues.companyName, phone: normalizedValues.phone, whatsapp: normalizedValues.whatsapp, email: normalizedValues.email, instagram: normalizedValues.instagram, city: normalizedValues.city, neighborhood: normalizedValues.neighborhood, address: normalizedValues.address, updatedAt: now } : lead),
-      leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => prospect.contactId === selectedClientId ? { ...prospect, name: normalizedValues.companyName || normalizedValues.fullName, contactName: normalizedValues.fullName, phone: normalizedValues.phone, whatsapp: normalizedValues.whatsapp, email: normalizedValues.email, instagram: normalizedValues.instagram, city: normalizedValues.city, neighborhood: normalizedValues.neighborhood, address: normalizedValues.address, updatedAt: now } : prospect),
     } : {
       ...current,
       clients: [{ id: newClientId, ...normalizedValues, tags: [], archived: false, createdAt: now, updatedAt: now }, ...current.clients],
@@ -3217,115 +2735,6 @@ ${companyName}`,
       ...current,
       companies: (current.companies || []).map((item) => item.id === company.id ? { ...item, archived: !item.archived, updatedAt: new Date().toISOString() } : item),
     }), company.archived ? 'Empresa reativada.' : 'Empresa arquivada. Os contatos vinculados são mantidos.')
-  }
-
-  const importLeadHunterProspects = (prospectIds: string[]) => {
-    const now = new Date().toISOString()
-    updateState((current) => {
-      let clients = [...current.clients]
-      let leads = [...current.leads]
-      const importedLinks = new Map<string, { contactId: string; leadId: string }>()
-      const normalizePhone = (value = '') => value.replace(/\D/g, '')
-      for (const prospect of (current.leadHunterProspects || []).filter((item) => prospectIds.includes(item.id))) {
-        const completeProspect = {
-          ...prospect,
-          decision: 'Aceito' as const,
-          decisionAt: now,
-          contactValidation: prospect.contactValidation || validateLeadContacts(prospect, now),
-          googleMapsUrl: prospect.googleMapsUrl || buildGoogleBusinessUrl(prospect),
-          sourceUrls: [...new Set([
-            ...(prospect.sourceUrls || []),
-            prospect.website,
-            prospect.instagram,
-            prospect.googleMapsUrl || buildGoogleBusinessUrl(prospect),
-          ].filter(Boolean))],
-        }
-        const intelligenceNotes = [
-          `Descoberto pelo Lead Hunter. Score inicial: ${prospect.score}.`,
-          `Serviço recomendado: ${prospect.recommendedService || 'Vídeo institucional'}.`,
-          prospect.aiSummary ? `Análise da IA: ${prospect.aiSummary}` : '',
-          prospect.aiApproach ? `Abordagem sugerida: ${prospect.aiApproach}` : '',
-          prospect.aiSocialInsight ? `Leitura das redes: ${prospect.aiSocialInsight}` : '',
-          prospect.aiContactHook ? `Gancho personalizado: ${prospect.aiContactHook}` : '',
-          prospect.aiFirstMessage ? `Primeira mensagem sugerida: ${prospect.aiFirstMessage}` : '',
-          prospect.instagram ? `Instagram: ${prospect.instagram}` : '',
-          prospect.whatsapp ? `WhatsApp: ${prospect.whatsapp}` : '',
-          `Fontes: ${prospect.sources.join(', ') || 'não informadas'}.`,
-        ].filter(Boolean).join('\n')
-        const existingContact = clients.find((contact) =>
-          (normalizePhone(prospect.whatsapp || prospect.phone) && normalizePhone(prospect.whatsapp || prospect.phone) === normalizePhone(contact.whatsapp || contact.phone)) ||
-          (prospect.email && prospect.email.toLowerCase() === contact.email.toLowerCase()) ||
-          (prospect.name.toLowerCase() === (contact.companyName || contact.fullName).toLowerCase() && prospect.city.toLowerCase() === contact.city.toLowerCase()),
-        )
-        const contact = existingContact || {
-          id: createId('client'), fullName: prospect.contactName || prospect.name, companyName: prospect.name, jobTitle: '', document: '', phone: prospect.phone,
-          whatsapp: prospect.whatsapp, email: prospect.email, instagram: prospect.instagram, neighborhood: prospect.neighborhood,
-          postalCode: '', address: prospect.address, city: prospect.city, source: 'Lead Hunter' as const,
-          notes: intelligenceNotes,
-          tags: ['Lead Hunter', prospect.categoryName], archived: false, createdAt: now, updatedAt: now,
-        }
-        if (!existingContact) {
-          clients = [contact, ...clients]
-        } else {
-          clients = clients.map((item) => item.id === existingContact.id ? {
-            ...item,
-            fullName: item.fullName || prospect.contactName || prospect.name,
-            phone: item.phone || prospect.phone,
-            whatsapp: item.whatsapp || prospect.whatsapp,
-            email: item.email || prospect.email,
-            instagram: item.instagram || prospect.instagram,
-            neighborhood: item.neighborhood || prospect.neighborhood,
-            address: item.address || prospect.address,
-            city: item.city || prospect.city,
-            notes: item.notes.includes('Lead Hunter') ? item.notes : [item.notes, intelligenceNotes].filter(Boolean).join('\n\n'),
-            tags: [...new Set([...item.tags, 'Lead Hunter', prospect.categoryName])],
-            updatedAt: now,
-          } : item)
-        }
-        const resolvedContact = clients.find((item) => item.id === contact.id) || contact
-        const existingLead = leads.find((lead) => lead.contactId === resolvedContact.id)
-        const lead = existingLead || {
-          id: createId('lead'), contactId: resolvedContact.id, fullName: resolvedContact.fullName, companyName: resolvedContact.companyName,
-          phone: resolvedContact.phone, whatsapp: resolvedContact.whatsapp, email: resolvedContact.email, instagram: resolvedContact.instagram, city: resolvedContact.city,
-          neighborhood: resolvedContact.neighborhood || '', address: resolvedContact.address, source: 'Lead Hunter' as const,
-          serviceInterest: prospect.recommendedService || 'Vídeo institucional' as const,
-          pipelineStage: 'Entrada' as const, temperature: prospect.score >= 75 ? 'Quente' as const : prospect.score >= 60 ? 'Morno' as const : 'Frio' as const,
-          estimatedValue: 0, probability: Math.min(prospect.score, 90), entryDate: dateInput(), notes: intelligenceNotes,
-          nextContactAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          leadHunterData: completeProspect,
-          responsibleUserId: activeUserId, archived: false, tags: ['Lead Hunter', 'A abordar', prospect.categoryName], createdAt: now, updatedAt: now,
-        }
-        if (!existingLead) {
-          leads = [lead, ...leads]
-        } else {
-          leads = leads.map((item) => item.id === existingLead.id ? {
-            ...item,
-            phone: item.phone || prospect.phone,
-            whatsapp: item.whatsapp || prospect.whatsapp,
-            email: item.email || prospect.email,
-            instagram: item.instagram || prospect.instagram,
-            city: item.city || prospect.city,
-            neighborhood: item.neighborhood || prospect.neighborhood,
-            address: item.address || prospect.address,
-            serviceInterest: prospect.recommendedService || item.serviceInterest,
-            probability: Math.max(item.probability, Math.min(prospect.score, 90)),
-            nextContactAt: item.nextContactAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            notes: item.notes.includes('Análise da IA:') ? item.notes : [item.notes, intelligenceNotes].filter(Boolean).join('\n\n'),
-            leadHunterData: completeProspect,
-            tags: [...new Set([...item.tags, 'Lead Hunter', 'A abordar', prospect.categoryName])],
-            updatedAt: now,
-          } : item)
-        }
-        importedLinks.set(prospect.id, { contactId: resolvedContact.id, leadId: lead.id })
-      }
-      return {
-        ...current, clients, leads,
-        leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => {
-          const link = importedLinks.get(prospect.id)
-          return link ? { ...prospect, ...link, decision: 'Aceito' as const, decisionAt: now, contactValidation: prospect.contactValidation || validateLeadContacts(prospect, now), status: 'Importado' as const, isNew: false, updatedAt: now } : prospect
-        }),
-      }
-    }, `${prospectIds.length} lead(s) processado(s) e vinculado(s) ao Comercial.`)
   }
 
   const saveProject = (values: ProjectFormValues) => {
@@ -4657,7 +4066,7 @@ ${companyName}`,
     updateState((current) => {
       const payments = reconcilePendingFinalPayments(
         current.projects,
-        current.payments.map((item) => item.id === payment.id ? { ...item, status, paidAt: undefined, confirmedReceived: false, updatedAt: now } : item),
+        current.payments.map((item) => item.id === payment.id ? { ...item, status, paidAt: undefined, confirmedReceived: false, confirmedAt: undefined, updatedAt: now } : item),
       )
       return {
         ...current,
@@ -5214,6 +4623,7 @@ ${companyName}`,
     setState(nextState)
     setToast('Configurações salvas.')
 
+    if (cloudflareDataReady) return
     if (isFirebaseConfigured && authSession) {
       const cloudSave = saveFirebaseAppState(nextState)
       const timeout = new Promise<never>((_, reject) => {
@@ -5267,10 +4677,19 @@ ${companyName}`,
       setState(pendingState)
       setModal(null)
       setToast('Usuário adicionado. Finalizando o convite…')
-      void requestFirebasePasswordReset(normalizedEmail).catch(() => undefined)
 
       void (async () => {
         try {
+          if (cloudflareDataReady) {
+            // No workspace Cloudflare o convite é gravado pelo autosave (o Worker
+            // cria a linha em `invitations`); aqui só garantimos a conta de login.
+            const provisioned = await provisionFirebaseAuthUser(normalizedEmail, values.password)
+            if (provisioned.requiresPasswordReset) await requestFirebasePasswordReset(normalizedEmail)
+            setToast(provisioned.requiresPasswordReset
+              ? 'Convite salvo. Este e-mail já tinha conta: enviamos o link para definir a senha.'
+              : 'Usuário criado. A senha deverá ser alterada no primeiro acesso.')
+            return
+          }
           const firebaseResult = await createFirebaseWorkspaceUser({
             name: values.name.trim(),
             email: normalizedEmail,
@@ -5361,7 +4780,7 @@ ${companyName}`,
     }
 
     const nextActive = !user.active
-    if (isFirebaseConfigured) {
+    if (isFirebaseConfigured && !cloudflareDataReady) {
       try {
         await setFirebaseWorkspaceUserActive(user.id, nextActive)
       } catch (error) {
@@ -5520,7 +4939,7 @@ ${companyName}`,
       const client = existingClient ?? createClientFromLead(lead, now)
       const quoteItems = quote ? current.quoteItems.filter((item) => item.quoteId === quote.id) : []
       const received = current.payments
-        .filter((payment) => payment.status === 'Recebida' && (payment.quoteId === quote?.id || payment.leadId === lead.id) && !payment.deletedAt)
+        .filter((payment) => payment.status === 'Recebida' && (Boolean(quote && payment.quoteId === quote.id) || payment.leadId === lead.id) && !payment.deletedAt)
         .reduce((total, payment) => total + payment.amount, 0)
       const totalValue = quote?.totalValue ?? lead.estimatedValue
       const projectServiceName = getQuoteServiceName(lead, quoteItems)
@@ -5567,8 +4986,8 @@ ${companyName}`,
         projectChecklistItems: [...createOperationalChecklist(projectId, now), ...current.projectChecklistItems],
         leads: current.leads.map((item) => item.id === lead.id ? { ...item, pipelineStage: 'Serviço confirmado', probability: 100, updatedAt: now } : item),
         quotes: quote ? current.quotes.map((item) => item.id === quote.id ? { ...item, projectId, status: 'Convertida em projeto', updatedAt: now } : item) : current.quotes,
-        payments: current.payments.map((payment) => payment.quoteId === quote?.id || payment.leadId === lead.id ? { ...payment, projectId, clientId: client.id, updatedAt: now } : payment),
-        files: current.files.map((file) => file.quoteId === quote?.id || file.leadId === lead.id ? { ...file, projectId, clientId: client.id } : file),
+        payments: current.payments.map((payment) => (quote && payment.quoteId === quote.id) || payment.leadId === lead.id ? { ...payment, projectId, clientId: client.id, updatedAt: now } : payment),
+        files: current.files.map((file) => (quote && file.quoteId === quote.id) || file.leadId === lead.id ? { ...file, projectId, clientId: client.id } : file),
         statusHistory: [
           createStatusHistory('Projeto', projectId, 'Projeto criado', `${project.projectCode} criado após confirmação explícita no CRM.`, activeUserId, undefined, project.projectStatus, now),
           createStatusHistory('Contato', lead.id, 'Serviço confirmado', `Projeto ${project.projectCode} vinculado sem duplicar proposta, pagamentos ou comprovantes.`, activeUserId, serviceConfirmation.previousStage, 'Serviço confirmado', now),
@@ -5674,13 +5093,13 @@ ${companyName}`,
     applyMove()
   }
 
-  const deleteConnectedContact = (input: { lead?: Lead; client?: Client; prospect?: LeadHunterProspect }) => {
-    const initialContactId = input.client?.id || input.lead?.contactId || input.prospect?.contactId
-    const initialLeadId = input.lead?.id || input.prospect?.leadId
-    const label = input.client ? contactDisplayName(input.client) : input.lead ? contactDisplayName(input.lead) : input.prospect?.name || 'Este registro'
+  const deleteConnectedContact = (input: { lead?: Lead; client?: Client }) => {
+    const initialContactId = input.client?.id || input.lead?.contactId
+    const initialLeadId = input.lead?.id
+    const label = input.client ? contactDisplayName(input.client) : input.lead ? contactDisplayName(input.lead) : 'Este registro'
     requestConfirm({
       title: 'Excluir contato?',
-      description: `${label} será removido de Contatos, Comercial e Lead Hunter. Propostas, projetos, pagamentos e históricos continuarão preservados.`,
+      description: `${label} será removido de Contatos e Comercial. Propostas, projetos, pagamentos e históricos continuarão preservados.`,
       confirmLabel: 'Excluir contato',
       tone: 'danger',
       onConfirm: () => {
@@ -5689,13 +5108,11 @@ ${companyName}`,
           (current) => {
             const contactId = initialContactId || current.leads.find((item) => item.id === initialLeadId)?.contactId
             const linkedLeadIds = new Set(current.leads.filter((item) => item.id === initialLeadId || (contactId && item.contactId === contactId)).map((item) => item.id))
-            const linkedProspectIds = new Set((current.leadHunterProspects || []).filter((item) => item.id === input.prospect?.id || (contactId && item.contactId === contactId) || (item.leadId && linkedLeadIds.has(item.leadId))).map((item) => item.id))
             return {
               ...current,
               clients: current.clients.map((item) => item.id === contactId ? { ...item, archived: true, updatedAt: now } : item),
               leads: current.leads.map((item) => linkedLeadIds.has(item.id) ? { ...item, archived: true, archivedAt: now, archivedBy: activeUserId, deletedAt: now, deletedBy: activeUserId, updatedAt: now } : item),
-              leadHunterProspects: (current.leadHunterProspects || []).map((item) => linkedProspectIds.has(item.id) ? { ...item, decision: 'Rejeitado' as const, decisionAt: now, status: 'Descartado' as const, discardedPermanently: true, isNew: false, updatedAt: now } : item),
-              statusHistory: [createStatusHistory('Contato', contactId || initialLeadId || input.prospect?.id || 'unknown', 'Contato excluído', 'Identidade removida de Contatos, Comercial e Lead Hunter. Registros operacionais preservados.', activeUserId, undefined, undefined, now), ...current.statusHistory],
+              statusHistory: [createStatusHistory('Contato', contactId || initialLeadId || 'unknown', 'Contato excluído', 'Identidade removida de Contatos e Comercial. Registros operacionais preservados.', activeUserId, undefined, undefined, now), ...current.statusHistory],
             }
           },
           'Contato excluído em todos os módulos conectados. O histórico foi preservado.',
@@ -5714,7 +5131,7 @@ ${companyName}`,
     }
     requestInput({
       title: `Excluir todos os ${label}?`,
-      description: `Isso apaga permanentemente ${count} registro(s) de ${label} do banco de dados, sem backup. A ação não pode ser desfeita. Para confirmar, digite EXCLUIR.`,
+      description: `Isso apaga permanentemente ${count} registro(s) de ${label}${section === 'clients' ? ' e remove as oportunidades ligadas a eles do Comercial' : ''}. A ação não pode ser desfeita. Para confirmar, digite EXCLUIR.`,
       label: 'Digite EXCLUIR para confirmar',
       inputType: 'text',
       required: true,
@@ -5725,13 +5142,85 @@ ${companyName}`,
           setToast('Confirmação incorreta. Nada foi excluído.')
           return
         }
-        updateState((current) => ({ ...current, [section]: [] }), `Todos os ${label} foram excluídos permanentemente.`)
+        const now = new Date().toISOString()
+        // Sem isto a normalização recriaria os contatos a partir das oportunidades no próximo carregamento.
+        updateState((current) => ({
+          ...current,
+          [section]: [],
+          leads: section === 'clients' ? current.leads.map((lead) => lead.deletedAt ? lead : { ...lead, archived: true, archivedAt: now, archivedBy: activeUserId, deletedAt: now, deletedBy: activeUserId, updatedAt: now }) : current.leads,
+          clients: section === 'companies' ? current.clients.map((client) => client.companyId ? { ...client, companyId: undefined, updatedAt: now } : client) : section === 'clients' ? [] : current.clients,
+        }), `Todos os ${label} foram excluídos permanentemente.`)
       },
     })
   }
 
+  const exportContacts = () => {
+    const rows = state.clients.filter((client) => !client.archived)
+    if (!rows.length) {
+      setToast('Não há contatos para exportar.')
+      return
+    }
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(new Blob([contactsToCsv(rows)], { type: 'text/csv;charset=utf-8;' }))
+    link.download = `contatos-${dateInput()}.csv`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(link.href), 10_000)
+    setToast(`${rows.length} contato(s) exportado(s).`)
+  }
+
+  const importContacts = async (file: File) => {
+    const result = importContactsFromCsv(await file.text(), latestState.current.clients)
+    if (result.unmapped) {
+      showNotice({ title: 'Colunas não reconhecidas', description: 'A primeira linha do arquivo precisa ter títulos como Nome, E-mail, Telefone, WhatsApp, Empresa ou Cidade.', tone: 'warning' })
+      return
+    }
+    if (!result.contacts.length) {
+      setToast(`Nenhum contato novo encontrado. ${result.skipped} linha(s) ignorada(s).`)
+      return
+    }
+    const now = new Date().toISOString()
+    updateState((current) => ({
+      ...current,
+      clients: [...result.contacts.map((contact): Client => ({
+        id: createId('client'),
+        fullName: contact.fullName || contact.companyName || contact.email || contact.whatsapp || contact.phone || 'Contato sem nome',
+        companyName: contact.companyName || '',
+        jobTitle: contact.jobTitle || '',
+        document: contact.document || '',
+        phone: contact.phone || '',
+        whatsapp: contact.whatsapp || '',
+        email: contact.email || '',
+        instagram: contact.instagram || '',
+        address: contact.address || '',
+        city: contact.city || '',
+        source: 'Outro',
+        notes: contact.notes || '',
+        tags: ['Importado'],
+        archived: false,
+        createdAt: now,
+        updatedAt: now,
+      })), ...current.clients],
+    }), `${result.contacts.length} contato(s) importado(s).${result.skipped ? ` ${result.skipped} ignorado(s) por duplicidade.` : ''}`)
+  }
+
+  const downloadBackup = () => {
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(latestState.current, null, 2)], { type: 'application/json' }))
+    link.download = `flyflow-backup-${dateInput()}.json`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(link.href), 10_000)
+    setToast('Backup baixado.')
+  }
+
+  const toggleModule = (module: 'quotes' | 'equipment', enabled: boolean) => {
+    updateState((current) => ({
+      ...current,
+      companySettings: { ...current.companySettings, enabledModules: { ...current.companySettings.enabledModules, [module]: enabled }, updatedAt: new Date().toISOString() },
+    }), enabled ? 'Módulo ativado no menu.' : 'Módulo oculto do menu. Os dados foram mantidos.')
+  }
+
   const clearAllContacts = () => clearAllRecords('clients', 'contatos', state.clients.length)
-  const clearAllCompanies = () => clearAllRecords('companies', 'empresas', state.companies.length)
+  const clearAllCompanies = () => clearAllRecords('companies', 'empresas', (state.companies || []).length)
 
   const closeLeadDeal = (values: CloseDealFormValues) => {
     const lead = state.leads.find((item) => item.id === values.leadId)
@@ -6635,6 +6124,9 @@ ${companyName}`
   }
 
   const restoreDemo = () => {
+    // O autosave enviaria o estado vazio ao workspace compartilhado: só faz
+    // sentido no modo local, sem nenhum backend conectado.
+    if (isFirebaseConfigured || isSupabaseConfigured) return
     requestConfirm({
       title: 'Limpar banco local?',
       description: 'Todos os cadastros salvos neste navegador serão apagados e o sistema voltará para o banco vazio.',
@@ -6653,7 +6145,7 @@ ${companyName}`
 
   if (isFirebaseConfigured && !firebaseAuthReady && !authSession) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0f1012] text-sm font-bold text-white">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--sidebar)] text-sm font-bold text-white">
         Carregando FlyFlow...
       </div>
     )
@@ -6703,10 +6195,6 @@ ${companyName}`
     )
   }
 
-  const currentNavigation = page === 'profile'
-    ? { page: 'profile' as const, label: 'Meu perfil', icon: UserCog, group: 'Gestão' as const }
-    : navigation.find((item) => item.page === page)
-  const CurrentPageIcon = currentNavigation?.icon ?? LayoutDashboard
   const sidebarTodayKey = dateInput()
   const sidebarTodayAppointments = state.appointments
     .filter((appointment) => appointment.status !== 'Cancelado' && dateInputFromDate(new Date(appointment.startAt)) === sidebarTodayKey)
@@ -6736,7 +6224,7 @@ ${companyName}`
 
 
   return (
-    <div className="page-shell app-shell bg-[#f4f5f7]">
+    <div className="app-shell">
       {toast ? <Toast message={toast} /> : null}
       {confirmDialog ? (
         <ConfirmDialog
@@ -6756,82 +6244,61 @@ ${companyName}`
           onSend={(to, subject, body, htmlBody, attachment) => submitCommercialEmail({ ...emailComposer, to, attachment }, subject, body, htmlBody)}
         />
       ) : null}
-      <aside className="app-sidebar hidden border-r border-gray-200 bg-[#171717] text-white lg:block">
-        <div className="sticky top-0 flex h-screen flex-col">
-          <div className="app-brand border-b border-white/10 px-3.5 py-4">
-            <div className="flex items-center gap-3">
-              <img className="h-9 w-9 shrink-0 object-contain" src={heroLogoSrc} alt="FlyFlow by Hero Drone" />
-              <div>
-                <h1 className="text-sm font-black tracking-tight">{appShortName}</h1>
-                <p className="text-xs font-bold text-[#d4af37]">{appSubtitle}</p>
-              </div>
-            </div>
+      <aside className="app-sidebar">
+        <div className="app-sidebar-inner">
+          <div className="app-brand">
+            <img src={heroLogoSrc} alt="" />
+            <div><strong>{appShortName}</strong><small>{appSubtitle}</small></div>
           </div>
           <button className={`sidebar-agenda-focus ${page === 'agenda' ? 'is-active' : ''}`} type="button" onClick={() => { setPage('agenda'); setCalendarView('diaria') }}>
             <span className="sidebar-agenda-date"><strong>{new Date().getDate()}</strong><small>{new Date().toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}</small></span>
             <span className="sidebar-agenda-copy"><small>MINHA AGENDA</small><strong>{sidebarTodayAppointments.length ? `${sidebarTodayAppointments.length} item(ns) hoje` : 'Dia livre'}</strong><em>{sidebarNextAppointment ? `${new Date(sidebarNextAppointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${sidebarNextAppointment.title}` : 'Planejar meu dia'}</em></span>
             <ChevronRight size={16} />
           </button>
-          <nav className="no-scrollbar flex-1 overflow-auto px-2.5 py-3">
+          <nav className="app-nav no-scrollbar">
             {navigationGroups.map((group) => {
               const items = availableNavigation.filter((item) => item.group === group)
               if (!items.length) return null
-              return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => {
+              return <div className="app-nav-group" key={group}><p>{group}</p><div>{items.map((item) => {
                 const Icon = item.icon
-                return <button key={item.page} className={`app-nav-item focus-ring flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.82rem] font-semibold transition ${page === item.page ? 'is-active' : 'text-white/65 hover:bg-white/10 hover:text-white'}`} type="button" onClick={() => setPage(item.page)}><span className={`app-nav-icon nav-tint-${item.tint}`}><Icon size={15} strokeWidth={1.85} /></span>{item.label}</button>
+                return <button key={item.page} className={`app-nav-item ${page === item.page ? 'is-active' : ''}`} type="button" onClick={() => setPage(item.page)}><Icon size={16} strokeWidth={1.8} />{item.label}</button>
               })}</div></div>
             })}
           </nav>
-          <div className="app-sidebar-footer space-y-2 border-t border-white/10 p-3 text-[0.7rem] text-white/50">
-            <p className="app-sync-status">
+          <div className="app-sidebar-footer">
+            <p className={`app-sync-status is-${cloudflareDataReady ? syncStatus : 'saved'}`}>
               <span aria-hidden="true" />
               {cloudflareDataReady
-                ? 'Workspace Cloudflare compartilhado'
+                ? { saved: 'Tudo salvo', saving: 'Salvando…', error: 'Falha ao salvar', conflict: 'Atualizado em outra sessão' }[syncStatus]
                 : isFirebaseConfigured
                   ? 'Conectando ao workspace'
                   : isSupabaseConfigured
                     ? 'Supabase configurado'
                     : 'Dados locais neste navegador'}
             </p>
-            <details className="app-admin-menu">
-              <summary>Administração</summary>
-              <Button className="mt-2 w-full text-white/55 hover:bg-white/5 hover:text-red-300" variant="ghost" type="button" onClick={restoreDemo}>Limpar banco</Button>
-            </details>
           </div>
         </div>
       </aside>
 
-      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer absolute bottom-0 left-0 top-0 flex w-[min(88vw,22rem)] flex-col bg-[#101216] text-white shadow-2xl"><div className="flex items-center justify-between border-b border-white/10 px-4 py-4"><div className="flex min-w-0 items-center gap-3"><img className="h-10 w-10 shrink-0 object-contain" src={heroLogoSrc} alt="" /><div className="min-w-0"><strong className="block truncate">{appShortName}</strong><span className="block truncate text-xs text-[#d4af37]">{appSubtitle}</span></div></div><button className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={21} /></button></div><nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-3">{navigationGroups.map((group) => { const items = availableNavigation.filter((item) => item.group === group); if (!items.length) return null; return <div className="app-nav-group" key={group}><p>{group}</p><div className="space-y-0.5">{items.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold ${page === item.page ? 'is-active bg-white/10 text-white' : 'text-white/70'}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><span className={`app-nav-icon nav-tint-${item.tint}`}><Icon size={16} /></span>{item.label}</button> })}</div></div> })}</nav></aside></div> : null}
+      {mobileMenuOpen ? <div className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu principal"><button className="absolute inset-0 bg-black/55" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} /><aside className="mobile-drawer"><div className="mobile-drawer__head"><div className="app-brand"><img src={heroLogoSrc} alt="" /><div><strong>{appShortName}</strong><small>{appSubtitle}</small></div></div><button className="icon-button" type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button></div><nav className="app-nav no-scrollbar">{navigationGroups.map((group) => { const items = availableNavigation.filter((item) => item.group === group); if (!items.length) return null; return <div className="app-nav-group" key={group}><p>{group}</p><div>{items.map((item) => { const Icon = item.icon; return <button key={item.page} className={`app-nav-item ${page === item.page ? 'is-active' : ''}`} type="button" onClick={() => { setPage(item.page); setMobileMenuOpen(false); setQuery('') }}><Icon size={17} strokeWidth={1.8} />{item.label}</button> })}</div></div> })}</nav></aside></div> : null}
 
       <main className="min-w-0">
-        <header className="app-header sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
-          <div className="app-header-inner flex flex-wrap items-center gap-2 px-3 py-2.5 lg:flex-nowrap lg:px-5">
-            <div className="app-current-page order-1 flex min-w-0 items-center gap-2.5 lg:w-36 lg:shrink-0">
-              <button className="app-header-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 lg:hidden" type="button" aria-label="Abrir menu principal" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><Menu size={21} /></button>
-              <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:flex">
-                <CurrentPageIcon size={17} />
-              </span>
-              <h2 className="truncate text-sm font-black text-gray-950 sm:text-base">{currentNavigation?.label}</h2>
-            </div>
-            <div className="app-global-search relative order-3 w-full min-w-0 flex-1 lg:order-2 lg:w-auto lg:max-w-2xl">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+        <header className="app-header">
+          <div className="app-header-inner">
+            <button className="app-header-icon lg:hidden" type="button" aria-label="Abrir menu principal" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><Menu size={19} /></button>
+            <div className="app-global-search">
+              <Search size={15} />
               <input
+                ref={globalSearchRef}
                 aria-label="Busca global"
-                className="field-input field-input-with-leading-icon min-h-9 py-1.5 text-sm"
-                placeholder="Buscar contato, projeto ou telefone..."
+                placeholder="Buscar contato, projeto ou telefone"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
+              <kbd aria-hidden="true">⌘K</kbd>
               <GlobalSearchResults query={query} state={state} onNavigate={setPage} />
             </div>
-            <div className="app-header-controls order-2 ml-auto flex shrink-0 items-center gap-2 lg:order-3">
-              <div className="app-header-date hidden xl:flex">
-                <CalendarDays size={16} />
-                <span>
-                  <strong>{new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</strong>
-                  <small>{new Date().toLocaleDateString('pt-BR', { weekday: 'long' })}</small>
-                </span>
-              </div>
+            <div className="app-header-controls">
               <div className={`w-28 shrink-0 ${['dashboard', 'finance', 'reports'].includes(page) ? 'hidden sm:block' : 'hidden'}`}>
                 <Select size="sm" ariaLabel="Período" value={period} onChange={(next) => setPeriod(next as PeriodPreset)} options={periodOptions.map((option) => ({ value: option.value, label: option.label }))} />
               </div>
@@ -6839,7 +6306,7 @@ ${companyName}`
                 <Select size="sm" ariaLabel="Regime financeiro" value={regime} onChange={(next) => setRegime(next as AccountingRegime)} options={[{ value: 'cash', label: 'Caixa' }, { value: 'accrual', label: 'Competência' }]} />
               </div>
               <button
-                className="app-header-icon focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
+                className="app-header-icon"
                 type="button"
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                 aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
@@ -6848,7 +6315,7 @@ ${companyName}`
               </button>
               <div className="relative">
                 <button
-                  className="app-header-icon focus-ring relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700"
+                  className="app-header-icon relative"
                   type="button"
                   onClick={() => setNotificationCenterOpen((open) => !open)}
                   aria-expanded={notificationCenterOpen}
@@ -6856,7 +6323,7 @@ ${companyName}`
                 >
                   <Bell size={17} />
                   {totalUnreadNotificationCount ? (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-600 px-1 text-[0.6rem] font-black leading-none text-white">
+                    <span className="app-badge">
                       {totalUnreadNotificationCount > 9 ? '9+' : totalUnreadNotificationCount}
                     </span>
                   ) : null}
@@ -6908,7 +6375,8 @@ ${companyName}`
           </div>
         </header>
 
-        <div className={`app-content app-page-${page} space-y-4 p-3 sm:p-4 lg:p-5`}>
+        <div className={`app-content app-page-${page}`}>
+          {cloudflareDataReady && syncStatus === 'conflict' ? <div className="sync-banner"><AlertTriangle size={16} /><span>Outra sessão salvou alterações no workspace. Recarregue para continuar; o que foi feito aqui depois disso não será enviado.</span><Button variant="secondary" type="button" onClick={() => window.location.reload()}>Recarregar</Button></div> : null}
           {page === 'dashboard' ? (
             <DashboardPage
               metrics={metrics}
@@ -6970,607 +6438,13 @@ ${companyName}`
               onOpenModal={setModal}
               onGenerateProposal={openProposalGenerator}
               onEditContact={(client) => { setSelectedClientId(client.id); setModal('client') }}
+              onViewContact={(client) => setViewedClientId(client.id)}
+              onExportContacts={exportContacts}
+              onImportContacts={importContacts}
               onDeleteContact={(client) => deleteConnectedContact({ client })}
               onEditCompany={(company) => { setSelectedCompanyId(company.id); setModal('company') }}
               onArchiveCompany={toggleCompanyArchived}
             />
-          ) : null}
-          {page === 'leadHunter' && state.leadHunterSettings ? (
-            <Suspense fallback={<div className="flex min-h-72 items-center justify-center rounded-2xl border border-gray-200 bg-white text-sm font-medium text-gray-500">Carregando Lead Hunter...</div>}><LeadHunterPage
-              cities={state.leadHunterCities || []}
-              categories={state.leadHunterCategories || []}
-              prospects={state.leadHunterProspects || []}
-              searches={state.leadHunterSearches || []}
-              routes={state.leadHunterRoutes || []}
-              settings={state.leadHunterSettings}
-              providerReady
-              onSync={forceLeadHunterSync}
-              onSearch={async (filters) => {
-                const startedAt = Date.now()
-                const now = new Date().toISOString()
-                const activeCities = (state.leadHunterCities || []).filter((item) => item.active && (!item.blockedUntil || item.blockedUntil <= now))
-                const activeCategories = (state.leadHunterCategories || []).filter((item) => item.active)
-                const recentSearches = (state.leadHunterSearches || []).slice(0, 12)
-                const recentCityUsage = new Map<string, number>()
-                const recentCategoryUsage = new Map<string, number>()
-                recentSearches.forEach((search, index) => {
-                  const weight = recentSearches.length - index
-                  search.cityIds.forEach((id) => recentCityUsage.set(id, (recentCityUsage.get(id) || 0) + weight))
-                  search.categoryIds.forEach((id) => recentCategoryUsage.set(id, (recentCategoryUsage.get(id) || 0) + weight))
-                })
-                const searchLearningProfile = buildLeadLearningProfile(state.leadHunterProspects || [])
-                const searchScope = resolveLeadHunterSearchScope({
-                  activeCities,
-                  activeCategories,
-                  filters,
-                  recentCityUsage,
-                  recentCategoryUsage,
-                  searchLearningProfile,
-                })
-                if (!searchScope) {
-                  setToast('Nenhuma cidade e categoria elegíveis no raio atual. Ajuste os filtros ou ative mais segmentos e cidades.')
-                  return
-                }
-                const { city, citiesWithinRadius, selectedCategories } = searchScope
-                const searchId = createId('lh-search')
-                try {
-                  const provider = new OpenStreetMapLeadProvider()
-                  const resultsPerSearch = Math.max(10, Math.min(state.leadHunterSettings?.maxResultsPerSearch || 10, 25))
-                  const candidateTarget = resultsPerSearch * 2
-                  const searchCities = citiesWithinRadius.slice(0, 5)
-                  const providerLimit = Math.max(20, Math.min(50, Math.ceil(candidateTarget / Math.max(searchCities.length, 1)) + 12))
-                  const knownProspects = state.leadHunterProspects || []
-                  const isAlreadyKnown = (raw: { id?: string; name: string; city: string; phone?: string; whatsapp?: string; website?: string; externalIds?: Record<string, string> }) => {
-                    const osmId = raw.externalIds?.openstreetmap
-                    const googlePlaceId = raw.externalIds?.googlePlaces
-                    const normalizedName = normalizeLeadText(raw.name)
-                    const normalizedCity = normalizeLeadText(raw.city)
-                    const phone = (raw.whatsapp || raw.phone || '').replace(/\D/g, '')
-                    const website = (raw.website || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
-                    return knownProspects.some((prospect) =>
-                      prospect.id === raw.id ||
-                      Boolean(osmId && prospect.externalIds.openstreetmap === osmId) ||
-                      Boolean(googlePlaceId && prospect.externalIds.googlePlaces === googlePlaceId) ||
-                      Boolean(phone && phone === (prospect.whatsapp || prospect.phone).replace(/\D/g, '')) ||
-                      Boolean(website && website === prospect.website.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]) ||
-                      (prospect.normalizedName === normalizedName && normalizeLeadText(prospect.city) === normalizedCity),
-                    )
-                  }
-                  let result: Awaited<ReturnType<typeof provider.search>> = {
-                    leads: [], sources: [], estimatedCost: 0, warnings: [],
-                  }
-                  const combinedLeads = new Map<string, (typeof result.leads)[number]>()
-                  const combinedSources = new Set<string>()
-                  const searchWarnings: string[] = []
-                  const addCandidate = (lead: (typeof result.leads)[number]) => {
-                    if (!isEligibleLeadSegment(lead.categoryName, lead.name)) return
-                    const hasDirectContact = Boolean(
-                      lead.whatsapp?.trim() ||
-                      lead.phone?.trim() ||
-                      lead.email?.trim() ||
-                      lead.instagram?.trim(),
-                    )
-                    // Um endereço no mapa, sozinho, não é uma oportunidade
-                    // comercial. Toda empresa que entra no lote precisa ter ao
-                    // menos um canal público de contato.
-                    if (!hasDirectContact) return
-                    // Uma empresa que já apareceu em qualquer rodada permanece no
-                    // histórico e nunca deve voltar a consumir uma vaga de uma
-                    // nova pesquisa.
-                    if (isAlreadyKnown(lead)) return
-                    const normalizedKey = `${normalizeLeadText(lead.name)}|${normalizeLeadText(lead.city)}`
-                    const matchingEntry = [...combinedLeads.entries()].find(([, existing]) =>
-                      `${normalizeLeadText(existing.name)}|${normalizeLeadText(existing.city)}` === normalizedKey,
-                    )
-                    if (!matchingEntry) {
-                      combinedLeads.set(lead.id || normalizedKey, lead)
-                      return
-                    }
-                    const [existingKey, existing] = matchingEntry
-                    combinedLeads.set(existingKey, {
-                      ...existing,
-                      ...lead,
-                      id: existing.id || lead.id,
-                      externalIds: { ...(existing.externalIds || {}), ...(lead.externalIds || {}) },
-                      phone: lead.phone || existing.phone,
-                      whatsapp: lead.whatsapp || existing.whatsapp,
-                      email: lead.email || existing.email,
-                      instagram: lead.instagram || existing.instagram,
-                      website: lead.website || existing.website,
-                      address: lead.address || existing.address,
-                      googleMapsUrl: lead.googleMapsUrl || existing.googleMapsUrl,
-                      score: Math.max(existing.score || 0, lead.score || 0),
-                      scoreReasons: [...(existing.scoreReasons || []), ...(lead.scoreReasons || [])],
-                      sources: [...new Set([...(existing.sources || []), ...(lead.sources || [])])],
-                      sourceUrls: [...new Set([...(existing.sourceUrls || []), ...(lead.sourceUrls || [])])],
-                    })
-                  }
-                  const collectPublicResult = (settled: PromiseSettledResult<{
-                    searchCity: (typeof searchCities)[number]
-                    searchResult: Awaited<ReturnType<typeof provider.search>>
-                    source: string
-                  }>) => {
-                    if (settled.status === 'rejected') {
-                      searchWarnings.push(settled.reason instanceof Error ? settled.reason.message : 'Fonte pública indisponível')
-                      return
-                    }
-                    const { searchCity, searchResult, source } = settled.value
-                    searchResult.sources.forEach((item) => combinedSources.add(item))
-                    searchResult.warnings.forEach((warning) => searchWarnings.push(`${source} (${searchCity.name}): ${warning}`))
-                    searchResult.leads.forEach(addCandidate)
-                  }
-                  try {
-                    const backendResult = await discoverLeadsFromBackend({
-                      cities: citiesWithinRadius.slice(0, 12).map((item) => item.name),
-                      categories: selectedCategories.map((item) => item.name),
-                      limit: candidateTarget,
-                      excludedNames: knownProspects.map((item) => item.name).slice(0, 300),
-                    }, AbortSignal.timeout(25_000))
-                    backendResult.sources.forEach((item) => combinedSources.add(item))
-                    backendResult.warnings.forEach((warning) => searchWarnings.push(`Busca protegida: ${warning}`))
-                    backendResult.leads.forEach(addCandidate)
-                  } catch (error) {
-                    searchWarnings.push(`Busca protegida: ${error instanceof Error ? error.message : 'indisponível'}`)
-                  }
-                  const primaryCity = searchCities[0]
-                  const primaryResults = combinedLeads.size >= resultsPerSearch ? [] : await Promise.allSettled([
-                    provider.search(
-                      { cityNames: [primaryCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
-                      AbortSignal.timeout(20_000),
-                    ).then((searchResult) => ({ searchCity: primaryCity, searchResult, source: 'Mapa público' })),
-                    searchGooglePlacesLeads({
-                      city: primaryCity.name,
-                      categories: selectedCategories.map((item) => item.name),
-                      limit: 16,
-                    }).then((searchResult) => ({ searchCity: primaryCity, searchResult, source: 'Google Places' })),
-                  ])
-                  primaryResults.forEach(collectPublicResult)
-                  // Continua pela região até completar dez oportunidades
-                  // contatáveis. Google Places acompanha cada cidade para manter
-                  // o vínculo oficial e o telefone do estabelecimento.
-                  for (const fallbackCity of searchCities.slice(1)) {
-                    if (combinedLeads.size >= resultsPerSearch) break
-                    const fallbackResult = await Promise.allSettled([
-                      provider.search(
-                        { cityNames: [fallbackCity.name], categoryNames: selectedCategories.map((item) => item.name), radiusKm: filters.radiusKm, limit: providerLimit },
-                        AbortSignal.timeout(20_000),
-                      ).then((searchResult) => ({ searchCity: fallbackCity, searchResult, source: 'Mapa público' })),
-                      searchGooglePlacesLeads({
-                        city: fallbackCity.name,
-                        categories: selectedCategories.map((item) => item.name),
-                        limit: 16,
-                      }).then((searchResult) => ({ searchCity: fallbackCity, searchResult, source: 'Google Places' })),
-                    ])
-                    fallbackResult.forEach(collectPublicResult)
-                  }
-                  if (!combinedLeads.size) {
-                    const message = buildLeadHunterNoResultsMessage(searchWarnings)
-                    setToast(message)
-                    result = {
-                      leads: [],
-                      sources: [...combinedSources],
-                      warnings: searchWarnings,
-                    }
-                  }
-                  const allRankedLeads = [...combinedLeads.values()].sort((a, b) => leadContactPriority(b) - leadContactPriority(a))
-                  const newRankedLeads = allRankedLeads
-                  const rankedLeads = newRankedLeads
-                  const leadBuckets = new Map<string, typeof rankedLeads>()
-                  rankedLeads.forEach((lead) => {
-                    const bucketKey = `${normalizeLeadText(lead.city)}|${normalizeLeadText(lead.categoryName)}`
-                    leadBuckets.set(bucketKey, [...(leadBuckets.get(bucketKey) || []), lead])
-                  })
-                  const mixedLeads: typeof rankedLeads = []
-                  while (mixedLeads.length < resultsPerSearch && [...leadBuckets.values()].some((bucket) => bucket.length)) {
-                    for (const bucket of leadBuckets.values()) {
-                      const nextLead = bucket.shift()
-                      if (nextLead) mixedLeads.push(nextLead)
-                      if (mixedLeads.length >= resultsPerSearch) break
-                    }
-                  }
-                  result = { ...result, leads: mixedLeads, sources: [...combinedSources], warnings: searchWarnings }
-                  let tokenUsage = 0
-                  let enrichmentById = new Map<string, Awaited<ReturnType<typeof enrichLeadsWithOpenAI>>['leads'][number]>()
-                  const aiBudgetAvailable = remainingAiCalls(
-                    state.leadHunterSearches || [],
-                    state.leadHunterSettings || { maxDailyCalls: 50 },
-                  ) > 0
-                  if (isOpenAILeadEnrichmentConfigured && aiBudgetAvailable) {
-                    try {
-                      const enrichmentPriority = (raw: typeof result.leads[number]) => {
-                        const category = normalizeLeadText(raw.categoryName)
-                        const commercialPotential =
-                          /construtora|incorporadora|loteamento|imobiliaria|condominio|industria|logistic|galpao|energia solar|concessionaria/.test(category) ? 24 :
-                          /hotel|pousada|resort|vinicola|fazenda|haras|shopping|clinica|escola|academia|restaurante/.test(category) ? 16 :
-                          8
-                        const discoverability =
-                          (raw.website ? 18 : 0) +
-                          (raw.instagram ? 10 : 0) +
-                          (raw.phone ? 6 : 0) +
-                          (raw.address ? 4 : 0) +
-                          (!raw.whatsapp && (raw.website || raw.phone || raw.instagram) ? 22 : 0) +
-                          (!raw.instagram && raw.website ? 12 : 0)
-                        return (raw.score || 0) + commercialPotential + discoverability
-                      }
-                      const enrichmentInput = result.leads.filter((raw) => {
-                        const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
-                        const osmId = raw.externalIds?.openstreetmap
-                        const googlePlaceId = raw.externalIds?.googlePlaces
-                        const normalizedName = normalizeLeadText(raw.name)
-                        const normalizedCity = normalizeLeadText(raw.city)
-                        const alreadyKnown = knownProspects.some((item) =>
-                          item.id === stableId ||
-                          Boolean(osmId && item.externalIds.openstreetmap === osmId) ||
-                          Boolean(googlePlaceId && item.externalIds.googlePlaces === googlePlaceId) ||
-                          (item.normalizedName === normalizedName && normalizeLeadText(item.city) === normalizedCity),
-                        )
-                        return !alreadyKnown
-                      }).sort((a, b) => enrichmentPriority(b) - enrichmentPriority(a))
-                        .slice(0, Math.min(resultsPerSearch, 6)).map((raw) => ({
-                        externalIds: {}, neighborhood: '', address: '', phone: '', whatsapp: '', email: '', instagram: '', website: '', googleMapsUrl: '',
-                        sources: [], sourceUrls: [], score: 0, scoreReasons: [], normalizedName: normalizeLeadText(raw.name), categoryId: '', status: 'Descoberto' as const,
-                        isNew: true, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, changedSinceLastDisplay: false,
-                        discardedPermanently: false, notes: '', createdAt: now, updatedAt: now, ...raw,
-                        id: raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`,
-                      }))
-                      if (enrichmentInput.length) {
-                        const batches = Array.from({ length: Math.ceil(enrichmentInput.length / 3) }, (_, index) => enrichmentInput.slice(index * 3, index * 3 + 3))
-                        const enrichments = await Promise.all(batches.map((batch) => enrichLeadsWithOpenAI(batch, AbortSignal.timeout(60_000))))
-                        tokenUsage = enrichments.reduce((total, enrichment) => total + enrichment.tokenUsage, 0)
-                        enrichmentById = new Map(enrichments.flatMap((enrichment) => enrichment.leads).map((lead) => [lead.id, lead]))
-                      }
-                    } catch (error) {
-                      setToast(`${error instanceof Error ? error.message : 'A pesquisa de contatos falhou.'} Os resultados públicos foram mantidos.`)
-                    }
-                  }
-                  let newCount = 0
-                  let repeatedCount = 0
-                  let duplicateCount = 0
-                  updateState((current) => {
-                    const existingProspects = [...(current.leadHunterProspects || [])]
-                    const wonLeadIds = new Set(current.leads
-                      .filter((lead) => ['Serviço confirmado', 'Serviço agendado', 'Convertido em cliente'].includes(lead.pipelineStage))
-                      .map((lead) => lead.id))
-                    const learningProfile = buildLeadLearningProfile(existingProspects, wonLeadIds)
-                    let incoming: LeadHunterProspect[] = result.leads.map((raw) => {
-                      const stableId = raw.id || `lh-${normalizeLeadText(`${raw.name}-${raw.city}-${raw.address}`)}`
-                      const enrichment = enrichmentById.get(stableId)
-                      const enrichedRaw = enrichment ? {
-                        ...raw,
-                        contactName: enrichment.contactName || undefined,
-                        address: enrichment.address || raw.address,
-                        phone: enrichment.phone || raw.phone,
-                        whatsapp: enrichment.whatsapp || raw.whatsapp || enrichment.phone || raw.phone,
-                        email: enrichment.email || raw.email,
-                        website: enrichment.website || raw.website,
-                        instagram: enrichment.instagram || raw.instagram,
-                        airbnbUrl: enrichment.airbnbUrl || raw.airbnbUrl,
-                        bookingUrl: enrichment.bookingUrl || raw.bookingUrl,
-                        aiSummary: enrichment.aiSummary || raw.aiSummary,
-                        aiApproach: enrichment.aiApproach || raw.aiApproach,
-                        aiOpportunityLevel: enrichment.aiOpportunityLevel || raw.aiOpportunityLevel,
-                        aiSocialInsight: enrichment.aiSocialInsight || raw.aiSocialInsight,
-                        aiContactHook: enrichment.aiContactHook || raw.aiContactHook,
-                        aiFirstMessage: enrichment.aiFirstMessage || raw.aiFirstMessage,
-                        visualAssessment: enrichment.visualAssessment || raw.visualAssessment,
-                        sources: [...new Set([...(raw.sources || []), 'OpenAI Web Search'])],
-                        sourceUrls: [...new Set([...(raw.sourceUrls || []), ...enrichment.sourceUrls])],
-                      } : raw
-                      const existing = existingProspects.find((item) =>
-                        item.id === stableId ||
-                        Boolean(raw.externalIds?.openstreetmap && item.externalIds.openstreetmap === raw.externalIds.openstreetmap) ||
-                        Boolean(raw.externalIds?.googlePlaces && item.externalIds.googlePlaces === raw.externalIds.googlePlaces),
-                      )
-                      const duplicate = findLeadDuplicates(raw, existingProspects, current.clients, current.leads)[0]
-                      if (duplicate && duplicate.id !== existing?.id) duplicateCount += 1
-                      const category = selectedCategories.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.categoryName)) || selectedCategories[0]
-                      const leadCity = activeCities.find((item) => normalizeLeadText(item.name) === normalizeLeadText(raw.city)) || city
-                      const refined = refineLeadOpportunity(enrichedRaw, leadCity.distanceFromBaseKm)
-                      const learningAdjustment = learningAdjustmentForLead({
-                        categoryName: enrichedRaw.categoryName,
-                        city: enrichedRaw.city,
-                      }, learningProfile)
-                      const aiScoreAdjustment =
-                        enrichedRaw.aiOpportunityLevel === 'Excelente' ? 8 :
-                        enrichedRaw.aiOpportunityLevel === 'Boa' ? 3 :
-                        enrichedRaw.aiOpportunityLevel === 'Ruim' ? -8 : 0
-                      const provisionalRaw = {
-                        ...enrichedRaw,
-                        ...refined,
-                        score: Math.max(0, Math.min(100, refined.score + aiScoreAdjustment + learningAdjustment + leadSegmentPriorityPoints(enrichedRaw.categoryName))),
-                        scoreReasons: aiScoreAdjustment
-                          ? [...refined.scoreReasons, { id: 'ai-evaluation', label: `Avaliação da IA: ${enrichedRaw.aiOpportunityLevel}`, points: aiScoreAdjustment }]
-                          : refined.scoreReasons,
-                        distanceKm: leadCity.distanceFromBaseKm,
-                      }
-                      const qualification = qualifyLead(provisionalRaw)
-                      const visualScore = calculateVisualOpportunityScore(provisionalRaw)
-                      const hasVisualResearch = Boolean(provisionalRaw.visualAssessment)
-                      const evaluatedRaw = {
-                        ...provisionalRaw,
-                        qualification,
-                        score: hasVisualResearch ? visualScore.score : qualification.total,
-                        scoreReasons: hasVisualResearch ? visualScore.reasons : provisionalRaw.scoreReasons,
-                      }
-                      if (learningAdjustment) {
-                        evaluatedRaw.scoreReasons = [
-                          ...evaluatedRaw.scoreReasons,
-                          { id: 'learned-preference', label: 'Ajuste baseado nos leads aceitos e rejeitados', points: learningAdjustment },
-                        ]
-                      }
-                      if (existing) {
-                        repeatedCount += 1
-                        const repeated = {
-                          ...existing,
-                          ...evaluatedRaw,
-                          name: existing.name || evaluatedRaw.name || 'Empresa sem nome',
-                          contactName: existing.contactName || evaluatedRaw.contactName,
-                          phone: existing.phone || evaluatedRaw.phone || '',
-                          whatsapp: existing.whatsapp || evaluatedRaw.whatsapp || existing.phone || evaluatedRaw.phone || '',
-                          email: existing.email || evaluatedRaw.email || '',
-                          instagram: existing.instagram || evaluatedRaw.instagram || '',
-                          website: existing.website || evaluatedRaw.website || '',
-                          address: existing.address || evaluatedRaw.address || '',
-                          neighborhood: existing.neighborhood || evaluatedRaw.neighborhood || '',
-                          googleMapsUrl: existing.googleMapsUrl || evaluatedRaw.googleMapsUrl || '',
-                          notes: existing.notes || evaluatedRaw.notes || '',
-                          categoryId: category.id,
-                          cityId: leadCity.id,
-                          isNew: false,
-                          possibleDuplicateId: duplicate?.id,
-                          discoveryCount: existing.discoveryCount + 1,
-                          lastDiscoveredAt: now,
-                          lastSearchId: searchId,
-                          updatedAt: now,
-                        }
-                        return { ...repeated, contactValidation: validateLeadContacts(repeated, now) }
-                      }
-                      newCount += 1
-                      const created = { externalIds: {}, neighborhood: '', address: '', phone: '', email: '', instagram: '', website: '', googleMapsUrl: '', sources: [], sourceUrls: [], ...evaluatedRaw, whatsapp: evaluatedRaw.whatsapp || evaluatedRaw.phone || '', id: stableId, normalizedName: normalizeLeadText(raw.name), categoryId: category.id, cityId: leadCity.id, status: 'Descoberto' as const, isNew: true, possibleDuplicateId: duplicate?.id, firstDiscoveredAt: now, lastDiscoveredAt: now, discoveryCount: 1, displayCount: 0, lastSearchId: searchId, changedSinceLastDisplay: false, discardedPermanently: false, notes: '', createdAt: now, updatedAt: now }
-                      return { ...created, contactValidation: validateLeadContacts(created as LeadHunterProspect, now) }
-                    }).filter((lead) => {
-                      const hasLocation = Boolean(lead.address.trim() || (lead.latitude != null && lead.longitude != null))
-                      const hasPublicEvidence = lead.sourceUrls.some((url) => /^https?:\/\//i.test(url))
-                      const hasDirectContact = Boolean(
-                        lead.whatsapp.trim() ||
-                        lead.phone.trim() ||
-                        lead.email.trim() ||
-                        lead.instagram.trim(),
-                      )
-                      const hasOfficialGoogleProfile = Boolean(
-                        (lead.externalIds.googlePlaces || lead.externalIds.googleBusiness) &&
-                        /^https?:\/\/(www\.)?(google\.[^/]+\/maps|maps\.google\.)/i.test(lead.googleMapsUrl),
-                      )
-                      return hasLocation &&
-                        hasPublicEvidence &&
-                        hasDirectContact &&
-                        (hasOfficialGoogleProfile || lead.sourceUrls.length > 0) &&
-                        isEligibleLeadSegment(lead.categoryName, lead.name)
-                    })
-                    incoming = incoming
-                      .filter((lead) => lead.visualAssessment?.worthCommercialTime !== false)
-                      .sort((a, b) => b.score - a.score || leadContactPriority(b) - leadContactPriority(a))
-                      .slice(0, resultsPerSearch)
-                    newCount = incoming.filter((lead) => lead.isNew).length
-                    repeatedCount = incoming.length - newCount
-                    const incomingIds = new Set(incoming.map((item) => item.id))
-                    const searchedCityIds = new Set(searchCities.map((item) => item.id))
-                    return { ...current, leadHunterProspects: [...incoming, ...existingProspects.filter((item) => !incomingIds.has(item.id))], leadHunterCities: (current.leadHunterCities || []).map((item) => searchedCityIds.has(item.id) ? { ...item, searchCount: item.searchCount + 1, discoveredCount: item.discoveredCount + incoming.filter((lead) => lead.cityId === item.id).length, newLeadCount: item.newLeadCount + incoming.filter((lead) => lead.cityId === item.id && lead.isNew).length, lastSearchedAt: now, updatedAt: now } : item), leadHunterCategories: (current.leadHunterCategories || []).map((item) => selectedCategories.some((selected) => selected.id === item.id) ? { ...item, searchCount: item.searchCount + 1, updatedAt: now } : item), leadHunterSearches: [{ id: searchId, ...filters, cityIds: searchCities.map((item) => item.id), categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: tokenUsage > 0 ? [...result.sources, 'OpenAI Web Search'] : result.sources, totalFound: incoming.length, newCount, repeatedCount, duplicateCount, cooldownBlockedCount: 0, errorCount: 0, estimatedCost: 0, tokenUsage, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }
-                  }, newCount
-                    ? `${newCount} novo(s) adicionado(s) no topo. Os anteriores foram mantidos abaixo.`
-                    : 'Nenhuma empresa inédita foi encontrada nesta rodada. A próxima busca alternará cidades e categorias.')
-                } catch (error) {
-                  updateState((current) => ({ ...current, leadHunterSearches: [{ id: searchId, ...filters, cityIds: [city.id], categoryIds: selectedCategories.map((item) => item.id), neighborhood: '', sources: ['OpenStreetMap / Overpass API'], totalFound: 0, newCount: 0, repeatedCount: 0, duplicateCount: 0, cooldownBlockedCount: 0, errorCount: 1, estimatedCost: 0, tokenUsage: 0, durationMs: Date.now() - startedAt, userId: activeUserId, createdAt: now }, ...(current.leadHunterSearches || [])] }), error instanceof Error ? error.message : 'Não foi possível concluir a busca pública.')
-                }
-              }}
-              onSaveSettings={(settings) => updateState((current) => ({ ...current, leadHunterSettings: settings }), 'Configurações do Lead Hunter salvas.')}
-              onSaveCities={(cities) => updateState((current) => ({ ...current, leadHunterCities: cities }), 'Cidades do Lead Hunter atualizadas.')}
-              onSaveCategories={(categories) => updateState((current) => ({ ...current, leadHunterCategories: categories }), 'Categorias do Lead Hunter atualizadas.')}
-              onEnrich={async (prospectId) => {
-                const prospect = (state.leadHunterProspects || []).find((item) => item.id === prospectId)
-                if (!prospect) {
-                  setToast('Lead não encontrado para análise.')
-                  return
-                }
-                if (!isOpenAILeadEnrichmentConfigured) {
-                  setToast('A integração com a OpenAI não está disponível.')
-                  return
-                }
-                if (remainingAiCalls(state.leadHunterSearches || [], state.leadHunterSettings || { maxDailyCalls: 50 }) <= 0) {
-                  setToast('O limite diário de IA foi atingido. A busca pública gratuita continua disponível.')
-                  return
-                }
-                if (shouldSkipManualEnrichment(prospect)) {
-                  setToast('Este lead já foi analisado hoje. Mantive a análise atual para não gastar créditos novamente.')
-                  return
-                }
-                try {
-                  const enrichment = await enrichLeadsWithOpenAI([prospect], AbortSignal.timeout(75_000))
-                  const enriched = enrichment.leads.find((item) => item.id === prospect.id)
-                  if (!enriched) {
-                    setToast('A IA não encontrou informações públicas adicionais para este lead.')
-                    return
-                  }
-                  const now = new Date().toISOString()
-                  const searchId = createId('lh-enrichment')
-                  updateState((current) => ({
-                    ...current,
-                    leadHunterProspects: (current.leadHunterProspects || []).map((item) => item.id === prospect.id ? {
-                      ...item,
-                      contactName: enriched.contactName || item.contactName,
-                      address: enriched.address || item.address,
-                      phone: enriched.phone || item.phone,
-                      whatsapp: enriched.whatsapp || item.whatsapp || enriched.phone || item.phone,
-                      email: enriched.email || item.email,
-                      website: enriched.website || item.website,
-                      instagram: enriched.instagram || item.instagram,
-                      airbnbUrl: enriched.airbnbUrl || item.airbnbUrl,
-                      bookingUrl: enriched.bookingUrl || item.bookingUrl,
-                      aiSummary: enriched.aiSummary || item.aiSummary,
-                      aiApproach: enriched.aiApproach || item.aiApproach,
-                      aiOpportunityLevel: enriched.aiOpportunityLevel || item.aiOpportunityLevel,
-                      aiSocialInsight: enriched.aiSocialInsight || item.aiSocialInsight,
-                      aiContactHook: enriched.aiContactHook || item.aiContactHook,
-                      aiFirstMessage: enriched.aiFirstMessage || item.aiFirstMessage,
-                      visualAssessment: enriched.visualAssessment || item.visualAssessment,
-                      sources: [...new Set([...item.sources, 'OpenAI Web Search'])],
-                      sourceUrls: [...new Set([...item.sourceUrls, ...enriched.sourceUrls])],
-                      contactValidation: validateLeadContacts({
-                        ...item,
-                        phone: enriched.phone || item.phone,
-                        whatsapp: enriched.whatsapp || item.whatsapp || enriched.phone || item.phone,
-                        email: enriched.email || item.email,
-                        website: enriched.website || item.website,
-                        instagram: enriched.instagram || item.instagram,
-                        sources: [...new Set([...item.sources, 'OpenAI Web Search'])],
-                        sourceUrls: [...new Set([...item.sourceUrls, ...enriched.sourceUrls])],
-                      }, now),
-                      status: 'Analisado' as const,
-                      lastAnalyzedAt: now,
-                      lastSearchId: searchId,
-                      updatedAt: now,
-                    } : item),
-                    leadHunterSearches: [{
-                      id: searchId, mode: 'Manual' as const, cityIds: prospect.cityId ? [prospect.cityId] : [],
-                      categoryIds: [prospect.categoryId], radiusKm: 0, neighborhood: '', onlyNew: false,
-                      includeEligibleKnown: true, minimumScore: 0, sources: ['OpenAI Web Search'],
-                      totalFound: 1, newCount: 0, repeatedCount: 1, duplicateCount: 0, cooldownBlockedCount: 0,
-                      errorCount: 0, estimatedCost: 0, tokenUsage: enrichment.tokenUsage, durationMs: 0,
-                      userId: activeUserId, createdAt: now,
-                    }, ...(current.leadHunterSearches || [])],
-                  }), enriched.whatsapp || enriched.instagram || enriched.phone || enriched.email
-                    ? 'Contatos e análise do lead atualizados pela IA.'
-                    : 'Análise atualizada. Nenhum novo contato público foi confirmado.')
-                } catch (error) {
-                  setToast(error instanceof Error ? error.message : 'Não foi possível analisar este lead agora.')
-                }
-              }}
-              onCreateManual={(input) => {
-                const now = new Date().toISOString()
-                const category = (state.leadHunterCategories || []).find((item) => item.id === input.categoryId)
-                const city = (state.leadHunterCities || []).find((item) => item.id === input.cityId)
-                if (!category || !city) {
-                  setToast('Selecione uma cidade e uma categoria válidas.')
-                  return
-                }
-                const searchId = createId('lh-manual')
-                const prospectId = createId('lh-prospect')
-                const contactPoints = [input.whatsapp, input.phone, input.email, input.instagram].filter(Boolean).length
-                const score = Math.min(95, 60 + contactPoints * 8 + (input.googleMapsUrl ? 6 : 0))
-                const prospect = {
-                  id: prospectId,
-                  externalIds: {},
-                  name: input.name,
-                  normalizedName: normalizeLeadText(input.name),
-                  categoryId: category.id,
-                  categoryName: category.name,
-                  recommendedService: recommendLeadService(category.name),
-                  cityId: city.id,
-                  city: city.name,
-                  neighborhood: '',
-                  address: '',
-                  distanceKm: city.distanceFromBaseKm,
-                  phone: input.phone.trim(),
-                  whatsapp: input.whatsapp.trim(),
-                  email: input.email.trim(),
-                  instagram: input.instagram.trim(),
-                  website: '',
-                  googleMapsUrl: input.googleMapsUrl.trim(),
-                  sources: ['Cadastro manual'],
-                  sourceUrls: input.googleMapsUrl.trim() ? [input.googleMapsUrl.trim()] : [],
-                  score,
-                  scoreReasons: [
-                    { id: 'manual-test', label: 'Lead cadastrado manualmente para teste', points: 60 },
-                    ...(input.whatsapp ? [{ id: 'manual-whatsapp', label: 'WhatsApp informado', points: 10 }] : []),
-                    ...(input.email ? [{ id: 'manual-email', label: 'E-mail informado', points: 8 }] : []),
-                    ...(input.instagram ? [{ id: 'manual-instagram', label: 'Instagram informado', points: 8 }] : []),
-                  ],
-                  status: 'Descoberto' as const,
-                  isNew: true,
-                  firstDiscoveredAt: now,
-                  lastDiscoveredAt: now,
-                  discoveryCount: 1,
-                  displayCount: 0,
-                  lastSearchId: searchId,
-                  changedSinceLastDisplay: false,
-                  discardedPermanently: false,
-                  aiSummary: `${category.name} em ${city.name} com potencial para ${recommendLeadService(category.name).toLocaleLowerCase('pt-BR')}.`,
-                  aiApproach: `Apresente ${recommendLeadService(category.name).toLocaleLowerCase('pt-BR')} e personalize a abordagem com um ponto real do negócio.`,
-                  notes: 'Cadastro manual de teste.',
-                  createdAt: now,
-                  updatedAt: now,
-                }
-                updateState((current) => ({
-                  ...current,
-                  leadHunterProspects: [prospect, ...(current.leadHunterProspects || [])],
-                  leadHunterSearches: [{
-                    id: searchId,
-                    mode: 'Manual' as const,
-                    cityIds: [city.id],
-                    categoryIds: [category.id],
-                    radiusKm: 0,
-                    neighborhood: '',
-                    onlyNew: false,
-                    includeEligibleKnown: false,
-                    minimumScore: 0,
-                    sources: ['Cadastro manual'],
-                    totalFound: 1,
-                    newCount: 1,
-                    repeatedCount: 0,
-                    duplicateCount: 0,
-                    cooldownBlockedCount: 0,
-                    errorCount: 0,
-                    estimatedCost: 0,
-                    tokenUsage: 0,
-                    durationMs: 0,
-                    userId: activeUserId,
-                    createdAt: now,
-                  }, ...(current.leadHunterSearches || [])],
-                }), 'Lead manual criado e adicionado ao topo do Lead Hunter.')
-              }}
-              onImport={importLeadHunterProspects}
-              onEmail={sendLeadHunterEmail}
-              onAutomateOutreach={automateLeadHunterOutreach}
-              onConfirmExternalOutreach={confirmLeadHunterExternalOutreach}
-              onReject={(prospectId) => {
-                const now = new Date().toISOString()
-                updateState((current) => ({
-                  ...current,
-                  leadHunterProspects: (current.leadHunterProspects || []).map((prospect) =>
-                    prospect.id === prospectId
-                      ? { ...prospect, decision: 'Rejeitado' as const, decisionAt: now, status: 'Descartado' as const, discardedPermanently: true, isNew: false, updatedAt: now }
-                      : prospect,
-                  ),
-                }), 'Lead rejeitado e removido das próximas buscas.')
-              }}
-              onDelete={(prospect) => deleteConnectedContact({ prospect })}
-              onUpdate={(prospectId, updates) => {
-                const now = new Date().toISOString()
-                updateState((current) => ({
-                  ...current,
-                  leadHunterProspects: (current.leadHunterProspects || []).map((prospect) => {
-                    if (prospect.id !== prospectId) return prospect
-                    const updated = {
-                      ...prospect,
-                      ...updates,
-                      normalizedName: normalizeLeadText(updates.name || prospect.name),
-                      sources: [...new Set([...prospect.sources, 'Revisão manual'])],
-                      updatedAt: now,
-                    }
-                    return { ...updated, contactValidation: validateLeadContacts(updated, now) }
-                  }),
-                }), 'Informações do lead atualizadas e sincronizadas.')
-              }}
-              onCreateRoute={(input) => {
-                const now = new Date().toISOString()
-                updateState((current) => ({ ...current, leadHunterRoutes: [{ id: createId('lh-route'), ...input, visitedProspectIds: [], status: 'Planejada', notes: '', createdBy: activeUserId, createdAt: now, updatedAt: now }, ...(current.leadHunterRoutes || [])] }), 'Rota salva no Lead Hunter.')
-              }}
-              onToggleVisited={(routeId, prospectId) => updateState((current) => ({ ...current, leadHunterRoutes: (current.leadHunterRoutes || []).map((route) => {
-                if (route.id !== routeId) return route
-                const visitedProspectIds = route.visitedProspectIds.includes(prospectId) ? route.visitedProspectIds.filter((id) => id !== prospectId) : [...route.visitedProspectIds, prospectId]
-                return { ...route, visitedProspectIds, status: visitedProspectIds.length === route.prospectIds.length ? 'Concluída' : visitedProspectIds.length ? 'Em andamento' : 'Planejada', updatedAt: new Date().toISOString() }
-              }) }), 'Visita atualizada na rota.')}
-            /></Suspense>
           ) : null}
           {page === 'inbox' ? (
             <InboxPage
@@ -7602,6 +6476,42 @@ ${currentUser?.name?.trim() || state.companySettings.companyName || 'Equipe'}
 ${state.companySettings.companyName || 'Hero Drone'}`,
               })}
             />
+          ) : null}
+          {page === 'content' ? (
+            <ContentPlannerPage
+              items={state.contentItems || []}
+              pillars={state.contentPillars || []}
+              users={state.users}
+              projects={state.projects}
+              onSaveItem={(item, message) => updateState((current) => ({
+                ...current,
+                contentItems: (current.contentItems || []).some((entry) => entry.id === item.id)
+                  ? (current.contentItems || []).map((entry) => entry.id === item.id ? item : entry)
+                  : [item, ...(current.contentItems || [])],
+              }), message)}
+              onDeleteItem={(item) => requestConfirm({
+                title: 'Excluir conteúdo?',
+                description: `${item.title} será removido do planejamento.`,
+                confirmLabel: 'Excluir conteúdo',
+                tone: 'danger',
+                onConfirm: () => updateState((current) => ({ ...current, contentItems: (current.contentItems || []).filter((entry) => entry.id !== item.id) }), 'Conteúdo excluído.'),
+              })}
+              onSavePillars={(contentPillars) => updateState((current) => ({ ...current, contentPillars }), 'Pilares atualizados.')}
+            />
+          ) : null}
+          {page === 'metrics' ? <MetricsPage contentItems={state.contentItems || []} canManageIntegrations={canOpenPage(currentUser, 'integrations')} onOpenIntegrations={() => setPage('integrations')} onOpenLead={(leadId, email) => {
+            const lead = state.leads.find((item) => item.id === leadId) ?? state.leads.find((item) => item.email.toLowerCase() === email.toLowerCase())
+            if (lead?.contactId) setViewedClientId(lead.contactId)
+            else setToast('Este contato ainda será criado na próxima sincronização.')
+          }} /> : null}
+          {page === 'integrations' ? (
+            <IntegrationsPage onConfirmRevoke={(label, action) => requestConfirm({
+              title: 'Revogar token?',
+              description: `Rotinas que usam "${label}" param de enviar dados imediatamente.`,
+              confirmLabel: 'Revogar token',
+              tone: 'danger',
+              onConfirm: action,
+            })} />
           ) : null}
           {page === 'projects' ? (
             <ProjectsPage
@@ -7673,6 +6583,21 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
                 responsibleUserId: activeUserId,
                 createGoogleCalendar: false,
               }, true)}
+              onQuickCreateEvent={(title, startAt, endAt) => void saveAppointment({
+                title,
+                appointmentType: 'Evento',
+                clientId: '',
+                leadId: '',
+                projectId: '',
+                startAt,
+                endAt,
+                address: '',
+                notes: '',
+                status: 'Agendado',
+                color: '#3f6fb5',
+                createGoogleCalendar: false,
+                rescheduleReason: '',
+              })}
               onCreateEvent={(defaults) => openAppointmentModal({
                 title: '',
                 appointmentType: 'Evento',
@@ -7758,7 +6683,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
               regime={regime}
             />
           ) : null}
-          {page === 'settings' ? <SettingsPage state={state} onSubmit={updateSettings} onClearContacts={clearAllContacts} onClearCompanies={clearAllCompanies} /> : null}
+          {page === 'settings' ? <SettingsPage state={state} onSubmit={updateSettings} onClearContacts={clearAllContacts} onClearCompanies={clearAllCompanies} onToggleModule={toggleModule} onDownloadBackup={downloadBackup} onResetLocal={!isFirebaseConfigured && !isSupabaseConfigured ? restoreDemo : undefined} /> : null}
           {page === 'profile' ? (
             <ProfilePage
               user={currentUser}
@@ -7812,7 +6737,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
             <button
               key={item.page}
               className={`mobile-nav-item ${page === item.page ? 'is-active' : ''} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${
-                page === item.page ? 'text-[#b58b00]' : 'text-gray-500'
+                page === item.page ? 'text-[var(--accent-text)]' : 'text-gray-500'
               }`}
               type="button"
               onClick={() => setPage(item.page)}
@@ -7822,7 +6747,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
             </button>
           )
         })}
-        <button className={`mobile-nav-item ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? '' : 'is-active'} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? 'text-gray-500' : 'text-[#b58b00]'}`} type="button" aria-label="Abrir menu completo" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />Menu</button>
+        <button className={`mobile-nav-item ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? '' : 'is-active'} flex min-h-16 flex-col items-center justify-center gap-1 text-[0.68rem] font-bold ${availableMobileNavigation.slice(0, 4).some((item) => item.page === page) ? 'text-gray-500' : 'text-[var(--accent-text)]'}`} type="button" aria-label="Abrir menu completo" onClick={() => setMobileMenuOpen(true)}><Menu size={19} />Menu</button>
       </nav>
 
       <div className="quick-actions-dock fixed bottom-20 right-4 z-40 lg:bottom-6">
@@ -7830,7 +6755,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
           <Button
             aria-expanded={quickActionsOpen}
             aria-label="Ações rápidas"
-            className="h-11 w-11 min-h-11 rounded-xl border border-gray-700 bg-[#242622] p-0 text-white shadow-lg shadow-black/15 hover:-translate-y-0.5 hover:bg-black hover:shadow-xl"
+            className="h-11 w-11 min-h-11 rounded-xl border border-gray-700 bg-[var(--sidebar)] p-0 text-white shadow-lg shadow-black/15 hover:-translate-y-0.5 hover:bg-black hover:shadow-xl"
             type="button"
             onClick={() => setQuickActionsOpen((open) => !open)}
           >
@@ -7849,7 +6774,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
               { label: 'Nova receita', modalName: 'payment', permission: 'manageFinance' },
               { label: 'Nova despesa', modalName: 'expense', permission: 'manageFinance' },
               { label: 'Novo equipamento', modalName: 'equipment', permission: 'manageEquipment' },
-            ].filter((action) => can(currentUser, action.permission as UserPermission)).map(({ label, modalName }) => (
+            ].filter((action) => can(currentUser, action.permission as UserPermission) && moduleEnabled(state.companySettings, action.modalName === 'proposal' ? 'quotes' : action.modalName === 'equipment' ? 'equipment' : undefined)).map(({ label, modalName }) => (
               <button
                 key={modalName}
                 className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-bold text-gray-700 hover:bg-gray-100"
@@ -7877,6 +6802,18 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
         </div>
       </div>
 
+      {viewedClientId && state.clients.some((client) => client.id === viewedClientId) ? (
+        <ContactDetail
+          client={state.clients.find((client) => client.id === viewedClientId) as Client}
+          state={state}
+          onClose={() => setViewedClientId('')}
+          onEdit={() => { setSelectedClientId(viewedClientId); setViewedClientId(''); setModal('client') }}
+          onCreateOpportunity={() => { const contactId = viewedClientId; setViewedClientId(''); openLeadModal(); setNewOpportunityContactId(contactId) }}
+          onCreateTask={() => { const clientId = viewedClientId; setViewedClientId(''); openTaskModal({ clientId, clientIds: [clientId] }) }}
+          onOpenLead={(lead) => { setViewedClientId(''); setPage('leads'); setSelectedLeadId(lead.id) }}
+          onOpenProject={(project) => { setViewedClientId(''); setQuery(project.projectCode); setPage('projects') }}
+        />
+      ) : null}
       {modal === 'leadDetail' && selectedLead ? (
         <Modal title={contactDisplayName(selectedLead)} onClose={() => { setModal(null); setSelectedLeadId('') }}>
           <div className="space-y-5">
@@ -7927,7 +6864,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
             </div>
             <Panel title="Timeline completa">
               <div className="space-y-3">
-                {[...state.leadInteractions.filter((item) => item.leadId === selectedLead.id).map((item) => ({ id: item.id, date: item.interactionDate, title: item.interactionType, details: item.description })), ...state.statusHistory.filter((item) => item.entityType === 'Contato' && item.entityId === selectedLead.id).map((item) => ({ id: item.id, date: item.createdAt, title: item.action, details: item.details }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((item) => <div key={item.id} className="border-l-2 border-[#d8a500] pl-4"><strong className="text-gray-950">{item.title}</strong><p className="text-xs text-gray-500">{formatDateTime(item.date)}</p><p className="mt-1 text-sm text-gray-700">{item.details}</p></div>)}
+                {[...state.leadInteractions.filter((item) => item.leadId === selectedLead.id).map((item) => ({ id: item.id, date: item.interactionDate, title: item.interactionType, details: item.description })), ...state.statusHistory.filter((item) => item.entityType === 'Contato' && item.entityId === selectedLead.id).map((item) => ({ id: item.id, date: item.createdAt, title: item.action, details: item.details }))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((item) => <div key={item.id} className="border-l-2 border-[var(--accent)] pl-4"><strong className="text-gray-950">{item.title}</strong><p className="text-xs text-gray-500">{formatDateTime(item.date)}</p><p className="mt-1 text-sm text-gray-700">{item.details}</p></div>)}
               </div>
             </Panel>
           </div>
@@ -8139,7 +7076,7 @@ ${state.companySettings.companyName || 'Hero Drone'}`,
         <Modal title="Criar proposta" size="md" onClose={closeProposalModal}>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">Já existem propostas ativas para este contato. Escolha uma opção:</p>
-            <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-[#d8a500] bg-amber-50 p-3 text-left" type="button" onClick={() => { setSelectedProposalQuoteId(''); setModal('proposal') }}>
+            <button className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--accent)] bg-amber-50 p-3 text-left" type="button" onClick={() => { setSelectedProposalQuoteId(''); setModal('proposal') }}>
               <span><strong className="block text-gray-950">Criar proposta vazia</strong><span className="mt-0.5 block text-xs text-gray-600">Sem serviços ou valores preenchidos.</span></span><Plus size={19} />
             </button>
             {relatedProposalDraft ? (
@@ -8411,7 +7348,7 @@ function EmailComposer({
       <form className="email-composer-surface flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border shadow-2xl" onSubmit={submit}>
         <header className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e0b936] text-gray-950"><Mail size={19} /></div>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--ink)] text-[var(--on-ink)] text-gray-950"><Mail size={19} /></div>
             <div className="min-w-0">
               <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-gray-400">Nova mensagem</p>
               <h2 id="email-composer-title" className="truncate text-lg font-black text-gray-950">E-mail para {composer.displayName}</h2>
@@ -8437,7 +7374,7 @@ function EmailComposer({
 
           <label className="mt-4 block">
             <span className="flex items-center justify-between gap-3">
-              <span className="field-label inline-flex items-center gap-1.5"><Wand2 size={13} className="text-[#b08700]" /> Mensagem personalizada</span>
+              <span className="field-label inline-flex items-center gap-1.5"><Wand2 size={13} className="text-[var(--accent-text)]" /> Mensagem personalizada</span>
               <button className="text-xs font-bold text-gray-500 hover:text-gray-900" type="button" onClick={restoreSuggestion}>Restaurar sugestão</button>
             </span>
             <div className="email-editor-wrap mt-2 overflow-hidden rounded-xl border">
@@ -8647,22 +7584,22 @@ function PublicProposalPage({ token }: { token: string }) {
     }
   }
 
-  if (loading) return <main className="grid min-h-screen place-items-center bg-[#111315] p-5 text-white"><p className="font-bold">Carregando proposta…</p></main>
-  if (!proposal) return <main className="grid min-h-screen place-items-center bg-[#111315] p-5 text-center text-white"><div><AlertTriangle className="mx-auto text-amber-400" size={36} /><h1 className="mt-3 text-xl font-black">Proposta indisponível</h1><p className="mt-2 text-sm text-white/60">{error}</p></div></main>
+  if (loading) return <main className="grid min-h-screen place-items-center bg-[var(--sidebar)] p-5 text-white"><p className="font-bold">Carregando proposta…</p></main>
+  if (!proposal) return <main className="grid min-h-screen place-items-center bg-[var(--sidebar)] p-5 text-center text-white"><div><AlertTriangle className="mx-auto text-amber-400" size={36} /><h1 className="mt-3 text-xl font-black">Proposta indisponível</h1><p className="mt-2 text-sm text-white/60">{error}</p></div></main>
 
   const approved = proposal.status === 'Aprovada'
   return (
     <main className="public-proposal-page min-h-screen">
       <header className="public-proposal-header">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <div className="flex min-w-0 items-center gap-3"><img className="h-12 w-12 object-contain" src={heroLogoSrc} alt="Hero Drone" /><div><strong className="block text-base">{proposal.companyName}</strong><span className="text-xs font-bold text-[#e0b936]">Proposta comercial</span></div></div>
+          <div className="flex min-w-0 items-center gap-3"><img className="h-12 w-12 object-contain" src={heroLogoSrc} alt="Hero Drone" /><div><strong className="block text-base">{proposal.companyName}</strong><span className="text-xs font-bold text-[var(--accent-text)]">Proposta comercial</span></div></div>
           <span className="public-proposal-reference">Referência {proposal.quoteNumber}</span>
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-4 py-7 sm:px-8 sm:py-10">
         <section className="public-proposal-hero">
           <div className="relative z-10 max-w-2xl">
-            <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-[#e0b936]">Proposta comercial para</p>
+            <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-[var(--accent-text)]">Proposta comercial para</p>
             <h1 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">{proposal.customerName}</h1>
             <div className="mt-4 flex flex-wrap gap-3 text-xs text-white/65"><span>Emissão {formatDate(proposal.issueDate)}</span><span>•</span><span>Válida até {formatDate(proposal.expirationDate)}</span></div>
           </div>
@@ -8672,21 +7609,21 @@ function PublicProposalPage({ token }: { token: string }) {
         <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_0.8fr]">
           <section className="public-proposal-card">
             <div className="public-proposal-card-heading"><div><p className="public-proposal-eyebrow">Investimento</p><h2>Serviços incluídos</h2></div><span>{proposal.items.length} {proposal.items.length === 1 ? 'item' : 'itens'}</span></div>
-            <div className="mt-5 divide-y divide-[#ece8dc]">{proposal.items.map((item, index) => <div key={`${item.description}-${index}`} className="flex items-start justify-between gap-5 py-4 first:pt-0"><div><strong className="text-[0.95rem]">{item.description}</strong><p className="mt-1 text-xs text-[#77736a]">{item.pricingLabel ? `${item.quantity} × ${item.pricingLabel}` : `${item.quantity} × ${formatCurrency(item.unitPrice)}`}</p></div><strong className="whitespace-nowrap">{item.pricingLabel || formatCurrency(item.totalPrice)}</strong></div>)}</div>
-            <dl className="ml-auto mt-4 grid max-w-sm gap-2 border-t border-[#ded9cd] pt-4 text-sm">
-              <div className="flex justify-between text-[#77736a]"><dt>Subtotal</dt><dd>{formatCurrency(proposal.subtotal)}</dd></div>
+            <div className="mt-5 divide-y divide-[#ece8dc]">{proposal.items.map((item, index) => <div key={`${item.description}-${index}`} className="flex items-start justify-between gap-5 py-4 first:pt-0"><div><strong className="text-[0.95rem]">{item.description}</strong><p className="mt-1 text-xs text-[var(--text-muted)]">{item.pricingLabel ? `${item.quantity} × ${item.pricingLabel}` : `${item.quantity} × ${formatCurrency(item.unitPrice)}`}</p></div><strong className="whitespace-nowrap">{item.pricingLabel || formatCurrency(item.totalPrice)}</strong></div>)}</div>
+            <dl className="ml-auto mt-4 grid max-w-sm gap-2 border-t border-[var(--border)] pt-4 text-sm">
+              <div className="flex justify-between text-[var(--text-muted)]"><dt>Subtotal</dt><dd>{formatCurrency(proposal.subtotal)}</dd></div>
               {proposal.discount ? <div className="flex justify-between text-emerald-700"><dt>Desconto</dt><dd>- {formatCurrency(proposal.discount)}</dd></div> : null}
-              {proposal.travelFee ? <div className="flex justify-between text-[#77736a]"><dt>Deslocamento</dt><dd>{formatCurrency(proposal.travelFee)}</dd></div> : null}
-              <div className="mt-2 flex justify-between border-t border-[#ded9cd] pt-4 text-xl font-black"><dt>Total</dt><dd>{formatCurrency(proposal.totalValue)}</dd></div>
-              <div className="flex justify-between rounded-lg bg-[#f7f2df] px-3 py-2 text-sm"><dt>Sinal de reserva</dt><dd className="font-black">{formatCurrency(proposal.depositValue)}</dd></div>
+              {proposal.travelFee ? <div className="flex justify-between text-[var(--text-muted)]"><dt>Deslocamento</dt><dd>{formatCurrency(proposal.travelFee)}</dd></div> : null}
+              <div className="mt-2 flex justify-between border-t border-[var(--border)] pt-4 text-xl font-black"><dt>Total</dt><dd>{formatCurrency(proposal.totalValue)}</dd></div>
+              <div className="flex justify-between rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-sm"><dt>Sinal de reserva</dt><dd className="font-black">{formatCurrency(proposal.depositValue)}</dd></div>
             </dl>
           </section>
 
           <div className="grid gap-5">
             <section className="public-proposal-card">
               <p className="public-proposal-eyebrow">Informações</p><h2 className="mt-1">Condições comerciais</h2>
-              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[#5f5b53]">{proposal.paymentTerms || 'Conforme combinado.'}</p>
-              {proposal.serviceLocation ? <div className="mt-5 border-t border-[#ece8dc] pt-4 text-sm"><p><span className="block text-xs font-bold text-[#89847a]">Local do serviço</span><strong>{proposal.serviceLocation}</strong></p></div> : null}
+              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[var(--text-muted)]">{proposal.paymentTerms || 'Conforme combinado.'}</p>
+              {proposal.serviceLocation ? <div className="mt-5 border-t border-[var(--border)] pt-4 text-sm"><p><span className="block text-xs font-bold text-[var(--text-muted)]">Local do serviço</span><strong>{proposal.serviceLocation}</strong></p></div> : null}
             </section>
           </div>
         </div>
@@ -8694,12 +7631,12 @@ function PublicProposalPage({ token }: { token: string }) {
         <section className={`public-proposal-acceptance mt-5 ${approved ? 'is-approved' : ''}`}>
           {approved ? <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-center"><div className="public-proposal-check"><CheckCircle2 size={30} /></div><div><p className="public-proposal-eyebrow">Aceite eletrônico confirmado</p><h2 className="mt-1 text-2xl font-black">Proposta aceita</h2><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3"><div><dt>Responsável</dt><dd>{proposal.acceptedBy || 'Cliente'}</dd></div><div><dt>CPF/CNPJ</dt><dd>{proposal.acceptanceDocument || 'Documento não registrado'}</dd></div><div><dt>Data e hora do aceite</dt><dd>{formatDateTime(proposal.acceptedAt)}</dd></div></dl></div></div> : (
             <form className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]" onSubmit={accept}>
-              <div><p className="public-proposal-eyebrow">Próximo passo</p><h2 className="mt-1 text-2xl font-black">Aprovar esta proposta</h2><p className="mt-3 text-sm leading-6 text-[#68645c]">Informe os dados do responsável. O nome, CPF ou CNPJ e a data do aceite ficarão registrados nesta proposta.</p></div>
+              <div><p className="public-proposal-eyebrow">Próximo passo</p><h2 className="mt-1 text-2xl font-black">Aprovar esta proposta</h2><p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">Informe os dados do responsável. O nome, CPF ou CNPJ e a data do aceite ficarão registrados nesta proposta.</p></div>
               <div className="grid gap-3 sm:grid-cols-2"><InputField label="Nome completo"><input className="field-input" value={acceptedBy} onChange={(event) => setAcceptedBy(event.target.value)} required minLength={3} /></InputField><InputField label="CPF ou CNPJ"><input className="field-input" value={document} onChange={(event) => setDocument(event.target.value)} required inputMode="numeric" placeholder="Digite somente os números" /></InputField><div className="sm:col-span-2"><Button className="w-full" disabled={accepting || acceptedBy.trim().length < 3 || !isValidAcceptanceDocument(document)} type="submit"><CheckCircle2 size={17} /> {accepting ? 'Registrando aceite…' : 'Aceitar proposta'}</Button>{error ? <p className="mt-3 text-sm font-bold text-red-600">{error}</p> : null}</div></div>
             </form>
           )}
         </section>
-        <p className="mt-7 text-center text-xs text-[#8a867f]">Proposta digital segura · Hero Drone · FlyFlow</p>
+        <p className="mt-7 text-center text-xs text-[var(--text-muted)]">Proposta digital segura · Hero Drone · FlyFlow</p>
       </div>
     </main>
   )
@@ -8838,10 +7775,10 @@ function FirstLoginPasswordScreen({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#171717] p-4 sm:p-8">
+    <main className="flex min-h-screen items-center justify-center bg-[var(--sidebar)] p-4 sm:p-8">
       <form className="w-full max-w-lg rounded-2xl border border-white/10 bg-white p-6 shadow-2xl sm:p-8" onSubmit={submit}>
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-800"><KeyRound size={23} /></div>
-        <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-[#9a7600]">Primeiro acesso</p>
+        <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-[var(--accent-text)]">Primeiro acesso</p>
         <h1 className="mt-2 text-2xl font-black text-gray-950">Crie sua nova senha</h1>
         <p className="mt-2 text-sm leading-6 text-gray-600">Olá, {user.name}. A senha informada pelo administrador é temporária. Para continuar no FlyFlow, cadastre uma senha pessoal.</p>
         {error ? <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div> : null}
@@ -9042,15 +7979,19 @@ function DashboardPage({
     .slice(0, 5)
 
   const upcomingDeliveries = visibleProjects
-    .filter((project) => ['Em edição', 'Aguardando revisão', 'Pronto para entrega', 'Agendado', 'Confirmado'].includes(project.projectStatus))
+    .filter((project) => project.deliveryDeadline && ['Em edição', 'Pronto para revisão', 'Aguardando aprovação do cliente', 'Agendado', 'Confirmado'].includes(project.projectStatus))
     .sort((a, b) => new Date(a.deliveryDeadline).getTime() - new Date(b.deliveryDeadline).getTime())
   const criticalDeliveryCount = upcomingDeliveries.filter((project) => getProjectDeadlineInfo(project.deliveryDeadline).level === 'danger').length
 
   const accountsReceivable = state.payments
-    .filter((payment) => payment.status !== 'Recebida' && payment.status !== 'Cancelada')
+    .filter((payment) => !payment.archivedAt && !payment.deletedAt && !['Recebida', 'Cancelada', 'Reembolsada'].includes(payment.status))
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
     .slice(0, 6)
 
+  const upcomingContent = (state.contentItems || [])
+    .filter((item) => !item.archivedAt && item.scheduledAt && item.status !== 'Publicado')
+    .sort((left, right) => (left.scheduledAt as string).localeCompare(right.scheduledAt as string))
+    .slice(0, 4)
   const attentionLeads = state.leads.filter(leadNeedsContact).slice(0, 6)
   const quickContactLead = attentionLeads.find((lead) => lead.whatsapp || lead.phone || lead.email)
     || state.leads.find((lead) => lead.whatsapp || lead.phone || lead.email)
@@ -9066,8 +8007,8 @@ function DashboardPage({
       const capture = visibleAppointments.some((appointment) => appointment.projectId === project.id && appointment.appointmentType === 'Captação' && appointment.status !== 'Cancelado')
       return !capture && ['Aguardando agendamento', 'Confirmado'].includes(project.projectStatus)
     }).length,
-    capturesToday: visibleAppointments.filter((appointment) => appointment.appointmentType === 'Captação' && appointment.startAt.slice(0, 10) === today && appointment.status !== 'Cancelado').length,
-    capturesWeek: visibleAppointments.filter((appointment) => appointment.appointmentType === 'Captação' && appointment.startAt.slice(0, 10) >= today && appointment.startAt.slice(0, 10) <= weekEnd && appointment.status !== 'Cancelado').length,
+    capturesToday: visibleAppointments.filter((appointment) => appointment.appointmentType === 'Captação' && dateInputFromDate(new Date(appointment.startAt)) === today && appointment.status !== 'Cancelado').length,
+    capturesWeek: visibleAppointments.filter((appointment) => appointment.appointmentType === 'Captação' && dateInputFromDate(new Date(appointment.startAt)) >= today && dateInputFromDate(new Date(appointment.startAt)) <= weekEnd && appointment.status !== 'Cancelado').length,
     finalPayments: visibleProjects.filter((project) => project.projectStatus === 'Aguardando pagamento final').length,
     delayedProjects: visibleProjects.filter((project) => project.deliveryDeadline && getProjectDeadlineInfo(project.deliveryDeadline).level === 'danger' && !['Entregue', 'Concluído', 'Cancelado'].includes(project.projectStatus)).length,
   }
@@ -9130,10 +8071,21 @@ function DashboardPage({
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+      <div className="grid gap-4 xl:grid-cols-3">
         <Panel title="Pulso da operação">
           <div className="dashboard-attention-list">
             {operationItems.length ? operationItems.slice(0, 6).map((item) => <button key={item.label} type="button" onClick={() => onNavigate(item.page)}><span>{item.label}</span><strong>{item.value}</strong><ChevronRight size={15} /></button>) : <DashboardEmptyState icon={<CheckCircle2 size={20} />} message="Nenhuma pendência operacional no momento." />}
+          </div>
+        </Panel>
+
+        <Panel title="Próximos conteúdos" action={<button className="panel-link" type="button" onClick={() => onNavigate('content')}>Abrir calendário</button>}>
+          <div className="stack-tight">
+            {upcomingContent.length ? upcomingContent.map((item) => (
+              <button key={item.id} className="detail-row" type="button" onClick={() => onNavigate('content')}>
+                <span>{item.title}<small>{item.platform} · {item.format} · {item.scheduledAt ? formatDateTime(item.scheduledAt) : 'Sem data'}</small></span>
+                <StatusBadge>{isContentOverdue(item) ? 'Atrasado' : item.status}</StatusBadge>
+              </button>
+            )) : <DashboardEmptyState icon={<CalendarDays size={20} />} message="Nada agendado. Planeje o próximo conteúdo." />}
           </div>
         </Panel>
 
@@ -9168,14 +8120,14 @@ function DashboardPage({
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthlySeries}>
-                <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="var(--border)" />
+                <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={54} />
                 <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px' }} formatter={(value) => formatCurrency(Number(value))} />
                 <Legend />
-                <Line type="monotone" dataKey="faturamento" name="Faturamento" stroke="var(--accent)" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="lucro" name="Lucro" stroke="#16a34a" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="despesas" name="Despesas" stroke="#dc2626" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="faturamento" name="Faturamento" stroke="var(--series-1)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="lucro" name="Lucro" stroke="var(--series-3)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="despesas" name="Despesas" stroke="var(--series-2)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -9312,8 +8264,8 @@ function DashboardPage({
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={leadSourceSeries} dataKey="total" nameKey="source" innerRadius={58} outerRadius={88} paddingAngle={4} stroke="var(--surface)" strokeWidth={3}>
-                  {leadSourceSeries.map((_, index) => (
+                <Pie data={foldChartSlices(leadSourceSeries, 'source')} dataKey="total" nameKey="source" innerRadius={62} outerRadius={88} paddingAngle={0} stroke="var(--surface)" strokeWidth={2}>
+                  {foldChartSlices(leadSourceSeries, 'source').map((_, index) => (
                     <Cell key={index} fill={chartColors[index % chartColors.length]} />
                   ))}
                 </Pie>
@@ -9327,11 +8279,11 @@ function DashboardPage({
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={serviceSeries}>
-                <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="var(--border)" />
+                <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
                 <XAxis dataKey="service" hide />
                 <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px' }} />
-                <Bar dataKey="total" name="Projetos" fill="var(--accent)" radius={[8, 8, 2, 2]} />
+                <Bar dataKey="total" name="Projetos" fill="var(--series-1)" barSize={24} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -9383,6 +8335,9 @@ function ClientsPage({
   onOpenModal,
   onGenerateProposal,
   onEditContact,
+  onViewContact,
+  onExportContacts,
+  onImportContacts,
   onDeleteContact,
   onEditCompany,
   onArchiveCompany,
@@ -9392,6 +8347,9 @@ function ClientsPage({
   onOpenModal: (modal: ModalType) => void
   onGenerateProposal: (clientId: string) => void
   onEditContact: (client: Client) => void
+  onViewContact: (client: Client) => void
+  onExportContacts: () => void
+  onImportContacts: (file: File) => void
   onDeleteContact: (client: Client) => void
   onEditCompany: (company: Company) => void
   onArchiveCompany: (company: Company) => void
@@ -9408,8 +8366,8 @@ function ClientsPage({
     const projects = state.projects.filter((project) => isVisibleProject(project) && project.clientId === client.id)
     const total = projects.reduce((sum, project) => sum + project.totalValue, 0)
     const received = state.payments
-      .filter((payment) => payment.clientId === client.id && payment.status === 'Recebida')
-      .reduce((sum, payment) => sum + payment.amount, 0)
+      .filter((payment) => payment.clientId === client.id && payment.status === 'Recebida' && !payment.deletedAt && !payment.archivedAt)
+      .reduce((sum, payment) => sum + getPaymentCashEffect(payment), 0)
     return { projects, total, received }
   }
 
@@ -9433,6 +8391,13 @@ function ClientsPage({
         description="Base central de contatos e empresas, conectada ao comercial, propostas, projetos e financeiro."
         action={
           <>
+            <details className="action-menu">
+              <summary className="app-button app-button-secondary">Importar e exportar <ChevronDown size={14} /></summary>
+              <div className="action-menu-popover">
+                <label><Upload size={14} /> Importar CSV<input className="hidden" type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportContacts(file); event.target.value = '' }} /></label>
+                <button type="button" onClick={onExportContacts}><Download size={14} /> Exportar CSV</button>
+              </div>
+            </details>
             <Button variant="secondary" type="button" onClick={() => onOpenModal('company')}><Building2 size={16} /> Nova empresa</Button>
             <Button type="button" onClick={() => onOpenModal('client')}><Plus size={16} /> Novo contato</Button>
           </>
@@ -9488,7 +8453,7 @@ function ClientsPage({
                           <div className="flex items-center gap-3">
                             <span className="avatar-chip h-9 w-9 shrink-0 text-xs" data-tint={avatarTint(client.id)}>{initials(contactDisplayName(client))}</span>
                             <div className="min-w-0">
-                              <div className="truncate font-black text-gray-950">{contactDisplayName(client)}</div>
+                              <button className="link-cell" type="button" onClick={() => onViewContact(client)}>{contactDisplayName(client)}</button>
                               <div className="truncate text-sm text-gray-500">{contactDisplayDetail(client)}</div>
                             </div>
                           </div>
@@ -9699,7 +8664,7 @@ function ProjectsPage({
         </div>
         <button className="customer-project-cell timeline-cell" type="button" onClick={() => onScheduleCapture(project)}>
           <CalendarDays size={13} />
-          <span>{captureAppointment ? formatDate(captureAppointment.startAt.slice(0, 10)) : project.captureDate ? formatDate(project.captureDate) : 'Agendar'}</span>
+          <span>{captureAppointment ? formatDate(dateInputFromDate(new Date(captureAppointment.startAt))) : project.captureDate ? formatDate(project.captureDate) : 'Agendar'}</span>
         </button>
         <div className="customer-project-cell"><span className="monday-status production-status">{project.projectStatus}</span></div>
         <div className="customer-project-cell"><span className={`monday-status finance-status is-${paidPercentage === 100 ? 'done' : paidPercentage > 0 ? 'working' : 'pending'}`}>{project.financialStatus}</span></div>
@@ -9847,7 +8812,7 @@ function ProjectWorkspace({
 
         {tab === 'summary' ? <div className="space-y-3">
           <div className="project-workspace-stats grid grid-cols-3 rounded-xl border border-gray-200"><div><p>Total do projeto</p><strong>{formatCurrency(project.totalValue)}</strong></div><div><p>Valor recebido</p><strong className="text-emerald-700">{formatCurrency(profit.paid)}</strong></div><div><p>Saldo pendente</p><strong>{formatCurrency(pending)}</strong></div></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div className="project-workspace-info-card rounded-xl border border-gray-200 p-4"><div className="flex items-center gap-2 text-gray-500"><CalendarDays size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Captação</p></div><p className="mt-3 text-base font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-3 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[#8a6a00]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`project-workspace-info-card rounded-xl border p-4 ${deadline.boxClass}`}><div className="flex items-center gap-2 text-gray-500"><Clock size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Prazo de entrega</p></div><p className={`mt-3 text-base font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[#8a6a00]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><div className="project-workspace-info-card rounded-xl border border-gray-200 p-4"><div className="flex items-center gap-2 text-gray-500"><CalendarDays size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Captação</p></div><p className="mt-3 text-base font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-3 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[var(--accent-text)]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`project-workspace-info-card rounded-xl border p-4 ${deadline.boxClass}`}><div className="flex items-center gap-2 text-gray-500"><Clock size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Prazo de entrega</p></div><p className={`mt-3 text-base font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[var(--accent-text)]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
           <div className="flex flex-wrap gap-2">{location ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={mapsLink(location)} target="_blank" rel="noreferrer"><MapPin size={15} /> Abrir mapa</a> : null}{project.links[0] ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={project.links[0]} target="_blank" rel="noreferrer"><FileText size={15} /> Arquivos</a> : null}{project.projectStatus === 'Aguardando aprovação do cliente' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onAddAdjustment}>Registrar ajuste</Button> : null}{project.projectStatus === 'Aguardando pagamento final' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onExceptionalDelivery}>Liberar entrega</Button> : null}</div>
         </div> : null}
 
@@ -9872,7 +8837,7 @@ function ProjectWorkspace({
 
         {tab === 'history' ? <div className="space-y-3">
           {adjustments.length ? <section><h3 className="mb-2 text-xs font-black uppercase text-gray-500">Ajustes</h3><div className="space-y-2">{adjustments.map((adjustment) => <div key={adjustment.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-2.5 text-sm"><span className="min-w-0 truncate"><strong>V{adjustment.version}</strong> · {adjustment.description}</span>{adjustment.status !== 'Concluído' ? <Button className="min-h-8 shrink-0 px-2 py-1 text-xs" variant="secondary" type="button" onClick={() => onCompleteAdjustment(adjustment.id)}>Concluir</Button> : <StatusBadge>{adjustment.status}</StatusBadge>}</div>)}</div></section> : null}
-          <section><h3 className="mb-2 text-xs font-black uppercase text-gray-500">Movimentações</h3><div className="max-h-[44vh] space-y-3 overflow-y-auto pr-1">{timeline.map((history) => <div key={history.id} className="border-l-2 border-[#d8a500] pl-3 text-sm"><div className="flex justify-between gap-3"><strong>{history.action}</strong><span className="shrink-0 text-xs text-gray-400">{formatDateTime(history.createdAt)}</span></div><p className="mt-0.5 text-xs text-gray-600">{history.details}</p></div>)}{!timeline.length ? <p className="text-sm text-gray-500">Nenhum histórico registrado.</p> : null}</div></section>
+          <section><h3 className="mb-2 text-xs font-black uppercase text-gray-500">Movimentações</h3><div className="max-h-[44vh] space-y-3 overflow-y-auto pr-1">{timeline.map((history) => <div key={history.id} className="border-l-2 border-[var(--accent)] pl-3 text-sm"><div className="flex justify-between gap-3"><strong>{history.action}</strong><span className="shrink-0 text-xs text-gray-400">{formatDateTime(history.createdAt)}</span></div><p className="mt-0.5 text-xs text-gray-600">{history.details}</p></div>)}{!timeline.length ? <p className="text-sm text-gray-500">Nenhum histórico registrado.</p> : null}</div></section>
           <div className="border-t border-gray-200 pt-3"><Button className="min-h-9 px-3 py-1 text-xs" variant="danger" type="button" onClick={onDelete}><Trash2 size={14} /> Excluir projeto</Button></div>
         </div> : null}
       </div>
@@ -9886,6 +8851,7 @@ function AgendaPage({
   onCalendarViewChange,
   onCreateTask,
   onQuickCreateTask,
+  onQuickCreateEvent,
   onCreateEvent,
   onOpenAppointment,
   onOpenTask,
@@ -9898,6 +8864,7 @@ function AgendaPage({
   onCalendarViewChange: (view: 'mensal' | 'semanal' | 'diaria' | 'lista') => void
   onCreateTask: (defaults?: TaskFormDefaults) => void
   onQuickCreateTask: (title: string, dueAt: string) => Promise<void>
+  onQuickCreateEvent: (title: string, startAt: string, endAt: string) => void
   onCreateEvent: (defaults?: AppointmentFormDefaults) => void
   onOpenAppointment: (appointment: Appointment) => void
   onOpenTask: (task: TaskItem) => void
@@ -9920,14 +8887,16 @@ function AgendaPage({
   const [calendarDate, setCalendarDate] = useState(() => new Date())
   const [responsibleFilter, setResponsibleFilter] = useState('')
   const [contactFilter, setContactFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
+  const typeFilter = ''
   const [statusFilter, setStatusFilter] = useState<'ativos' | 'todos' | Appointment['status']>('ativos')
   const [calendarSearch, setCalendarSearch] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(() => new Set())
+  const [peek, setPeek] = useState<{ appointment: Appointment; anchor: AnchorRect } | null>(null)
+  const [draft, setDraft] = useState<{ startAt: string; endAt: string; anchor: AnchorRect } | null>(null)
   const [quickTasksOpen, setQuickTasksOpen] = useState(false)
   const quickTasksButtonRef = useRef<HTMLButtonElement>(null)
   const closeQuickTasks = () => { setQuickTasksOpen(false); quickTasksButtonRef.current?.focus() }
-  const [createChoice, setCreateChoice] = useState<{ startAt?: string; endAt?: string } | null>(null)
   const taskByAppointmentId = new Map(state.tasks.filter((task) => task.appointmentId).map((task) => [task.appointmentId!, task]))
   const appointmentResponsibleId = (appointment: Appointment) => {
     const task = taskByAppointmentId.get(appointment.id)
@@ -9937,7 +8906,7 @@ function AgendaPage({
   }
   const visibleAppointments = sortedAppointments.filter((appointment) => {
     const matchesResponsible = !responsibleFilter || appointmentResponsibleId(appointment) === responsibleFilter
-    const matchesType = !typeFilter || appointment.appointmentType === typeFilter
+    const matchesType = (!typeFilter || appointment.appointmentType === typeFilter) && !hiddenTypes.has(appointment.appointmentType)
     const matchesContact = !contactFilter ||
       (contactFilter.startsWith('client:') && appointment.clientId === contactFilter.slice(7)) ||
       (contactFilter.startsWith('lead:') && appointment.leadId === contactFilter.slice(5))
@@ -9957,15 +8926,23 @@ function AgendaPage({
     if (task) onOpenTask(task)
     else onOpenAppointment(appointment)
   }
-  const requestCreateAtSlot = (startAt: string, endAt: string) => setCreateChoice({ startAt, endAt })
-  const createSelectedKind = (kind: 'event' | 'task') => {
-    const choice = createChoice || {}
-    setCreateChoice(null)
-    if (kind === 'task') {
-      onCreateTask({ dueAt: choice.startAt })
-      return
+  const defaultDraft = (): { startAt: string; endAt: string } => {
+    const start = new Date(calendarDate)
+    start.setHours(new Date().getHours() + 1, 0, 0, 0)
+    return { startAt: dateTimeInputFromDate(start), endAt: dateTimeInputFromDate(new Date(start.getTime() + 60 * 60_000)) }
+  }
+  const openDraftFromButton = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect()
+    setPeek(null)
+    setDraft({ ...defaultDraft(), anchor: { top: rect.bottom + 8, bottom: rect.bottom, left: rect.left, right: rect.left } })
+  }
+  const peekContact = (appointment: Appointment) => {
+    const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
+    const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
+    return {
+      name: client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : '',
+      whatsapp: client?.whatsapp || lead?.whatsapp || client?.phone || lead?.phone || '',
     }
-    onCreateEvent({ startAt: choice.startAt, endAt: choice.endAt })
   }
   const moveCalendar = (direction: -1 | 1) => {
     setCalendarDate((current) => {
@@ -9976,16 +8953,22 @@ function AgendaPage({
       return next
     })
   }
-  const calendarLabel = calendarView === 'mensal'
-    ? calendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-    : calendarView === 'semanal'
-      ? `Semana de ${getWeekStart(calendarDate).toLocaleDateString('pt-BR')}`
-      : calendarDate.toLocaleDateString('pt-BR')
-  const hasFilters = Boolean(responsibleFilter || contactFilter || typeFilter || calendarSearch.trim() || statusFilter !== 'ativos')
+  const calendarLabel = (() => {
+    if (calendarView === 'mensal') return capitalize(calendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
+    if (calendarView === 'semanal') {
+      const weekStart = getWeekStart(calendarDate)
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekStart.getDate() + 6)
+      const month = (date: Date) => date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')
+      if (weekStart.getMonth() === weekEnd.getMonth()) return capitalize(weekEnd.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
+      return `${capitalize(month(weekStart))} – ${month(weekEnd)} de ${weekEnd.getFullYear()}`
+    }
+    return capitalize(calendarDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }))
+  })()
+  const hasFilters = Boolean(responsibleFilter || contactFilter || calendarSearch.trim() || statusFilter !== 'ativos')
   const clearFilters = () => {
     setResponsibleFilter('')
     setContactFilter('')
-    setTypeFilter('')
     setStatusFilter('ativos')
     setCalendarSearch('')
   }
@@ -9998,154 +8981,183 @@ function AgendaPage({
     const handleCalendarShortcuts = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-      if (event.key.toLowerCase() === 'n') {
+      if (target?.closest('.modal-surface, .gcal-popover') || event.metaKey || event.ctrlKey) return
+      const key = event.key.toLowerCase()
+      const views: Record<string, 'mensal' | 'semanal' | 'diaria' | 'lista'> = { m: 'mensal', s: 'semanal', d: 'diaria', a: 'lista' }
+      if (key === 'c' || key === 'n') {
         event.preventDefault()
-        setCreateChoice({})
+        const button = document.querySelector<HTMLElement>('.gcal-create')
+        if (button) button.click()
       }
-      if (event.key.toLowerCase() === 't') {
+      if (key === 't') {
         event.preventDefault()
         setCalendarDate(new Date())
+      }
+      if (views[key]) {
+        event.preventDefault()
+        onCalendarViewChange(views[key])
       }
     }
     window.addEventListener('keydown', handleCalendarShortcuts)
     return () => window.removeEventListener('keydown', handleCalendarShortcuts)
-  }, [])
+  }, [onCalendarViewChange])
+  const busyDays = new Set(visibleAppointments.map((appointment) => dateInputFromDate(new Date(appointment.startAt))))
+  const listStart = new Date(calendarDate)
+  listStart.setHours(0, 0, 0, 0)
+  const listDays = [...visibleAppointments.filter((appointment) => new Date(appointment.startAt) >= listStart).reduce((groups, appointment) => {
+    const key = dateInputFromDate(new Date(appointment.startAt))
+    groups.set(key, [...(groups.get(key) ?? []), appointment])
+    return groups
+  }, new Map<string, Appointment[]>())].slice(0, 45)
+  const showEventPeek = (appointment: Appointment, anchor: AnchorRect) => { setDraft(null); setPeek({ appointment, anchor }) }
+  const showDraft = (startAt: string, endAt: string, anchor: AnchorRect) => { setPeek(null); setDraft({ startAt, endAt, anchor }) }
+
   return (
-    <div className="agenda-page space-y-4">
-      <section className="agenda-main-toolbar" aria-label="Controles da agenda">
-        <button className="agenda-create-button" type="button" title="Atalho: N" onClick={() => setCreateChoice({})}><Plus size={19} /> Criar</button>
-        <div className="agenda-period-navigation">
-          <button className="agenda-today-button" title="Atalho: T" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</button>
-          <button type="button" aria-label="Período anterior" onClick={() => moveCalendar(-1)}><ChevronLeft size={16} /></button>
-          <button type="button" aria-label="Próximo período" onClick={() => moveCalendar(1)}><ChevronRight size={16} /></button>
-          <strong className="capitalize">{calendarLabel}</strong>
-          <label className="agenda-date-jump" title="Ir para uma data"><CalendarDays size={15} /><input aria-label="Ir para uma data" type="date" value={dateInputFromDate(calendarDate)} onChange={(event) => { if (event.currentTarget.value) setCalendarDate(new Date(`${event.currentTarget.value}T12:00:00`)) }} /></label>
-        </div>
-        <button className={`agenda-toolbar-search ${filtersOpen || hasFilters ? 'is-active' : ''}`} type="button" aria-label="Buscar e filtrar" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><Search size={18} />{hasFilters ? <i /> : null}</button>
-        <button ref={quickTasksButtonRef} aria-controls="agenda-quick-tasks" className={`agenda-toolbar-tasks ${quickTasksOpen ? 'is-active' : ''}`} type="button" aria-label="Tarefas rápidas" aria-expanded={quickTasksOpen} onClick={() => setQuickTasksOpen((open) => !open)}><CheckCircle2 size={18} /><strong>Tarefas</strong>{activeQuickTasks.length ? <span>{activeQuickTasks.length}</span> : null}</button>
-        <div className="erp-segmented-control" aria-label="Visualização da agenda">
-          {([['mensal', 'Mês'], ['semanal', 'Semana'], ['diaria', 'Dia'], ['lista', 'Lista']] as const).map(([view, label]) => (
-            <button key={view} className={calendarView === view ? 'is-active' : ''} type="button" onClick={() => onCalendarViewChange(view)}>{label}</button>
+    <div className="gcal">
+      <aside className="gcal-side">
+        <button className="gcal-create" type="button" title="Atalho: C" onClick={(event) => openDraftFromButton(event.currentTarget)}><Plus size={22} /> Criar</button>
+        <MiniMonth selected={calendarDate} busyDays={busyDays} onSelect={setCalendarDate} />
+        <section className="gcal-side__section" aria-label="Tipos de agenda">
+          <h3>Mostrar na agenda</h3>
+          {appointmentTypes.map((type) => (
+            <label key={type} className="gcal-check">
+              <input type="checkbox" checked={!hiddenTypes.has(type)} onChange={() => setHiddenTypes((current) => {
+                const next = new Set(current)
+                if (next.has(type)) next.delete(type)
+                else next.add(type)
+                return next
+              })} />
+              <span>{type}</span>
+            </label>
           ))}
-        </div>
+        </section>
+        <section className="gcal-side__section" aria-label="Tarefas de hoje">
+          <h3>Tarefas de hoje</h3>
+          {todayQuickTasks.slice(0, 6).map((task) => (
+            <div key={task.id} className="gcal-task">
+              <button type="button" aria-label={`Concluir ${task.title}`} onClick={() => onToggleTask(task)}><Check size={11} /></button>
+              <button type="button" title={task.title} onClick={() => onOpenTask(task)}>{task.title}</button>
+            </div>
+          ))}
+          {!todayQuickTasks.length ? <p>Nada para hoje.</p> : null}
+        </section>
+      </aside>
+
+      <section className="gcal-main">
+        <header className="gcal-toolbar" aria-label="Controles da agenda">
+          <button className="gcal-create gcal-create--compact" type="button" aria-label="Criar" onClick={(event) => openDraftFromButton(event.currentTarget)}><Plus size={18} /></button>
+          <button className="gcal-today" title="Atalho: T" type="button" onClick={() => setCalendarDate(new Date())}>Hoje</button>
+          <button className="gcal-icon" type="button" aria-label="Período anterior" onClick={() => moveCalendar(-1)}><ChevronLeft size={19} /></button>
+          <button className="gcal-icon" type="button" aria-label="Próximo período" onClick={() => moveCalendar(1)}><ChevronRight size={19} /></button>
+          <h1>{calendarLabel}</h1>
+          <span className="gcal-toolbar__spacer" />
+          <button className={`gcal-icon ${filtersOpen || hasFilters ? 'is-active' : ''}`} type="button" aria-label="Buscar e filtrar" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}><Search size={18} />{hasFilters ? <i /> : null}</button>
+          <button ref={quickTasksButtonRef} aria-controls="agenda-quick-tasks" className={`gcal-icon ${quickTasksOpen ? 'is-active' : ''}`} type="button" aria-label="Tarefas" aria-expanded={quickTasksOpen} onClick={() => setQuickTasksOpen((open) => !open)}><CheckCircle2 size={18} />{activeQuickTasks.length ? <b>{activeQuickTasks.length}</b> : null}</button>
+          <div className="gcal-views" aria-label="Visualização da agenda">
+            {([['diaria', 'Dia'], ['semanal', 'Semana'], ['mensal', 'Mês'], ['lista', 'Programação']] as const).map(([view, label]) => (
+              <button key={view} className={calendarView === view ? 'is-active' : ''} type="button" onClick={() => onCalendarViewChange(view)}>{label}</button>
+            ))}
+          </div>
+        </header>
+
+        {filtersOpen ? <section className="gcal-filters" aria-label="Filtros da agenda">
+          <label className="search-field"><Search size={15} /><input autoFocus aria-label="Buscar na agenda" placeholder="Buscar evento, cliente ou local" value={calendarSearch} onChange={(event) => setCalendarSearch(event.currentTarget.value)} /></label>
+          <Select leadingIcon={<Users size={15} />} placeholder="Todos os responsáveis" clearable value={responsibleFilter} onChange={setResponsibleFilter} options={state.users.filter((user) => user.active).map((user) => ({ value: user.id, label: user.name }))} />
+          <Select leadingIcon={<ContactRound size={15} />} placeholder="Todos os contatos" clearable value={contactFilter} onChange={setContactFilter} options={[
+            ...state.clients.filter((client) => !client.archived).map((client) => ({ value: `client:${client.id}`, label: contactDisplayName(client), group: 'Clientes' })),
+            ...state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: `lead:${lead.id}`, label: contactDisplayName(lead), group: 'Leads' })),
+          ]} />
+          <Select leadingIcon={<CheckCircle2 size={15} />} value={statusFilter} onChange={(next) => setStatusFilter(next as typeof statusFilter)} options={[
+            { value: 'ativos', label: 'Somente ativos' },
+            { value: 'todos', label: 'Todos os status' },
+            { value: 'Agendado', label: 'Agendados' },
+            { value: 'Concluído', label: 'Concluídos' },
+            { value: 'Cancelado', label: 'Cancelados' },
+          ]} />
+          {hasFilters ? <button className="panel-link" type="button" onClick={clearFilters}>Limpar</button> : null}
+        </section> : null}
+
+        <AgendaQuickTasks open={quickTasksOpen} tasks={state.tasks} onClose={closeQuickTasks} onCreate={onQuickCreateTask} onOpen={onOpenTask} onToggle={onToggleTask} />
+
+        {calendarView === 'mensal' ? (
+          <MonthCalendar
+            appointments={visibleAppointments}
+            taskByAppointmentId={taskByAppointmentId}
+            anchorDate={calendarDate}
+            onCreateAt={showDraft}
+            onOpenAppointment={showEventPeek}
+            onShowDay={(date) => { setCalendarDate(date); onCalendarViewChange('diaria') }}
+          />
+        ) : null}
+        {calendarView === 'semanal' || calendarView === 'diaria' ? (
+          <TimeGridCalendar
+            anchorDate={calendarDate}
+            appointments={scheduledAppointments}
+            state={state}
+            view={calendarView}
+            draft={draft}
+            onCreateAt={showDraft}
+            onOpenAppointment={showEventPeek}
+            onToggleTask={onToggleTask}
+            onResizeAppointment={onResizeAppointment}
+            onMoveAppointment={onMoveAppointment}
+            onShowDay={(date) => { setCalendarDate(date); onCalendarViewChange('diaria') }}
+          />
+        ) : null}
+        {calendarView === 'lista' ? (
+          <div className="gcal-agenda">
+            {listDays.map(([key, items]) => {
+              const day = new Date(`${key}T12:00:00`)
+              return (
+                <section key={key} className={`gcal-agenda__day ${key === dateInput() ? 'is-today' : ''}`}>
+                  <button type="button" aria-label="Abrir o dia" onClick={() => { setCalendarDate(day); onCalendarViewChange('diaria') }}><strong>{day.getDate()}</strong><small>{day.toLocaleDateString('pt-BR', { month: 'short', weekday: 'short' }).replace(/\./g, '')}</small></button>
+                  <div>
+                    {items.map((appointment) => {
+                      const { name } = peekContact(appointment)
+                      return (
+                        <button key={appointment.id} className="gcal-agenda__row" type="button" onClick={(event) => showEventPeek(appointment, event.currentTarget.getBoundingClientRect())}>
+                          <i style={{ background: appointment.color || 'var(--series-1)' }} />
+                          <time>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} – {new Date(appointment.endAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
+                          <strong className={taskByAppointmentId.get(appointment.id)?.status === 'Concluída' ? 'is-completed' : ''}>{appointment.title}</strong>
+                          <small>{name || appointment.appointmentType}</small>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )
+            })}
+            {!listDays.length ? <div className="gcal-agenda__empty"><CalendarDays size={30} /><strong>Nada programado a partir desta data</strong>{hasFilters ? <button className="panel-link" type="button" onClick={clearFilters}>Limpar filtros</button> : null}</div> : null}
+          </div>
+        ) : null}
       </section>
 
-      {filtersOpen ? <section className="agenda-filter-bar is-open" aria-label="Filtros da agenda">
-        <label className="agenda-search-field"><Search size={15} /><input aria-label="Buscar na agenda" placeholder="Buscar evento, cliente ou local" value={calendarSearch} onChange={(event) => setCalendarSearch(event.currentTarget.value)} /></label>
-        <Select leadingIcon={<Users size={15} />} placeholder="Todos os responsáveis" clearable value={responsibleFilter} onChange={setResponsibleFilter} options={state.users.filter((user) => user.active).map((user) => ({ value: user.id, label: user.name }))} />
-        <Select leadingIcon={<ContactRound size={15} />} placeholder="Todos os contatos" clearable value={contactFilter} onChange={setContactFilter} options={[
-          ...state.clients.filter((client) => !client.archived).map((client) => ({ value: `client:${client.id}`, label: contactDisplayName(client), group: 'Clientes' })),
-          ...state.leads.filter((lead) => !lead.archived && !lead.deletedAt).map((lead) => ({ value: `lead:${lead.id}`, label: contactDisplayName(lead), group: 'Leads' })),
-        ]} />
-        <Select leadingIcon={<List size={15} />} placeholder="Todos os tipos" clearable value={typeFilter} onChange={setTypeFilter} options={appointmentTypes.map((type) => ({ value: type, label: type }))} />
-        <Select leadingIcon={<CheckCircle2 size={15} />} value={statusFilter} onChange={(next) => setStatusFilter(next as typeof statusFilter)} options={[
-          { value: 'ativos', label: 'Somente ativos' },
-          { value: 'todos', label: 'Todos os status' },
-          { value: 'Agendado', label: 'Agendados' },
-          { value: 'Concluído', label: 'Concluídos' },
-          { value: 'Cancelado', label: 'Cancelados' },
-        ]} />
-        {hasFilters ? <button type="button" onClick={clearFilters}><X size={14} /> Limpar</button> : <span>{visibleAppointments.length} itens</span>}
-      </section> : null}
-
-      {!quickTasksOpen && todayQuickTasks.length ? <section className="agenda-task-rail" aria-label="Checklist de hoje"><span><CheckCircle2 size={15} /> Hoje</span><div>{todayQuickTasks.slice(0, 5).map((task) => <article key={task.id}><button type="button" aria-label={`Concluir ${task.title}`} onClick={() => onToggleTask(task)}><Check size={11} /></button><button type="button" title={task.title} onClick={() => onOpenTask(task)}>{task.title}</button></article>)}</div>{todayQuickTasks.length > 5 ? <button type="button" onClick={() => setQuickTasksOpen(true)}>+{todayQuickTasks.length - 5} tarefas</button> : null}</section> : null}
-
-      <AgendaQuickTasks open={quickTasksOpen} tasks={state.tasks} onClose={closeQuickTasks} onCreate={onQuickCreateTask} onOpen={onOpenTask} onToggle={onToggleTask} />
-
-      {calendarView === 'mensal' ? (
-        <MonthCalendar
-          appointments={visibleAppointments}
-          state={state}
-          taskByAppointmentId={taskByAppointmentId}
-          anchorDate={calendarDate}
-          onCreateAt={requestCreateAtSlot}
-          onOpenAppointment={openCalendarItem}
-          onToggleTask={onToggleTask}
-          onShowDay={(date) => { setCalendarDate(date); onCalendarViewChange('diaria') }}
+      {draft ? (
+        <QuickCreatePopover
+          anchor={draft.anchor}
+          startAt={draft.startAt}
+          endAt={draft.endAt}
+          onClose={() => setDraft(null)}
+          onSaveEvent={(title) => { onQuickCreateEvent(title, draft.startAt, draft.endAt); setDraft(null) }}
+          onSaveTask={(title) => { void onQuickCreateTask(title, draft.startAt); setDraft(null) }}
+          onMoreOptions={(kind, title) => {
+            if (kind === 'task') onCreateTask({ title, dueAt: draft.startAt })
+            else onCreateEvent({ title, startAt: draft.startAt, endAt: draft.endAt })
+            setDraft(null)
+          }}
         />
       ) : null}
-      {calendarView === 'semanal' || calendarView === 'diaria' ? (
-        <TimeGridCalendar
-          anchorDate={calendarDate}
-          appointments={scheduledAppointments}
-          state={state}
-          view={calendarView}
-          onCreateAt={requestCreateAtSlot}
-          onOpenAppointment={openCalendarItem}
+      {peek ? (
+        <EventPeek
+          anchor={peek.anchor}
+          appointment={peek.appointment}
+          task={taskByAppointmentId.get(peek.appointment.id)}
+          contactName={peekContact(peek.appointment).name}
+          whatsapp={peekContact(peek.appointment).whatsapp}
+          onClose={() => setPeek(null)}
+          onEdit={() => { openCalendarItem(peek.appointment); setPeek(null) }}
           onToggleTask={onToggleTask}
-          onResizeAppointment={onResizeAppointment}
-          onMoveAppointment={onMoveAppointment}
         />
-      ) : null}
-
-      {calendarView === 'lista' ? (
-      <Panel className="agenda-list-panel" title="Lista da agenda">
-        <div className="agenda-list">
-          {visibleAppointments.map((appointment) => {
-            const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
-            const project = appointment.projectId ? state.projects.find((item) => item.id === appointment.projectId) : undefined
-            const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
-            const task = taskByAppointmentId.get(appointment.id)
-            const completed = task?.status === 'Concluída'
-            const contactName = client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : 'Sem contato vinculado'
-            const whatsapp = client?.whatsapp || lead?.whatsapp || client?.phone || lead?.phone || ''
-            return (
-              <article
-                key={appointment.id}
-                className={`agenda-list-row ${completed ? 'is-completed' : ''}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => openCalendarItem(appointment)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') openCalendarItem(appointment)
-                }}
-              >
-                <span className="agenda-list-row__accent" style={{ '--calendar-item-color': appointment.color || '#2563eb' } as CSSProperties} />
-                <div className="agenda-list-row__body">
-                  {client || lead ? <p className="agenda-list-row__contact"><ContactRound size={13} /> {contactName}</p> : null}
-                  <div className="agenda-list-row__title-row">
-                    {task ? <button className={`agenda-list-check ${completed ? 'is-done' : ''}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={13} /></button> : null}
-                    <h3 className="agenda-list-row__title">{appointment.title}</h3>
-                  </div>
-                  <p className="agenda-list-row__time">{formatDateTime(appointment.startAt)} até {formatDateTime(appointment.endAt)}</p>
-                  <p className="agenda-list-row__type">{project?.projectCode ?? appointment.appointmentType}</p>
-                  <div className="agenda-list-row__actions">
-                    {appointment.address ? (
-                      <a href={mapsLink(appointment.address)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                        <MapPin size={14} /> Mapa
-                      </a>
-                    ) : null}
-                    {whatsapp ? (
-                      <a href={whatsappLink(whatsapp)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                        <MessageCircle size={14} /> WhatsApp
-                      </a>
-                    ) : null}
-                    {appointment.calendarUrl ? (
-                      <a href={appointment.calendarUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                        <CalendarDays size={14} /> Google Calendar
-                      </a>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="agenda-list-row__meta">
-                  <StatusBadge>{appointment.status}</StatusBadge>
-                  {appointment.appointmentType === 'Captação' && appointment.confirmationStatus !== 'Confirmado' ? <span className="agenda-list-row__pending">Confirmação pendente</span> : null}
-                </div>
-              </article>
-            )
-          })}
-          {!visibleAppointments.length ? <div className="agenda-empty-state"><CalendarDays size={28} /><strong>Nada por aqui</strong><p>Ajuste os filtros ou crie um novo item para começar.</p><button type="button" onClick={clearFilters}>Limpar filtros</button></div> : null}
-        </div>
-      </Panel>
-      ) : null}
-
-      {createChoice ? (
-        <Modal title="Adicionar à agenda" size="sm" onClose={() => setCreateChoice(null)}>
-          <div className="agenda-create-choice">
-            <button type="button" onClick={() => createSelectedKind('event')}><span><CalendarDays size={20} /></span><strong>Novo evento</strong><small>Captação, reunião, prazo ou compromisso com início e fim.</small></button>
-            <button type="button" onClick={() => createSelectedKind('task')}><span><CheckCircle2 size={20} /></span><strong>Nova tarefa</strong><small>Ligação, WhatsApp, follow-up ou atividade com responsável e prioridade.</small></button>
-          </div>
-        </Modal>
       ) : null}
     </div>
   )
@@ -10358,7 +9370,7 @@ function QuotesPage({
                   {!quote.archivedAt && !quote.deletedAt && quote.status !== 'Cancelada' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="ghost" type="button" onClick={() => onCancelQuote(quote)}>Cancelar</Button> : null}
                   {!quote.archivedAt && !quote.deletedAt ? <Button className="min-h-9 px-3 py-1 text-xs text-red-600" variant="ghost" type="button" onClick={() => onDeleteQuote(quote)}><Trash2 size={14} /> Excluir</Button> : null}
                 </div>
-                <details className="quote-card-section mt-3 rounded-lg border p-3"><summary className="cursor-pointer text-xs font-black uppercase text-gray-500">Histórico</summary><div className="mt-3 space-y-3">{history.map((entry) => <div key={entry.id} className="border-l-2 border-[#d8a500] pl-3 text-sm"><strong>{entry.action}</strong><p className="text-xs text-gray-500">{formatDateTime(entry.createdAt)}</p><p className="text-gray-600">{entry.details}</p></div>)}{!history.length ? <p className="text-sm text-gray-500">Criada em {formatDateTime(quote.createdAt)}</p> : null}</div></details>
+                <details className="quote-card-section mt-3 rounded-lg border p-3"><summary className="cursor-pointer text-xs font-black uppercase text-gray-500">Histórico</summary><div className="mt-3 space-y-3">{history.map((entry) => <div key={entry.id} className="border-l-2 border-[var(--accent)] pl-3 text-sm"><strong>{entry.action}</strong><p className="text-xs text-gray-500">{formatDateTime(entry.createdAt)}</p><p className="text-gray-600">{entry.details}</p></div>)}{!history.length ? <p className="text-sm text-gray-500">Criada em {formatDateTime(quote.createdAt)}</p> : null}</div></details>
               </div> : null}
             </article>
           )
@@ -10532,13 +9544,13 @@ function FinancePage({
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlySeries}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
                 <XAxis dataKey="month" />
                 <YAxis />
                 <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                 <Legend />
-                <Bar dataKey="faturamento" name="Recebido" fill="#16a34a" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="despesas" name="Despesas" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="faturamento" name="Recebido" fill="var(--series-1)" barSize={18} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="despesas" name="Despesas" fill="var(--series-2)" barSize={18} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -10655,7 +9667,7 @@ function FinancialDashboard({ state }: { state: AppState }) {
         <div className="mt-4 space-y-4">
       <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
         <Panel title="Comparação dos períodos">
-          <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={comparisonData}><CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" /><XAxis dataKey="metric" /><YAxis /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Legend /><Bar dataKey="atual" name={periodLabel} fill="#d8a500" radius={[5, 5, 0, 0]} /><Bar dataKey="comparacao" name={comparisonLabel} fill="#64748b" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div>
+          <div className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={comparisonData}><CartesianGrid vertical={false} stroke="var(--border-subtle)" /><XAxis dataKey="metric" /><YAxis /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Legend /><Bar dataKey="atual" name={periodLabel} fill="var(--series-1)" barSize={18} radius={[4, 4, 0, 0]} /><Bar dataKey="comparacao" name={comparisonLabel} fill="var(--series-2)" barSize={18} radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
         </Panel>
         <Panel title="Despesas por categoria">
           <div className="space-y-3">{expenseBreakdown.map((item) => { const share = current.expenses > 0 ? item.total / current.expenses * 100 : 0; return <div key={item.category}><div className="flex items-center justify-between gap-3 text-sm"><span className="truncate font-bold text-gray-700">{item.category}</span><strong className="whitespace-nowrap text-gray-950">{formatCurrency(item.total)}</strong></div><div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-red-400" style={{ width: `${share}%` }} /></div></div> })}{!expenseBreakdown.length ? <p className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">Sem despesas no período selecionado.</p> : null}</div>
@@ -10864,7 +9876,7 @@ function FinancialTable({
   }
 
   const payments = state.payments.filter((payment) => {
-    if (payment.archivedAt || payment.deletedAt || (tab === 'receber' && payment.status === 'Recebida')) return false
+    if (payment.archivedAt || payment.deletedAt || (tab === 'receber' && ['Recebida', 'Cancelada', 'Reembolsada'].includes(payment.status))) return false
     if (!matchesFinancial(`${payment.paymentType} ${payment.transactionNumber || ''} ${state.clients.find((client) => client.id === payment.clientId)?.companyName || ''}`)) return false
     if (tab !== 'receber' || paymentScope === 'all') return true
     const days = daysUntil(payment.dueDate)
@@ -11637,21 +10649,21 @@ function ReportsPage({
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthlySeries}>
-                <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="var(--border)" />
+                <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={58} />
                 <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px' }} formatter={(value) => formatCurrency(Number(value))} />
                 <Legend />
-                <Line type="monotone" dataKey="faturamento" name={regime === 'cash' ? 'Recebido' : 'Faturado'} stroke="var(--accent)" strokeWidth={2.6} dot={false} />
-                <Line type="monotone" dataKey="despesas" name={regime === 'cash' ? 'Despesas pagas' : 'Despesas lançadas'} stroke="#dc2626" strokeWidth={2.4} dot={false} />
-                <Line type="monotone" dataKey="lucro" name="Resultado" stroke="#16a34a" strokeWidth={2.4} dot={false} />
+                <Line type="monotone" dataKey="faturamento" name={regime === 'cash' ? 'Recebido' : 'Faturado'} stroke="var(--series-1)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="despesas" name={regime === 'cash' ? 'Despesas pagas' : 'Despesas lançadas'} stroke="var(--series-2)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="lucro" name="Resultado" stroke="var(--series-3)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </Panel>
 
         <Panel title="Composição das despesas">
-          {expenseBreakdown.length ? <><div className="h-56"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={expenseBreakdown} dataKey="total" nameKey="category" innerRadius={52} outerRadius={78} paddingAngle={4} stroke="var(--surface)" strokeWidth={3}>{expenseBreakdown.map((_, index) => <Cell key={index} fill={chartColors[index % chartColors.length]} />)}</Pie><Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px' }} formatter={(value) => formatCurrency(Number(value))} /></PieChart></ResponsiveContainer></div><div className="space-y-2">{expenseBreakdown.slice(0, 4).map((item, index) => <div key={item.category} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-gray-600"><i className="h-2 w-2 shrink-0 rounded-full" style={{ background: chartColors[index % chartColors.length] }} /><span className="truncate">{item.category}</span></span><strong className="text-gray-950">{formatCurrency(item.total)}</strong></div>)}</div></> : <DashboardEmptyState icon={<DollarSign size={20} />} message="Nenhuma despesa neste período." />}
+          {expenseBreakdown.length ? <><div className="h-56"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={foldChartSlices(expenseBreakdown, 'category')} dataKey="total" nameKey="category" innerRadius={54} outerRadius={78} paddingAngle={0} stroke="var(--surface)" strokeWidth={2}>{foldChartSlices(expenseBreakdown, 'category').map((_, index) => <Cell key={index} fill={chartColors[index % chartColors.length]} />)}</Pie><Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px' }} formatter={(value) => formatCurrency(Number(value))} /></PieChart></ResponsiveContainer></div><div className="space-y-2">{foldChartSlices(expenseBreakdown, 'category').slice(0, 6).map((item, index) => <div key={item.category} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-gray-600"><i className="h-2 w-2 shrink-0 rounded-full" style={{ background: chartColors[index % chartColors.length] }} /><span className="truncate">{item.category}</span></span><strong className="text-gray-950">{formatCurrency(item.total)}</strong></div>)}</div></> : <DashboardEmptyState icon={<DollarSign size={20} />} message="Nenhuma despesa neste período." />}
         </Panel>
       </div>
 
@@ -11855,7 +10867,7 @@ function InboxPage({
   )
 }
 
-function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { state: AppState; onSubmit: (values: SettingsFormValues) => Promise<void> | void; onClearContacts: () => void; onClearCompanies: () => void }) {
+function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies, onToggleModule, onDownloadBackup, onResetLocal }: { state: AppState; onSubmit: (values: SettingsFormValues) => Promise<void> | void; onClearContacts: () => void; onClearCompanies: () => void; onToggleModule: (module: 'quotes' | 'equipment', enabled: boolean) => void; onDownloadBackup: () => void; onResetLocal?: () => void }) {
   const {
     register,
     handleSubmit,
@@ -11952,6 +10964,7 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { 
         <a href="#settings-google">Integrações</a>
         <a href="#settings-billing">Cobrança</a>
         <a href="#settings-travel">Deslocamento</a>
+        <a href="#settings-modules">Módulos e dados</a>
         <a href="#settings-danger">Zona de risco</a>
       </nav>
       <form className="grid gap-4 xl:grid-cols-[1fr_0.72fr]" onSubmit={handleSubmit(saveSettings, reportInvalidSettings)}>
@@ -12024,7 +11037,7 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { 
                 <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-400">Nenhuma assinatura configurada.</div>
               )}
               <div className="flex flex-wrap gap-2">
-                <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg bg-[#e0b936] px-4 text-sm font-black text-gray-950 hover:bg-[#d5ad25]">
+                <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg bg-[var(--ink)] text-[var(--on-ink)] px-4 text-sm font-black text-gray-950 hover:bg-[var(--ink-hover)]">
                   <Paperclip size={16} /> Escolher imagem
                   <input
                     className="hidden"
@@ -12055,7 +11068,7 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { 
                         await handleSubmit(async (values) => {
                           await onSubmit({ ...values, emailSignatureImageUrl: uploadedUrl })
                         })()
-                        if (isFirebaseConfigured) {
+                        if (getActiveFirebaseWorkspaceId()) {
                           try {
                             await saveFirebaseEmailSignature(uploadedUrl)
                             setSettingsSaveMessage('Assinatura original salva em alta qualidade.')
@@ -12087,7 +11100,7 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { 
                     })()
                     const cleanup = Promise.allSettled([
                       removeGoogleWorkspaceEmailSignature(),
-                      ...(isFirebaseConfigured ? [removeFirebaseEmailSignature()] : []),
+                      ...(getActiveFirebaseWorkspaceId() ? [removeFirebaseEmailSignature()] : []),
                     ])
                     await Promise.race([
                       cleanup,
@@ -12148,6 +11161,14 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { 
           <Button className="w-full" disabled={savingSettings} type="submit">{savingSettings ? 'Salvando...' : 'Salvar configurações'}</Button>
         </div>
       </form>
+      <Panel id="settings-modules" title="Módulos e dados">
+        <div className="settings-modules">
+          {([['quotes', 'Propostas', 'Geração de propostas, envio e aceite on-line.'], ['equipment', 'Equipamentos', 'Inventário e manutenção de equipamentos.']] as const).map(([module, label, description]) => (
+            <label key={module} className="toggle-row"><input type="checkbox" checked={Boolean(state.companySettings.enabledModules?.[module])} onChange={(event) => onToggleModule(module, event.target.checked)} /><span><strong>{label}</strong><small>{description}</small></span></label>
+          ))}
+          <div className="toggle-row"><Button variant="secondary" type="button" onClick={onDownloadBackup}><Download size={15} /> Baixar backup</Button><span><strong>Backup completo</strong><small>Arquivo JSON com todos os cadastros do workspace. Contém dados de clientes e financeiros: guarde com cuidado.</small></span></div>
+        </div>
+      </Panel>
       <Panel id="settings-danger" title="Zona de risco" className="border-red-200">
         <p className="text-xs text-gray-500">Ações permanentes e irreversíveis, sem backup. Use apenas ao reiniciar a base do zero.</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -12158,24 +11179,13 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies }: { 
           </div>
           <div className="rounded-lg border border-red-200 bg-red-50/60 p-4">
             <p className="text-sm font-bold text-gray-950">Excluir todas as empresas</p>
-            <p className="mt-1 text-xs text-gray-500">Remove permanentemente {state.companies.length} empresa(s) de Contatos.</p>
+            <p className="mt-1 text-xs text-gray-500">Remove permanentemente {(state.companies || []).length} empresa(s) de Contatos.</p>
             <Button className="mt-3" variant="danger" type="button" onClick={onClearCompanies}><Trash2 size={15} /> Excluir empresas</Button>
           </div>
+          {onResetLocal ? <div className="rounded-lg border border-red-200 bg-red-50/60 p-4"><p className="text-sm font-bold text-gray-950">Limpar banco local</p><p className="mt-1 text-xs text-gray-500">Apaga tudo o que está salvo neste navegador.</p><Button className="mt-3" variant="danger" type="button" onClick={onResetLocal}><Trash2 size={15} /> Limpar banco</Button></div> : null}
         </div>
       </Panel>
     </div>
-  )
-}
-
-function PageToolbar({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
-  return (
-    <header className="page-toolbar flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight text-gray-950 sm:text-2xl">{title}</h1>
-        <p className="mt-1 max-w-3xl text-sm text-gray-500">{description}</p>
-      </div>
-      {action ? <div className="page-toolbar-actions flex flex-wrap items-center gap-2">{action}</div> : null}
-    </header>
   )
 }
 
@@ -12302,7 +11312,7 @@ function MapsAddressField({
                   setSuggestions([])
                 }}
               >
-                <MapPin className="mt-0.5 shrink-0 text-[#d8a500]" size={16} />
+                <MapPin className="mt-0.5 shrink-0 text-[var(--accent-text)]" size={16} />
                 <span className="font-bold text-gray-800">{suggestion.description}</span>
               </button>
             ))}
@@ -12336,7 +11346,7 @@ function IconActionButton({
 }) {
   const toneClasses = tone === 'danger'
     ? 'border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100'
-    : 'border-gray-200 bg-white text-gray-600 hover:border-[#d8a500] hover:bg-[#fff8df] hover:text-gray-950'
+    : 'border-gray-200 bg-white text-gray-600 hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-gray-950'
 
   return (
     <button
@@ -12454,21 +11464,17 @@ function GlobalSearchResults({ query, state, onNavigate }: { query: string; stat
 
 function MonthCalendar({
   appointments,
-  state,
   taskByAppointmentId,
   anchorDate,
   onCreateAt,
   onOpenAppointment,
-  onToggleTask,
   onShowDay,
 }: {
   appointments: Appointment[]
-  state: AppState
   taskByAppointmentId: Map<string, TaskItem>
   anchorDate: Date
-  onCreateAt: (startAt: string, endAt: string) => void
-  onOpenAppointment: (appointment: Appointment) => void
-  onToggleTask: (task: TaskItem) => void
+  onCreateAt: (startAt: string, endAt: string, anchor: AnchorRect) => void
+  onOpenAppointment: (appointment: Appointment, anchor: AnchorRect) => void
   onShowDay: (date: Date) => void
 }) {
   const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
@@ -12480,56 +11486,51 @@ function MonthCalendar({
     return date
   })
   const today = dateInput()
+  const byDay = new Map<string, Appointment[]>()
+  appointments.forEach((appointment) => {
+    const key = dateInputFromDate(new Date(appointment.startAt))
+    byDay.set(key, [...(byDay.get(key) ?? []), appointment])
+  })
 
   return (
-    <Panel className="month-calendar-panel" title="Calendário mensal">
-      <div className="month-calendar-grid grid grid-cols-7 gap-1 text-sm">
-        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
-          <div key={day} className="p-2 text-center text-xs font-bold uppercase text-gray-500">{day}</div>
-        ))}
+    <div className="gcal-month">
+      <div className="gcal-month__head">{['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="gcal-month__grid">
         {cells.map((cell) => {
           const cellDate = dateInputFromDate(cell)
-          const dayAppointments = appointments.filter((appointment) => dateInputFromDate(new Date(appointment.startAt)) === cellDate)
+          const dayAppointments = byDay.get(cellDate) ?? []
           const createAt = new Date(cell)
           createAt.setHours(9, 0, 0, 0)
           const end = new Date(createAt.getTime() + 60 * 60_000)
-          const outsideMonth = cell.getMonth() !== anchorDate.getMonth()
+          const open = (element: HTMLElement) => onCreateAt(dateTimeInputFromDate(createAt), dateTimeInputFromDate(end), element.getBoundingClientRect())
           return (
             <div
               key={cellDate}
-              className={`month-calendar-cell min-h-24 border border-gray-200 bg-gray-50 p-2 text-left transition ${outsideMonth ? 'is-outside-month' : ''} ${cellDate === today ? 'is-today' : ''}`}
+              className={`gcal-month__cell ${cell.getMonth() !== anchorDate.getMonth() ? 'is-outside' : ''} ${cellDate === today ? 'is-today' : ''}`}
               role="button"
               tabIndex={0}
               aria-label={`${cell.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}: ${dayAppointments.length} itens. Clique para criar.`}
-              onClick={() => {
-                onCreateAt(dateTimeInputFromDate(createAt), dateTimeInputFromDate(end))
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') onCreateAt(dateTimeInputFromDate(createAt), dateTimeInputFromDate(end))
-              }}
+              onClick={(event) => open(event.currentTarget)}
+              onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') open(event.currentTarget) }}
             >
-              <p className="month-calendar-day-number">{cell.getDate()}</p>
-              <div className="mt-1 space-y-1">
+              <button className="gcal-month__day" type="button" aria-label="Abrir o dia" onClick={(event) => { event.stopPropagation(); onShowDay(cell) }}>{cell.getDate() === 1 ? cell.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '').replace(' de ', ' ') : cell.getDate()}</button>
+              <div className="gcal-month__items">
                 {dayAppointments.slice(0, 3).map((appointment) => {
-                  const task = taskByAppointmentId.get(appointment.id)
-                  const completed = task?.status === 'Concluída'
-                  const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
-                  const lead = appointment.leadId ? state.leads.find((item) => item.id === appointment.leadId) : undefined
-                  const contactName = client ? contactDisplayName(client) : lead ? contactDisplayName(lead) : ''
-                  return <div key={appointment.id} className="calendar-month-event" style={{ '--calendar-item-color': appointment.color || '#2563eb' } as CSSProperties}>
-                    <div className="flex items-center gap-1">
-                      {task ? <button className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${completed ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 text-transparent'}`} type="button" aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={11} /></button> : null}
-                      <button className={`min-w-0 flex-1 truncate text-left ${completed ? 'is-completed' : ''}`} title={`${formatDateTime(appointment.startAt)} · ${appointment.title}${contactName ? ` · ${contactName}` : ''}`} type="button" onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment) }}><time>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time> {appointment.title}</button>
-                    </div>
-                  </div>
+                  const color = appointment.color || '#3f6fb5'
+                  const completed = taskByAppointmentId.get(appointment.id)?.status === 'Concluída'
+                  return (
+                    <button key={appointment.id} className={`gcal-chip ${completed ? 'is-completed' : ''}`} style={{ '--gcal-color': color } as CSSProperties} title={appointment.title} type="button" onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment, event.currentTarget.getBoundingClientRect()) }}>
+                      <i /><time>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time> <span>{appointment.title}</span>
+                    </button>
+                  )
                 })}
-                {dayAppointments.length > 3 ? <button className="month-calendar-more" type="button" onClick={(event) => { event.stopPropagation(); onShowDay(cell) }}>+{dayAppointments.length - 3} itens</button> : null}
+                {dayAppointments.length > 3 ? <button className="gcal-month__more" type="button" onClick={(event) => { event.stopPropagation(); onShowDay(cell) }}>Mais {dayAppointments.length - 3}</button> : null}
               </div>
             </div>
           )
         })}
       </div>
-    </Panel>
+    </div>
   )
 }
 
@@ -12538,21 +11539,25 @@ function TimeGridCalendar({
   appointments,
   state,
   view,
+  draft,
   onCreateAt,
   onOpenAppointment,
   onToggleTask,
   onResizeAppointment,
   onMoveAppointment,
+  onShowDay,
 }: {
   anchorDate: Date
   appointments: Appointment[]
   state: AppState
   view: 'semanal' | 'diaria'
-  onCreateAt: (startAt: string, endAt: string) => void
-  onOpenAppointment: (appointment: Appointment) => void
+  draft: { startAt: string; endAt: string } | null
+  onCreateAt: (startAt: string, endAt: string, anchor: AnchorRect) => void
+  onOpenAppointment: (appointment: Appointment, anchor: AnchorRect) => void
   onToggleTask: (task: TaskItem) => void
   onResizeAppointment: (appointment: Appointment, endAt: string) => void
   onMoveAppointment: (appointment: Appointment, startAt: string, endAt: string) => void
+  onShowDay: (date: Date) => void
 }) {
   const start = view === 'semanal' ? getWeekStart(anchorDate) : new Date(anchorDate)
   const days = Array.from({ length: view === 'semanal' ? 7 : 1 }, (_, index) => {
@@ -12562,15 +11567,69 @@ function TimeGridCalendar({
     return day
   })
   const hours = Array.from({ length: 24 }, (_, index) => index)
-  const hourHeight = view === 'diaria' ? 48 : 42
-  const totalHeight = hours.length * hourHeight
+  const hourHeight = 48
   const rangeStartHour = hours[0] ?? 0
   const rangeEndHour = (hours[hours.length - 1] ?? 23) + 1
   const rangeStartMinutes = rangeStartHour * 60
   const rangeEndMinutes = rangeEndHour * 60
   const [resizePreview, setResizePreview] = useState<{ appointmentId: string; endAt: string } | null>(null)
   const [movePreview, setMovePreview] = useState<{ appointmentId: string; startAt: string; endAt: string } | null>(null)
+  const [createPreview, setCreatePreview] = useState<{ dayKey: string; startMinutes: number; endMinutes: number } | null>(null)
   const suppressOpenId = useRef('')
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Abre perto da hora atual, como o Google Agenda, em vez de meia-noite.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = Math.max((new Date().getHours() - 2) * hourHeight, 0)
+  }, [view])
+
+  const [, setClock] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock((value) => value + 1), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  /** Clique cria 1 hora; arrastar define o intervalo. Passos de 15 minutos. */
+  const startCreateDrag = (event: ReactPointerEvent<HTMLDivElement>, day: Date) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('.gcal-event')) return
+    event.preventDefault()
+    const column = event.currentTarget
+    const dayKey = dateInputFromDate(day)
+    const minutesAt = (clientY: number) => {
+      const raw = ((clientY - column.getBoundingClientRect().top) / hourHeight) * 60
+      return Math.max(0, Math.min(rangeEndMinutes, raw))
+    }
+    const anchorMinutes = Math.floor(minutesAt(event.clientY) / 15) * 15
+    let startMinutes = anchorMinutes
+    let endMinutes = Math.min(anchorMinutes + 60, rangeEndMinutes)
+    let dragged = false
+    setCreatePreview({ dayKey, startMinutes, endMinutes })
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault()
+      const pointer = Math.round(minutesAt(moveEvent.clientY) / 15) * 15
+      if (pointer === anchorMinutes) return
+      dragged = true
+      startMinutes = Math.min(anchorMinutes, pointer)
+      endMinutes = Math.max(anchorMinutes + 15, pointer)
+      setCreatePreview({ dayKey, startMinutes, endMinutes })
+    }
+    const finish = (upEvent: PointerEvent) => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', finish)
+      window.removeEventListener('pointercancel', finish)
+      const startAt = new Date(day)
+      startAt.setMinutes(startMinutes)
+      const endAt = new Date(day)
+      endAt.setMinutes(dragged ? endMinutes : Math.min(startMinutes + 60, rangeEndMinutes))
+      const rect = column.getBoundingClientRect()
+      setCreatePreview(null)
+      onCreateAt(dateTimeInputFromDate(startAt), dateTimeInputFromDate(endAt), { left: rect.left, right: rect.right, top: upEvent.clientY - 40, bottom: upEvent.clientY })
+    }
+    window.addEventListener('pointermove', handleMove, { passive: false })
+    window.addEventListener('pointerup', finish)
+    window.addEventListener('pointercancel', finish)
+  }
 
   const appointmentClient = (appointment: Appointment) => {
     const client = appointment.clientId ? state.clients.find((item) => item.id === appointment.clientId) : undefined
@@ -12582,7 +11641,7 @@ function TimeGridCalendar({
     const startDate = new Date(appointment.startAt)
     const endDate = new Date(appointment.endAt)
     const pad = (value: number) => String(value).padStart(2, '0')
-    return `${pad(startDate.getHours())}:${pad(startDate.getMinutes())} - ${pad(endDate.getHours())}:${pad(endDate.getMinutes())}`
+    return `${pad(startDate.getHours())}:${pad(startDate.getMinutes())} – ${pad(endDate.getHours())}:${pad(endDate.getMinutes())}`
   }
 
   const appointmentBlockStyle = (appointment: Appointment) => {
@@ -12592,11 +11651,11 @@ function TimeGridCalendar({
     const endMinutes = endDate.getHours() * 60 + endDate.getMinutes()
     const topMinutes = Math.max(startMinutes, rangeStartMinutes) - rangeStartMinutes
     const visibleMinutes = Math.max(Math.min(endMinutes, rangeEndMinutes) - Math.max(startMinutes, rangeStartMinutes), 5)
-    const heightPx = Math.max((visibleMinutes / 60) * hourHeight - 4, 20)
+    const heightPx = Math.max((visibleMinutes / 60) * hourHeight - 2, 18)
     return {
       heightPx,
       style: {
-        top: `${(topMinutes / 60) * hourHeight + 4}px`,
+        top: `${(topMinutes / 60) * hourHeight + 1}px`,
         height: `${heightPx}px`,
       },
     }
@@ -12727,155 +11786,152 @@ function TimeGridCalendar({
     window.addEventListener('pointercancel', finishMove)
   }
 
+  const draftDay = draft ? dateInputFromDate(new Date(draft.startAt)) : ''
+  const previewBlock = (key: string) => {
+    if (createPreview?.dayKey === key) return { startMinutes: createPreview.startMinutes, endMinutes: createPreview.endMinutes }
+    if (draft && draftDay === key) {
+      const startDate = new Date(draft.startAt)
+      const endDate = new Date(draft.endAt)
+      return { startMinutes: startDate.getHours() * 60 + startDate.getMinutes(), endMinutes: endDate.getHours() * 60 + endDate.getMinutes() }
+    }
+    return null
+  }
+  const minuteLabel = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+
   return (
-    <Panel className="time-grid-panel" title={view === 'semanal' ? 'Calendário semanal' : 'Planejamento do dia'}>
-      <div className="overflow-x-auto">
-        <div className={view === 'diaria' ? 'min-w-[620px]' : 'min-w-[980px]'}>
-          <div className="grid border-b border-gray-200" style={{ gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` }}>
-            <div className="p-2 text-xs font-bold uppercase text-gray-500">Hora</div>
-            {days.map((day) => {
-              const headerIsToday = dateInputFromDate(day) === dateInput()
-              return (
-                <div key={day.toISOString()} className={`time-grid-day-header border-l border-gray-200 p-2 ${headerIsToday ? 'is-today' : ''}`}>
-                  <p className="time-grid-day-header__weekday">
-                    {day.toLocaleDateString('pt-BR', { weekday: 'short' })}
-                  </p>
-                  <p className="time-grid-day-header__number"><span>{day.toLocaleDateString('pt-BR', { day: 'numeric' })}</span></p>
-                </div>
-              )
-            })}
+    <div className="gcal-scroll" ref={scrollRef}>
+      <div className={`gcal-week ${view === 'diaria' ? 'is-day' : ''}`} style={{ '--gcal-days': days.length, '--gcal-hour': `${hourHeight}px` } as CSSProperties}>
+        <div className="gcal-week__head">
+          <div className="gcal-week__zone">GMT-03</div>
+          {days.map((day) => {
+            const headerIsToday = dateInputFromDate(day) === dateInput()
+            return (
+              <button key={day.toISOString()} className={`gcal-week__day ${headerIsToday ? 'is-today' : ''}`} type="button" onClick={() => onShowDay(day)}>
+                <small>{day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</small>
+                <strong>{day.getDate()}</strong>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="gcal-week__body">
+          <div className="gcal-gutter" aria-hidden="true">
+            {hours.slice(1).map((hour) => <span key={hour} style={{ top: hour * hourHeight }}>{String(hour).padStart(2, '0')}:00</span>)}
           </div>
 
-          <div className="grid" style={{ gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(${view === 'diaria' ? '26rem' : '9rem'}, 1fr))` }}>
-            <div className="calendar-hour-column relative bg-gray-50" style={{ height: totalHeight }}>
-              {hours.map((hour, index) => (
-                <div
-                  key={hour}
-                  className="absolute left-0 right-0 border-b border-gray-200 p-2 text-xs font-black text-gray-500"
-                  style={{ top: index * hourHeight, height: hourHeight }}
-                >
-                  {String(hour).padStart(2, '0')}:00
-                </div>
-              ))}
-            </div>
+          {days.map((day) => {
+            const dayKey = dateInputFromDate(day)
+            const dayAppointments = appointments.filter((appointment) => {
+              const startDate = new Date(appointment.startAt)
+              const endDate = new Date(appointment.endAt)
+              const startMinutes = startDate.getHours() * 60 + startDate.getMinutes()
+              const endMinutes = endDate.getHours() * 60 + endDate.getMinutes()
+              return dateInputFromDate(startDate) === dayKey && endMinutes > rangeStartMinutes && startMinutes < rangeEndMinutes
+            })
+            const appointmentColumns = overlappingAppointmentColumns(dayAppointments)
+            const isToday = dayKey === dateInput()
+            const currentTime = new Date()
+            const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes()
+            const preview = previewBlock(dayKey)
 
-            {days.map((day) => {
-              const dayKey = dateInputFromDate(day)
-              const dayAppointments = appointments.filter((appointment) => {
-                const startDate = new Date(appointment.startAt)
-                const endDate = new Date(appointment.endAt)
-                const startMinutes = startDate.getHours() * 60 + startDate.getMinutes()
-                const endMinutes = endDate.getHours() * 60 + endDate.getMinutes()
-                return dateInputFromDate(startDate) === dayKey && endMinutes > rangeStartMinutes && startMinutes < rangeEndMinutes
-              })
-              const appointmentColumns = overlappingAppointmentColumns(dayAppointments)
-              const isToday = dayKey === dateInput()
-              const currentTime = new Date()
-              const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes()
+            return (
+              <div key={dayKey} data-calendar-day={dayKey} className="gcal-column" onPointerDown={(event) => startCreateDrag(event, day)}>
+                {hours.map((hour) => {
+                  const startAt = new Date(day)
+                  startAt.setHours(hour, 0, 0, 0)
+                  const endAt = new Date(startAt.getTime() + 60 * 60_000)
+                  return <button
+                    key={hour}
+                    className="gcal-slot"
+                    style={{ top: hour * hourHeight, height: hourHeight }}
+                    type="button"
+                    aria-label={`Criar item às ${String(hour).padStart(2, '0')}:00`}
+                    onClick={(event) => {
+                      // O mouse é tratado no arraste; aqui entra só o Enter do teclado.
+                      if (event.detail === 0) onCreateAt(dateTimeInputFromDate(startAt), dateTimeInputFromDate(endAt), event.currentTarget.getBoundingClientRect())
+                    }}
+                  />
+                })}
 
-              return (
-                <div key={dayKey} data-calendar-day={dayKey} className="relative border-l border-gray-200 bg-white" style={{ height: totalHeight }}>
-                  {hours.map((hour, index) => {
-                return (
-                  <div
-                    key={`${dayKey}-${hour}`}
-                    className="calendar-time-slot absolute left-0 right-0 border-b border-gray-200 text-left transition"
-                    style={{ top: index * hourHeight, height: hourHeight }}
-                  >
-                    {[0, 15, 30, 45].map((minute) => {
-                      const startAt = new Date(day)
-                      startAt.setHours(hour, minute, 0, 0)
-                      const endAt = new Date(startAt.getTime() + 15 * 60_000)
-                      const timeLabel = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-                      return <button
-                        key={minute}
-                        className="calendar-quarter-slot"
-                        type="button"
-                        aria-label={`Criar item às ${timeLabel}, duração inicial de 15 minutos`}
-                        onClick={() => onCreateAt(dateTimeInputFromDate(startAt), dateTimeInputFromDate(endAt))}
-                      />
-                    })}
+                {preview ? (
+                  <div className="gcal-draft" style={{ top: (preview.startMinutes / 60) * hourHeight, height: Math.max(((preview.endMinutes - preview.startMinutes) / 60) * hourHeight - 2, 16) }}>
+                    <strong>(Sem título)</strong><span>{minuteLabel(preview.startMinutes)} – {minuteLabel(preview.endMinutes)}</span>
                   </div>
-                )
-              })}
+                ) : null}
 
-                  {isToday ? <div className="calendar-now-line" style={{ top: `${(currentMinutes / 60) * hourHeight}px` }} aria-label={`Horário atual: ${currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}><span>{currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></div> : null}
+                {dayAppointments.map((appointment) => {
+                  const task = state.tasks.find((item) => item.appointmentId === appointment.id)
+                  const completed = task?.status === 'Concluída'
+                  const effectiveAppointment = movePreview?.appointmentId === appointment.id
+                    ? { ...appointment, startAt: movePreview.startAt, endAt: movePreview.endAt }
+                    : resizePreview?.appointmentId === appointment.id
+                      ? { ...appointment, endAt: resizePreview.endAt }
+                      : appointment
+                  const block = appointmentBlockStyle(effectiveAppointment)
+                  const layout = appointmentColumns.get(appointment.id) || { column: 0, columns: 1 }
+                  const columnWidth = 100 / layout.columns
+                  const canResize = state.appointments.some((item) => item.id === appointment.id)
+                  const compact = block.heightPx < 36
+                  const color = appointment.color || '#3f6fb5'
+                  return (
+                    <div
+                      key={appointment.id}
+                      data-appointment-id={appointment.id}
+                      className={`gcal-event group ${compact ? 'is-compact' : ''} ${completed ? 'is-completed' : ''} ${movePreview?.appointmentId === appointment.id ? 'is-moving' : ''}`}
+                      style={{
+                        '--gcal-color': color,
+                        '--gcal-text': readableEventTextColor(color),
+                        ...block.style,
+                        left: `calc(${layout.column * columnWidth}% + 1px)`,
+                        right: `calc(${(layout.columns - layout.column - 1) * columnWidth}% + ${layout.column === layout.columns - 1 ? 10 : 1}px)`,
+                      } as CSSProperties}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (suppressOpenId.current === appointment.id) return
+                        onOpenAppointment(appointment, event.currentTarget.getBoundingClientRect())
+                      }}
+                      onPointerDown={(event) => startAppointmentMove(event, appointment)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onOpenAppointment(appointment, event.currentTarget.getBoundingClientRect())
+                        }
+                      }}
+                    >
+                      {task ? <button className="gcal-event__check" type="button" aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}>{completed ? <Check size={9} /> : null}</button> : null}
+                      <p className="gcal-event__title">{appointment.title}{compact ? <span>, {appointmentTime(effectiveAppointment).split(' – ')[0]}</span> : null}</p>
+                      {!compact ? <p className="gcal-event__meta">{appointmentTime(effectiveAppointment)}</p> : null}
+                      {block.heightPx >= 62 && (appointment.clientId || appointment.leadId) ? <p className="gcal-event__meta">{appointmentClient(appointment)}</p> : null}
+                      {canResize ? <div
+                        data-resize-handle
+                        className="gcal-event__resize"
+                        role="separator"
+                        aria-label={`Ajustar duração de ${appointment.title}`}
+                        aria-orientation="horizontal"
+                        title="Arraste para ajustar a duração"
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => startAppointmentResize(event, appointment, day)}
+                      /> : null}
+                    </div>
+                  )
+                })}
 
-                  {dayAppointments.map((appointment) => {
-                    const task = state.tasks.find((item) => item.appointmentId === appointment.id)
-                    const completed = task?.status === 'Concluída'
-                    const effectiveAppointment = movePreview?.appointmentId === appointment.id
-                      ? { ...appointment, startAt: movePreview.startAt, endAt: movePreview.endAt }
-                      : resizePreview?.appointmentId === appointment.id
-                        ? { ...appointment, endAt: resizePreview.endAt }
-                        : appointment
-                    const block = appointmentBlockStyle(effectiveAppointment)
-                    const layout = appointmentColumns.get(appointment.id) || { column: 0, columns: 1 }
-                    const columnWidth = 100 / layout.columns
-                    const canResize = state.appointments.some((item) => item.id === appointment.id)
-                    const showMeta = block.heightPx >= 30
-                    const showContact = block.heightPx >= 46 && Boolean(appointment.clientId || appointment.leadId)
-                    const paddingClass = block.heightPx < 30 ? 'px-1.5 py-0.5' : 'px-2 py-1'
-                    return (
-                      <div
-                        key={appointment.id}
-                        data-appointment-id={appointment.id}
-                        className={`calendar-event-block group absolute z-10 touch-none overflow-hidden rounded-md ${paddingClass} text-left transition ${appointment.appointmentType === 'Tarefa' ? 'is-task' : 'is-event'} ${movePreview?.appointmentId === appointment.id ? 'cursor-grabbing opacity-80 ring-2 ring-[#c9a227]' : canResize ? 'cursor-grab' : ''}`}
-                        style={{
-                          '--calendar-item-color': appointment.color || '#2563eb',
-                          '--calendar-item-text': readableEventTextColor(appointment.color || '#2563eb'),
-                          ...block.style,
-                          left: `calc(${layout.column * columnWidth}% + 4px)`,
-                          right: `calc(${(layout.columns - layout.column - 1) * columnWidth}% + 4px)`,
-                        } as React.CSSProperties}
-                        role="button"
-                        tabIndex={0}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          if (suppressOpenId.current === appointment.id) return
-                          onOpenAppointment(appointment)
-                        }}
-                        onPointerDown={(event) => startAppointmentMove(event, appointment)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            onOpenAppointment(appointment)
-                          }
-                        }}
-                      >
-                        {task ? <button className={`calendar-task-toggle absolute right-[3px] top-[3px] z-20 flex h-2.5 w-2.5 shrink-0 items-center justify-center rounded-full border shadow-sm ${completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-white bg-white text-transparent ring-1 ring-gray-400'}`} type="button" title={completed ? 'Voltar para pendente' : 'Marcar como concluída'} aria-label={completed ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onToggleTask(task) }}><Check size={7} strokeWidth={3.5} /></button> : null}
-                        {showContact ? <p className={`calendar-event-contact truncate ${task ? 'pr-4' : ''}`}><ContactRound size={11} /> {appointmentClient(appointment)}</p> : null}
-                        <p className={`calendar-event-title truncate ${completed ? 'is-completed' : ''} ${task && !appointment.clientId && !appointment.leadId ? 'pr-4' : ''}`}>{appointment.title}</p>
-                        {showMeta ? <p className="calendar-event-meta truncate">{appointmentTime(effectiveAppointment)} · {appointment.appointmentType}</p> : null}
-                        {canResize ? <div
-                          data-resize-handle
-                          className="absolute inset-x-0 bottom-0 flex h-3 touch-none cursor-ns-resize items-center justify-center border-t border-transparent transition group-hover:border-gray-300 group-hover:bg-gray-100"
-                          role="separator"
-                          aria-label={`Ajustar duração de ${appointment.title}`}
-                          aria-orientation="horizontal"
-                          title="Arraste para aumentar ou diminuir a duração"
-                          onClick={(event) => event.stopPropagation()}
-                          onPointerDown={(event) => startAppointmentResize(event, appointment, day)}
-                        ><span className="h-0.5 w-8 rounded-full bg-gray-400 opacity-60" /></div> : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })}
-          </div>
+                {isToday ? <div className="gcal-now" style={{ top: `${(currentMinutes / 60) * hourHeight}px` }} aria-label={`Horário atual: ${currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`} /> : null}
+              </div>
+            )
+          })}
         </div>
       </div>
-    </Panel>
+    </div>
   )
 }
 
 function getWeekStart(date: Date) {
   const start = new Date(date)
-  const day = start.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  start.setDate(start.getDate() + diff)
   start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - start.getDay())
   return start
 }
 
@@ -13195,7 +12251,7 @@ function ClosedServiceForm({
             <input className="field-input" name="deliveryDeadline" type="date" value={deliveryDeadline} onChange={(event) => updateDeliveryDeadline(event.currentTarget.value)} required />
             <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
               <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
-              {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[#8a6a00]" type="button" onClick={() => updateDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
+              {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[var(--accent-text)]" type="button" onClick={() => updateDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
             </div>
           </InputField>
         </div>
@@ -13476,7 +12532,7 @@ function ProjectForm({
         <input type="hidden" {...register('deliveryDaysAfterCapture')} />
         <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
           <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
-          {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[#8a6a00]" type="button" onClick={() => changeProjectDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
+          {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[var(--accent-text)]" type="button" onClick={() => changeProjectDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
         </div>
       </InputField>
       <InputField label="Cidade" error={getError(errors.city?.message)}><input className="field-input" {...register('city')} /></InputField>
@@ -13929,7 +12985,7 @@ function QuoteDepositForm({
         </InputField>
         <InputField label="Número da transação"><input className="field-input" value={transactionNumber} onChange={(event) => setTransactionNumber(event.target.value)} /></InputField>
         <InputField label="Comprovante">
-          <input className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[#d8a500] file:px-3 file:py-1.5 file:font-bold" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => void attachFile(event.currentTarget.files?.[0])} />
+          <input className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[var(--ink)] text-[var(--on-ink)] file:px-3 file:py-1.5 file:font-bold" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => void attachFile(event.currentTarget.files?.[0])} />
         </InputField>
       </div>
       {fileName ? <p className="text-sm font-bold text-gray-500">Arquivo selecionado: {fileName}</p> : null}
@@ -13989,7 +13045,7 @@ function ReceiptForm({
 
       <InputField label="Arquivo do comprovante">
         <input
-          className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[#d4af37] file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-black"
+          className="field-input file:mr-3 file:rounded-md file:border-0 file:bg-[var(--ink)] text-[var(--on-ink)] file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-black"
           type="file"
           multiple
           accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
