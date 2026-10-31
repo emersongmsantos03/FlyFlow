@@ -14,79 +14,24 @@ export const Button = ({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant
 }) => (
-  <button
-    className={clsx(
-      'app-button focus-ring inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[0.82rem] font-semibold transition',
-      variant === 'primary' && 'app-button-primary bg-[#171717] text-white hover:bg-black',
-      variant === 'secondary' && 'app-button-secondary border border-gray-300 bg-white text-gray-900 hover:bg-gray-50',
-      variant === 'ghost' && 'app-button-ghost text-gray-700 hover:bg-gray-100',
-      variant === 'danger' && 'app-button-danger bg-red-600 text-white hover:bg-red-700',
-      className,
-    )}
-    {...props}
-  >
+  <button className={clsx('app-button', `app-button-${variant}`, className)} {...props}>
     {children}
   </button>
 )
 
 const statusTone = (status: string) => {
   const value = status.toLowerCase()
-  if (
-    value.includes('pago') ||
-    value.includes('paga') ||
-    value.includes('recebida') ||
-    value.includes('finalizado') ||
-    value.includes('entregue') ||
-    value.includes('convertido') ||
-    value.includes('confirmado') ||
-    value.includes('aprovado') ||
-    value.includes('concluído')
-  ) {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  }
-  if (
-    value.includes('vencido') ||
-    value.includes('vencida') ||
-    value.includes('perdido') ||
-    value.includes('perdida') ||
-    value.includes('cancelado') ||
-    value.includes('cancelada') ||
-    value.includes('atrasado') ||
-    value.includes('atrasada') ||
-    value.includes('recusado') ||
-    value.includes('recusada')
-  ) {
-    return 'border-red-200 bg-red-50 text-red-700'
-  }
-  if (
-    value.includes('a pagar') ||
-    value.includes('pendente') ||
-    value.includes('aguardando') ||
-    value.includes('negociação') ||
-    value.includes('orçamento') ||
-    value.includes('edição')
-  ) {
-    return 'border-amber-200 bg-amber-50 text-amber-700'
-  }
-  return 'border-gray-200 bg-gray-50 text-gray-700'
+  if (/pago|paga|recebida|finalizado|entregue|convertid|confirmado|aprovad|concluíd|publicado|ativa$|ativo$/.test(value) && !/a pagar/.test(value)) return 'is-positive'
+  if (/vencid|perdid|cancelad|atrasad|recusad|falhou|urgente|expirad/.test(value)) return 'is-danger'
+  if (/a pagar|pendente|aguardando|negociação|orçamento|edição|alta|agendado|revisão|parcial/.test(value)) return 'is-warning'
+  return 'is-neutral'
 }
 
 export const StatusBadge = ({ children }: { children: ReactNode }) => (
-  <span
-    className={clsx(
-      'status-badge inline-flex items-center rounded-full border px-2 py-0.5 text-[0.7rem] font-bold',
-      statusTone(String(children)),
-    )}
-  >
-    {children}
-  </span>
+  <span className={clsx('status-badge', statusTone(String(children)))}>{children}</span>
 )
 
-export const Tag = ({ children }: { children: ReactNode }) => (
-  <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-700">
-    {children}
-  </span>
-)
+export const Tag = ({ children }: { children: ReactNode }) => <span className="status-badge is-neutral">{children}</span>
 
 export const MetricCard = ({
   label,
@@ -101,29 +46,10 @@ export const MetricCard = ({
   icon: ReactNode
   tone?: 'neutral' | 'positive' | 'warning' | 'danger'
 }) => (
-  <article className="metric-card glass-surface min-h-24 rounded-2xl border border-gray-200 p-3.5 shadow-sm">
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <p className="text-xs font-bold uppercase text-gray-500">{label}</p>
-        <div
-          className={clsx(
-            'mt-1.5 text-xl font-semibold tracking-normal',
-            tone === 'positive' && 'text-emerald-700',
-            tone === 'warning' && 'text-amber-700',
-            tone === 'danger' && 'text-red-700',
-            tone === 'neutral' && 'text-gray-950',
-          )}
-        >
-          {value}
-        </div>
-      </div>
-      <div
-        className={clsx('metric-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', `metric-icon--${tone}`)}
-      >
-        {icon}
-      </div>
-    </div>
-    {detail ? <p className="mt-2 text-xs text-gray-500">{detail}</p> : null}
+  <article className={clsx('metric-card', `is-${tone}`)}>
+    <header><span>{label}</span>{icon}</header>
+    <strong>{value}</strong>
+    {detail ? <p>{detail}</p> : null}
   </article>
 )
 
@@ -140,14 +66,47 @@ export const Panel = ({
   className?: string
   id?: string
 }) => (
-  <section id={id} className={clsx('panel-surface rounded-xl border border-gray-200 bg-white shadow-sm', className)}>
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
-      <h2 className="text-sm font-semibold text-gray-950">{title}</h2>
+  <section id={id} className={clsx('panel-surface', className)}>
+    <header className="panel-header">
+      <h2>{title}</h2>
       {action}
-    </div>
-    <div className="p-3.5">{children}</div>
+    </header>
+    <div className="panel-body">{children}</div>
   </section>
 )
+
+export const PageToolbar = ({ title, description, action }: { title: string; description: string; action?: ReactNode }) => (
+  <header className="page-toolbar">
+    <div>
+      <h1>{title}</h1>
+      <p>{description}</p>
+    </div>
+    {action ? <div className="page-toolbar-actions">{action}</div> : null}
+  </header>
+)
+
+const ModalFrame = ({ title, children, onClose, size }: { title: string; children: ReactNode; onClose: () => void; size: string }) => {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      // O dropdown e os diálogos sobrepostos tratam o próprio Esc.
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('.ff-select-panel')) onClose()
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={clsx('modal-surface', `is-${size}`)}>
+        <div className="modal-header">
+          <h2>{title}</h2>
+          <button aria-label="Fechar" className="icon-button" type="button" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  )
+}
 
 export const Modal = ({
   title,
@@ -159,31 +118,7 @@ export const Modal = ({
   children: ReactNode
   onClose: () => void
   size?: 'sm' | 'md' | 'lg' | 'xl'
-}) => createPortal(
-  <div className="modal-backdrop fixed inset-0 z-[80] flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-3" role="dialog" aria-modal="true">
-    <div className={clsx(
-      'modal-surface flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:w-[calc(100vw-1.5rem)] sm:rounded-2xl',
-      size === 'sm' && 'max-w-lg',
-      size === 'md' && 'max-w-3xl',
-      size === 'lg' && 'max-w-5xl',
-      size === 'xl' && 'max-w-6xl',
-    )}>
-      <div className="modal-header z-10 flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-        <h2 className="text-base font-semibold tracking-tight text-gray-950 sm:text-lg">{title}</h2>
-        <button
-          aria-label="Fechar"
-          className="focus-ring flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100"
-          type="button"
-          onClick={onClose}
-        >
-          <X size={20} />
-        </button>
-      </div>
-      <div className="min-h-0 overflow-y-auto p-3 sm:p-4">{children}</div>
-    </div>
-  </div>,
-  document.body,
-)
+}) => createPortal(<ModalFrame title={title} size={size} onClose={onClose}>{children}</ModalFrame>, document.body)
 
 export const EmptyState = ({
   title,
@@ -194,10 +129,10 @@ export const EmptyState = ({
   description: string
   action?: ReactNode
 }) => (
-  <div className="empty-state flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-    <h3 className="text-base font-semibold text-gray-950">{title}</h3>
-    <p className="mt-1 max-w-md text-sm text-gray-500">{description}</p>
-    {action ? <div className="mt-4">{action}</div> : null}
+  <div className="empty-state">
+    <h3>{title}</h3>
+    <p>{description}</p>
+    {action ? <div>{action}</div> : null}
   </div>
 )
 
@@ -220,10 +155,10 @@ export const InputField = ({
   </label>
 )
 
+const isErrorMessage = (message: string) => /não foi possível|falha|erro|inválid|incorret|não pode|já existe|recusou|sem permissão/i.test(message)
+
 export const Toast = ({ message }: { message: string }) => (
-  <div className="fixed bottom-24 right-4 z-[60] max-w-sm rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 shadow-lg lg:bottom-6 lg:right-6">
-    {message}
-  </div>
+  <div className={clsx('app-toast', isErrorMessage(message) && 'is-error')} role="status">{message}</div>
 )
 
 export type SelectOption = {
