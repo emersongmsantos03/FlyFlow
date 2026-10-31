@@ -73,7 +73,8 @@ export function IntegrationsPage({ onConfirmRevoke }: { onConfirmRevoke: (label:
               <header><strong>{channel.label}</strong><span className={`health-pill is-${health.tone}`}>{health.label}</span></header>
               <p>{channel.description}</p>
               <small>{lastSync ? `Última coleta: ${formatDateTime(lastSync as string)}` : 'Nenhum dado recebido'}{connections.length > 1 ? ` · ${connections.length} contas` : ''}</small>
-              {connections.find((item) => item.lastError)?.lastError ? <small className="text-danger">{connections.find((item) => item.lastError)?.lastError}</small> : null}
+              {connections.find((item) => item.status === 'error' && item.lastError)?.lastError ? <small className="text-danger">{connections.find((item) => item.status === 'error' && item.lastError)?.lastError}</small> : null}
+              {!lastSync && connections.find((item) => item.status === 'pending' && item.lastError)?.lastError ? <small>{connections.find((item) => item.status === 'pending' && item.lastError)?.lastError}</small> : null}
             </article>
           )
         })}

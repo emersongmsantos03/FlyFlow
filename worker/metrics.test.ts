@@ -27,6 +27,9 @@ describe('parseIngestPayload', () => {
     const failed = parseIngestPayload({ source: 'youtube', run: { status: 'error', message: 'Token expirado' } })
     expect(failed.status).toBe('error')
     expect(failed.message).toBe('Token expirado')
+    const pending = parseIngestPayload({ source: 'instagram', account: '@hero', run: { status: 'pending', message: 'Metricool ainda sem histórico' } })
+    expect(pending.status).toBe('pending')
+    expect(pending.message).toBe('Metricool ainda sem histórico')
   })
 })
 

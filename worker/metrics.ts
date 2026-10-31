@@ -16,7 +16,7 @@ export interface MetricsAccess {
 export interface IngestPayload {
   source: string
   account: string
-  status: 'ok' | 'error'
+  status: 'ok' | 'error' | 'pending'
   message: string
   agent: string
   points: Array<{ metric: string; date: string; value: number }>
@@ -71,7 +71,7 @@ export const parseIngestPayload = (body: unknown): IngestPayload => {
   if (!/^[a-z0-9][a-z0-9_-]+$/.test(source)) throw new IngestError('`source` é obrigatório (ex.: instagram, youtube, email).')
   const account = text(input.account, 120)
   const run = (input.run && typeof input.run === 'object' ? input.run : {}) as Record<string, unknown>
-  const status = run.status === 'error' ? 'error' : 'ok'
+  const status = run.status === 'error' ? 'error' : run.status === 'pending' ? 'pending' : 'ok'
 
   const rawPoints = Array.isArray(input.metrics) ? input.metrics : []
   const rawPosts = Array.isArray(input.posts) ? input.posts : []
@@ -114,7 +114,7 @@ export const parseIngestPayload = (body: unknown): IngestPayload => {
     }
   })
 
-  if (status === 'ok' && !points.length && !posts.length) throw new IngestError('Envie `metrics` ou `posts`, ou `run.status: "error"`.')
+  if (status === 'ok' && !points.length && !posts.length) throw new IngestError('Envie `metrics` ou `posts`, ou `run.status` "error" ou "pending".')
   return { source, account, status, message: text(run.message, 500), agent: text(run.agent, 120), points, posts }
 }
 
@@ -161,7 +161,7 @@ export const storeIngest = async (env: MetricsEnv, workspaceId: string, payload:
       status = excluded.status,
       last_sync_at = CASE WHEN excluded.status = 'ok' THEN excluded.last_sync_at ELSE integration_connections.last_sync_at END,
       last_error = excluded.last_error
-  `).bind(workspaceId, payload.source, payload.account, payload.status, payload.status === 'ok' ? now : null, payload.status === 'error' ? payload.message : null))
+  `).bind(workspaceId, payload.source, payload.account, payload.status, payload.status === 'ok' ? now : null, payload.status === 'ok' ? null : payload.message))
   statements.push(env.FLYFLOW_DB.prepare(`
     INSERT INTO integration_runs (id, workspace_id, source, account, status, points_count, posts_count, message, agent, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
