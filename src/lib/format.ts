@@ -104,6 +104,8 @@ export const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
 
+export const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
+
 export const initials = (value: string) =>
   value
     .trim()
