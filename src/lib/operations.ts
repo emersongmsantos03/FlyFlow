@@ -49,7 +49,8 @@ const legacyProjectMap: Partial<Record<ProjectStatus, ProjectStatus>> = {
   Reagendado: 'Agendado',
 }
 
-const dateOnly = (value: Date) => value.toISOString().slice(0, 10)
+// Data local: com toISOString() um pagamento venceria às 21h do dia anterior em Brasília.
+const dateOnly = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
 
 export const addCalendarDays = (date: string, days: number) => {
   const parsed = new Date(`${date}T12:00:00`)

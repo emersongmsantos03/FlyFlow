@@ -4,7 +4,7 @@ import { buildCommercialActionQueue, buildCommercialInsights, calculateCommercia
 
 const lead = (overrides: Partial<Lead> = {}): Lead => ({
   id: 'lead-1', fullName: 'Contato', companyName: 'Empresa', phone: '', whatsapp: '', email: '', instagram: '',
-  city: 'Curitiba', neighborhood: '', address: '', source: 'Lead Hunter', serviceInterest: 'Vídeo institucional',
+  city: 'Curitiba', neighborhood: '', address: '', source: 'Site', serviceInterest: 'Vídeo institucional',
   pipelineStage: 'Entrada', temperature: 'Morno', estimatedValue: 0, probability: 60, entryDate: '2026-07-01',
   notes: '', responsibleUserId: 'user-1', archived: false, tags: [], createdAt: '2026-07-01T00:00:00.000Z',
   updatedAt: '2026-07-01T00:00:00.000Z', ...overrides,
@@ -34,7 +34,7 @@ describe('Commercial priority', () => {
 
   it('identifica oportunidade parada e calcula conversão', () => {
     const insights = buildCommercialInsights([
-      lead({ id: 'won', pipelineStage: 'Serviço confirmado', source: 'Lead Hunter' }),
+      lead({ id: 'won', pipelineStage: 'Serviço confirmado', source: 'Site' }),
       lead({ id: 'stalled', updatedAt: '2026-07-01T00:00:00.000Z', source: 'Indicação' }),
     ], state, new Date('2026-07-17T12:00:00.000Z'))
     expect(insights.conversionRate).toBe(50)

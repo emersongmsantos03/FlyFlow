@@ -10,6 +10,7 @@ export const allPermissions: UserPermission[] = [
   'manageFinance',
   'manageEquipment',
   'viewReports',
+  'manageMarketing',
   'manageSettings',
   'manageUsers',
 ]
@@ -24,16 +25,17 @@ export const permissionLabels: Record<UserPermission, string> = {
   manageFinance: 'Financeiro',
   manageEquipment: 'Equipamentos',
   viewReports: 'Relatórios',
+  manageMarketing: 'Mídias sociais e métricas',
   manageSettings: 'Configurações',
   manageUsers: 'Usuários e permissões',
 }
 
 export const rolePermissionPresets: Record<UserRole, UserPermission[]> = {
   Administrador: allPermissions,
-  Editor: ['viewDashboard', 'manageLeads', 'manageClients', 'manageProjects', 'manageAgenda', 'manageQuotes'],
+  Editor: ['viewDashboard', 'manageLeads', 'manageClients', 'manageProjects', 'manageAgenda', 'manageQuotes', 'manageMarketing'],
   Piloto: ['viewDashboard', 'manageProjects', 'manageAgenda', 'manageEquipment'],
   Financeiro: ['viewDashboard', 'manageClients', 'manageProjects', 'manageQuotes', 'manageFinance', 'viewReports'],
-  Assistente: ['viewDashboard', 'manageLeads', 'manageClients', 'manageAgenda'],
+  Assistente: ['viewDashboard', 'manageLeads', 'manageClients', 'manageAgenda', 'manageMarketing'],
 }
 
 export const can = (user: User | undefined, permission: UserPermission) =>
@@ -48,7 +50,6 @@ export const canOpenPage = (user: User | undefined, page: string) => {
     dashboard: 'viewDashboard',
     leads: 'manageLeads',
     clients: 'manageClients',
-    leadHunter: 'manageLeads',
     inbox: 'manageLeads',
     projects: 'manageProjects',
     internalProjects: 'manageProjects',
@@ -57,9 +58,13 @@ export const canOpenPage = (user: User | undefined, page: string) => {
     finance: 'manageFinance',
     equipment: 'manageEquipment',
     reports: 'viewReports',
+    integrations: 'manageSettings',
     settings: 'manageSettings',
     users: 'manageUsers',
   }
+
+  // Quem já opera o CRM entra no marketing sem precisar reeditar cada usuário existente.
+  if (page === 'content' || page === 'metrics') return can(user, 'manageMarketing') || can(user, 'manageLeads')
 
   const permission = pagePermissions[page]
   return permission ? can(user, permission) : false

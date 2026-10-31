@@ -1,6 +1,7 @@
+import { createEmptyState } from '../data/demoData'
 import { describe, expect, it } from 'vitest'
 import type { AppState, Lead } from '../types'
-import { buildOperationalTasks } from './operations'
+import { buildOperationalTasks, synchronizeOperationalState } from './operations'
 
 const now = new Date('2026-08-05T12:00:00.000Z')
 
@@ -37,5 +38,16 @@ describe('buildOperationalTasks', () => {
       sourceKey: `lead-followup:${lead.id}`,
       title: 'Realizar retorno de Área 51 Airsoft',
     }))
+  })
+})
+
+describe('virada do dia no fuso local', () => {
+  it('não vence um pagamento que vence hoje à noite', () => {
+    const lateEvening = new Date(2026, 9, 30, 23, 30)
+    const state = synchronizeOperationalState({
+      ...createEmptyState(),
+      payments: [{ id: 'p', clientId: 'c', paymentType: 'Sinal', amount: 100, dueDate: '2026-10-30', paymentMethod: 'PIX', status: 'Pendente', notes: '', createdAt: '', updatedAt: '' }],
+    }, lateEvening)
+    expect(state.payments[0].status).toBe('Pendente')
   })
 })

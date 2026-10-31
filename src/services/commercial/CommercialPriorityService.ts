@@ -24,8 +24,10 @@ export const calculateCommercialPriority = (lead: Lead, state: Pick<AppState, 'q
   else if (nextContact.getTime() - now.getTime() <= DAY_MS) reasons.push({ label: 'Ação prevista para hoje', points: 14 })
   if (lead.whatsapp) reasons.push({ label: 'WhatsApp disponível', points: 12 })
   else if (hasDirectContact) reasons.push({ label: 'Canal de contato disponível', points: 7 })
+  if (lead.lastEmailReplyAt && !nextContact) reasons.push({ label: 'Respondeu ao e-mail de prospecção', points: 40 })
+  else if (lead.lastEmailReplyAt && new Date(lead.lastEmailReplyAt) > nextContact!) reasons.push({ label: 'Respondeu ao e-mail de prospecção', points: 40 })
+  else if (lead.emailEngagement === 'Clicou') reasons.push({ label: 'Clicou no e-mail de prospecção', points: 15 })
   if (lead.temperature === 'Quente') reasons.push({ label: 'Oportunidade quente', points: 14 })
-  if (lead.leadHunterData?.score) reasons.push({ label: 'Bom potencial no Lead Hunter', points: Math.round(lead.leadHunterData.score / 10) })
   if (latestQuote && ['Enviada', 'Visualizada', 'Em negociação'].includes(latestQuote.status)) reasons.push({ label: 'Proposta aguardando avanço', points: 18 })
   if (!interactions.length) reasons.push({ label: 'Ainda sem contato registrado', points: 10 })
   if (!hasDirectContact) reasons.push({ label: 'Sem canal direto confirmado', points: -15 })
@@ -137,9 +139,9 @@ export const buildCommercialInsights = (
       responses: respondedLeadIds.size,
       responseRate: Math.round(respondedLeadIds.size / Math.max(1, approachedLeadIds.size) * 100),
       bestContexts,
-      categoryPerformance: dimensionPerformance((lead) => lead.leadHunterData?.categoryName || 'Sem categoria'),
+      categoryPerformance: dimensionPerformance((lead) => lead.serviceInterest || 'Sem categoria'),
       cityPerformance: dimensionPerformance((lead) => lead.city || 'Sem cidade'),
-      servicePerformance: dimensionPerformance((lead) => lead.leadHunterData?.recommendedService || lead.serviceInterest),
+      servicePerformance: dimensionPerformance((lead) => lead.serviceInterest),
     },
     hygieneIssues,
     hygieneIssueCount: hygieneIssues.reduce((total, issue) => total + issue.count, 0),

@@ -18,11 +18,6 @@ const ARRAY_SECTION_KEYS = [
   'leadInteractions',
   'clients',
   'companies',
-  'leadHunterCities',
-  'leadHunterCategories',
-  'leadHunterProspects',
-  'leadHunterSearches',
-  'leadHunterRoutes',
   'services',
   'projects',
   'projectChecklistItems',
@@ -40,14 +35,14 @@ const ARRAY_SECTION_KEYS = [
   'notifications',
   'tasks',
   'internalProjects',
+  'contentItems',
+  'contentPillars',
   'statusHistory',
   'projectAdjustments',
 ] as const satisfies readonly (keyof AppState)[]
 
-// As coleções granulares são a fonte canônica. Em especial, os dados do
-// LeadHunter não podem voltar a ser agregados em um único documento: além de
-// exceder o limite do Firestore conforme a prospecção cresce, um bundle antigo
-// pode ocultar registros já sincronizados ao abrir o app em outro dispositivo.
+// As coleções granulares são a fonte canônica; o formato antigo por seções
+// continua legível só para migrar workspaces que ainda estão nele.
 const LEGACY_STATE_SECTION_KEYS: (keyof AppState)[] = [
   ...ARRAY_SECTION_KEYS,
   'companySettings',
@@ -190,15 +185,6 @@ const loadGranularAppState = async (fallback: AppState, workspaceUpdatedAt?: unk
     const value = data.value as { dataUrl?: string } | undefined
     if (value?.dataUrl) {
       next.companySettings = { ...next.companySettings, emailSignatureImageUrl: value.dataUrl }
-    }
-  }
-
-  const hunterSettingsSnapshot = await getDoc(recordReference('leadHunterSettings', 'current'))
-  if (hunterSettingsSnapshot.exists()) {
-    const data = hunterSettingsSnapshot.data() as Partial<StoredRecord>
-    if (data.value && typeof data.value === 'object') {
-      next.leadHunterSettings = data.value as AppState['leadHunterSettings']
-      recordCache.set(recordCacheKey('leadHunterSettings', 'current'), JSON.stringify({ value: data.value, position: 0 }))
     }
   }
 
@@ -480,14 +466,6 @@ export const saveFirebaseAppState = async (state: AppState) => {
       payload: settingsPayload,
       serialized: settingsSerialized,
     })
-  }
-
-  if (state.leadHunterSettings) {
-    const hunterSettingsPayload: StoredRecord = { value: state.leadHunterSettings, position: 0 }
-    const hunterSettingsSerialized = JSON.stringify(hunterSettingsPayload)
-    const hunterSettingsCacheKey = recordCacheKey('leadHunterSettings', 'current')
-    currentRecords.set(hunterSettingsCacheKey, hunterSettingsSerialized)
-    if (recordCache.get(hunterSettingsCacheKey) !== hunterSettingsSerialized) operations.push({ kind: 'set', section: 'leadHunterSettings', id: 'current', payload: hunterSettingsPayload, serialized: hunterSettingsSerialized })
   }
 
   recordCache.forEach((_serialized, cacheKey) => {

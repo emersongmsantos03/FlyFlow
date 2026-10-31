@@ -16,6 +16,7 @@ export const userPermissions = [
   'manageFinance',
   'manageEquipment',
   'viewReports',
+  'manageMarketing',
   'manageSettings',
   'manageUsers',
 ] as const
@@ -45,7 +46,6 @@ export const pipelineStages = [
 ] as const
 
 export const leadSources = [
-  'Lead Hunter',
   'Instagram',
   'WhatsApp',
   'Google',
@@ -53,6 +53,7 @@ export const leadSources = [
   'Facebook',
   'LinkedIn',
   'Prospecção ativa',
+  'Prospecção por email',
   'Grupo de WhatsApp',
   'Cliente antigo',
   'Site',
@@ -348,7 +349,6 @@ export interface Lead {
   nextContactAt?: string
   lossReason?: string
   notes: string
-  leadHunterData?: LeadHunterProspect
   responsibleUserId: string
   archived: boolean
   archivedAt?: string
@@ -357,6 +357,10 @@ export interface Lead {
   deletedBy?: string
   deletionReason?: string
   tags: string[]
+  emailEngagement?: 'Clicou' | 'Respondeu'
+  lastEmailReplyAt?: string
+  doNotContact?: boolean
+  doNotContactAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -390,6 +394,7 @@ export interface Client {
   notes: string
   tags: string[]
   archived: boolean
+  doNotContact?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -411,216 +416,6 @@ export interface Company {
   tags: string[]
   archived: boolean
   createdAt: string
-  updatedAt: string
-}
-
-export type LeadHunterPriority = 'Máxima' | 'Alta' | 'Média' | 'Baixa'
-export type LeadHunterStatus = 'Descoberto' | 'Analisado' | 'Importado' | 'Contatado' | 'Adiado' | 'Descartado' | 'Bloqueado'
-
-export interface LeadHunterCity {
-  id: string
-  name: string
-  state: string
-  distanceFromBaseKm: number
-  active: boolean
-  blockedUntil?: string
-  lastSearchedAt?: string
-  searchCount: number
-  discoveredCount: number
-  newLeadCount: number
-  createdAt: string
-  updatedAt: string
-}
-
-export interface LeadHunterCategory {
-  id: string
-  name: string
-  group: string
-  priority: LeadHunterPriority
-  weight: number
-  active: boolean
-  searchTerms: string[]
-  searchCount: number
-  discoveredCount: number
-  newLeadCount: number
-  createdAt: string
-  updatedAt: string
-}
-
-export interface LeadScoreReason {
-  id: string
-  label: string
-  points: number
-  evidence?: string
-}
-
-export type LeadQualificationTier = 'Pronto para abordar' | 'Precisa de pesquisa' | 'Baixa prioridade'
-
-export interface LeadQualification {
-  fit: number
-  visualOpportunity: number
-  buyingCapacity: number
-  timing: number
-  contactability: number
-  total: number
-  tier: LeadQualificationTier
-  idealCustomerProfile: string
-  bestArgument: string
-  evidence: string[]
-  missing: string[]
-}
-
-export interface LeadHunterProspect {
-  id: string
-  externalIds: Record<string, string>
-  name: string
-  contactName?: string
-  normalizedName: string
-  categoryId: string
-  categoryName: string
-  recommendedService?: ServiceType
-  cityId?: string
-  city: string
-  neighborhood: string
-  address: string
-  latitude?: number
-  longitude?: number
-  distanceKm?: number
-  phone: string
-  whatsapp: string
-  email: string
-  instagram: string
-  website: string
-  googleMapsUrl: string
-  airbnbUrl?: string
-  bookingUrl?: string
-  googleRating?: number
-  googleReviewCount?: number
-  photoUrl?: string
-  sources: string[]
-  sourceUrls: string[]
-  score: number
-  scoreReasons: LeadScoreReason[]
-  qualification?: LeadQualification
-  status: LeadHunterStatus
-  isNew: boolean
-  possibleDuplicateId?: string
-  contactId?: string
-  leadId?: string
-  firstDiscoveredAt: string
-  lastDiscoveredAt: string
-  lastAnalyzedAt?: string
-  lastDisplayedAt?: string
-  lastContactAt?: string
-  nextDisplayAllowedAt?: string
-  discoveryCount: number
-  displayCount: number
-  lastSearchId?: string
-  changedSinceLastDisplay: boolean
-  reappearanceReason?: string
-  discardedPermanently: boolean
-  aiSummary?: string
-  aiApproach?: string
-  aiOpportunityLevel?: 'Excelente' | 'Boa' | 'Média' | 'Ruim'
-  aiSocialInsight?: string
-  aiContactHook?: string
-  aiFirstMessage?: string
-  visualAssessment?: {
-    hasDroneImages?: boolean
-    professionalImages?: boolean
-    simpleImages?: boolean
-    largeOutdoorArea?: boolean
-    strikingNature?: boolean
-    poolLakeOrView?: boolean
-    activeInstagram?: boolean
-    professionalWebsite?: boolean
-    goodVisualIdentity?: boolean
-    beautifulArchitecture?: boolean
-    lake?: boolean
-    pool?: boolean
-    forest?: boolean
-    panoramicView?: boolean
-    river?: boolean
-    worthCommercialTime?: boolean
-    opportunityReasons?: string[]
-  }
-  decision?: 'Aceito' | 'Rejeitado'
-  decisionAt?: string
-  contactValidation?: {
-    whatsapp: 'Confirmado' | 'Provável' | 'Não informado'
-    instagram: 'Confirmado' | 'Provável' | 'Não informado'
-    email: 'Confirmado' | 'Provável' | 'Não informado'
-    website: 'Confirmado' | 'Provável' | 'Não informado'
-    checkedAt: string
-  }
-  outreachEmail?: {
-    status: 'Pendente' | 'Enviando' | 'Enviado' | 'Revisão' | 'Falhou'
-    idempotencyKey: string
-    confidence: 'Alta' | 'Média' | 'Baixa'
-    reason: string
-    subject?: string
-    messageId?: string
-    attemptedAt?: string
-    sentAt?: string
-    error?: string
-  }
-  notes: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface LeadHunterSearch {
-  id: string
-  mode: 'Manual' | 'Rotação automática'
-  cityIds: string[]
-  categoryIds: string[]
-  radiusKm: number
-  neighborhood: string
-  onlyNew: boolean
-  includeEligibleKnown: boolean
-  minimumScore: number
-  sources: string[]
-  totalFound: number
-  newCount: number
-  repeatedCount: number
-  duplicateCount: number
-  cooldownBlockedCount: number
-  errorCount: number
-  estimatedCost: number
-  tokenUsage: number
-  durationMs: number
-  userId: string
-  createdAt: string
-}
-
-export interface LeadHunterRoute {
-  id: string
-  name: string
-  startAddress: string
-  targetCity: string
-  prospectIds: string[]
-  visitedProspectIds: string[]
-  status: 'Planejada' | 'Em andamento' | 'Concluída' | 'Cancelada'
-  estimatedDistanceKm?: number
-  estimatedDurationMinutes?: number
-  googleMapsUrl: string
-  notes: string
-  plannedFor?: string
-  createdBy: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface LeadHunterSettings {
-  radiusKm: number
-  maxResultsPerSearch: number
-  maxAnalysesPerBatch: number
-  maxDailyCalls: number
-  minimumNewLeadPercentage: number
-  maximumReappearances: number
-  cooldownDays: Record<'discovered' | 'analyzed' | 'contactedNoReply' | 'refused' | 'strongRefusal' | 'visited', number>
-  scoringWeights: Record<string, number>
-  categoryDistribution: Record<string, number>
   updatedAt: string
 }
 
@@ -983,6 +778,50 @@ export interface TaskItem {
   updatedAt: string
 }
 
+export const contentPlatforms = ['Instagram', 'YouTube', 'TikTok', 'LinkedIn', 'Facebook', 'Blog', 'E-mail', 'WhatsApp', 'Outro'] as const
+export type ContentPlatform = (typeof contentPlatforms)[number]
+
+export const contentStatuses = ['Ideia', 'Roteiro', 'Produção', 'Revisão', 'Agendado', 'Publicado'] as const
+export type ContentStatus = (typeof contentStatuses)[number]
+
+export interface ContentItem {
+  id: string
+  title: string
+  platform: ContentPlatform
+  format: string
+  status: ContentStatus
+  pillarId?: string
+  /** Data e hora planejadas, em ISO. Ideias podem ficar sem data. */
+  scheduledAt?: string
+  publishedAt?: string
+  hook: string
+  caption: string
+  script: string
+  callToAction: string
+  hashtags: string
+  mediaUrl: string
+  /** Link público depois de publicado; é como a rotina casa as métricas do post. */
+  permalink: string
+  campaign: string
+  responsibleUserId?: string
+  projectId?: string
+  notes: string
+  archivedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ContentPillar {
+  id: string
+  name: string
+  color: string
+  description: string
+  /** Fatia desejada do calendário, em %. */
+  targetShare: number
+  createdAt: string
+  updatedAt: string
+}
+
 export const internalProjectStatuses = ['Ideias', 'Planejado', 'Em andamento', 'Em revisão', 'Concluído', 'Pausado'] as const
 export type InternalProjectStatus = (typeof internalProjectStatuses)[number]
 
@@ -1089,6 +928,7 @@ export interface CompanySettings {
   googleOAuthClientId?: string
   googleWorkspaceEmail?: string
   emailSignatureImageUrl?: string
+  enabledModules?: { quotes?: boolean; equipment?: boolean }
   createdAt: string
   updatedAt: string
 }
@@ -1099,12 +939,6 @@ export interface AppState {
   leadInteractions: LeadInteraction[]
   clients: Client[]
   companies?: Company[]
-  leadHunterCities?: LeadHunterCity[]
-  leadHunterCategories?: LeadHunterCategory[]
-  leadHunterProspects?: LeadHunterProspect[]
-  leadHunterSearches?: LeadHunterSearch[]
-  leadHunterRoutes?: LeadHunterRoute[]
-  leadHunterSettings?: LeadHunterSettings
   services: ServiceCatalogItem[]
   projects: Project[]
   projectChecklistItems: ProjectChecklistItem[]
@@ -1123,6 +957,8 @@ export interface AppState {
   tasks: TaskItem[]
   dismissedTaskSourceKeys?: string[]
   internalProjects?: InternalProject[]
+  contentItems?: ContentItem[]
+  contentPillars?: ContentPillar[]
   statusHistory: StatusHistoryItem[]
   projectAdjustments: ProjectAdjustment[]
   companySettings: CompanySettings

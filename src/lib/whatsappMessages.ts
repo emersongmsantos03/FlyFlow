@@ -64,25 +64,20 @@ const defaultNicheProfile: NicheProfile = {
 }
 
 const nicheProfileFor = (lead: Lead): NicheProfile => {
-  const service = lead.leadHunterData?.recommendedService || lead.serviceInterest
+  const service = lead.serviceInterest
   return (service && serviceNicheProfiles[service]) || defaultNicheProfile
 }
 
 const firstNameGreeting = (lead: Lead, punctuation: string) => {
   const company = displayName(lead)
-  const contactName = lead.leadHunterData?.contactName?.trim()
+  const contactName = lead.fullName?.trim()
   return contactName && contactName.toLocaleLowerCase('pt-BR') !== company.toLocaleLowerCase('pt-BR')
     ? `Olá, ${contactName.split(/\s+/)[0]}${punctuation}`
     : 'Olá! Tudo bem?'
 }
 
-/** Primeira abordagem: usa a mensagem gerada por IA no Lead Hunter quando
- * existir (já personalizada com dados reais do negócio); caso contrário,
- * monta uma mensagem profissional com o ângulo do nicho do serviço. */
+/** Primeira abordagem: mensagem profissional com o ângulo do nicho do serviço. */
 export const buildPriorityWhatsAppMessage = (lead: Lead) => {
-  const aiMessage = lead.leadHunterData?.aiFirstMessage?.trim()
-  if (aiMessage) return aiMessage
-
   const company = displayName(lead)
   const greeting = firstNameGreeting(lead, '! Tudo bem?')
   const { angle, benefit } = nicheProfileFor(lead)

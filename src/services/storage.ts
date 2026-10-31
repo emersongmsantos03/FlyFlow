@@ -1,9 +1,8 @@
 import { createEmptyState } from '../data/demoData'
+import { createDefaultContentPillars } from '../lib/marketing'
 import { rolePermissionPresets } from '../lib/permissions'
 import { reconcilePendingFinalPayments } from '../lib/financial'
 import { synchronizeOperationalState } from '../lib/operations'
-import { createDefaultLeadHunterCategories, createDefaultLeadHunterCities, createDefaultLeadHunterSettings } from '../constants/leadHunterDefaults'
-import { deduplicateLeadHunterProspects } from './leadHunter/LeadDeduplicationService'
 import type { AppState, BankAccount, Client, Expense, Lead, User } from '../types'
 
 const STORAGE_KEY = 'hero-drone-manager:data:v2-empty'
@@ -36,6 +35,9 @@ const defaultBankAccounts = (createdAt: string): BankAccount[] => [
     updatedAt: createdAt,
   },
 ]
+
+// O Lead Hunter foi removido; quem veio dele continua identificado como prospecção.
+const normalizeLeadSource = (source: string) => (source === 'Lead Hunter' ? 'Prospecção ativa' : source) as Lead['source']
 
 const normalizeExpenseStatus = (status?: string): Expense['status'] => {
   if (status === 'Recebida') return 'Paga'
@@ -141,6 +143,7 @@ export const normalizeAppState = (state: AppState): AppState => {
   const createdAt = state.updatedAt || new Date().toISOString()
   const normalizedClients: Client[] = (state.clients || []).map((client) => ({
     ...client,
+    source: normalizeLeadSource(client.source),
     jobTitle: client.jobTitle || '',
     neighborhood: client.neighborhood || '',
     postalCode: client.postalCode || '',
@@ -152,9 +155,12 @@ export const normalizeAppState = (state: AppState): AppState => {
     (contactKey(lead.phone) && contactKey(lead.phone) === contactKey(client.phone)) ||
     (lead.email && lead.email.toLowerCase() === client.email?.toLowerCase()),
   )
-  const normalizedLeads = (state.leads || []).map((lead) => {
+  const normalizedLeads = (state.leads || []).map((rawLead) => {
+    const lead = { ...rawLead, source: normalizeLeadSource(rawLead.source) }
     const existingContact = findContact(lead)
     if (existingContact) return { ...lead, contactId: existingContact.id }
+    // Oportunidade excluída não pode ressuscitar o contato que foi apagado com ela.
+    if (lead.deletedAt) return lead
     const migratedContact: Client = {
       id: `client-migrated-${lead.id}`,
       fullName: lead.fullName || lead.companyName || 'Contato sem nome',
@@ -199,17 +205,8 @@ export const normalizeAppState = (state: AppState): AppState => {
     leads: normalizedLeads,
     clients: normalizedClients,
     companies: state.companies || [],
-    leadHunterCities: state.leadHunterCities?.length ? state.leadHunterCities : createDefaultLeadHunterCities(),
-    leadHunterCategories: (() => {
-      const defaults = createDefaultLeadHunterCategories()
-      const current = state.leadHunterCategories || []
-      const currentIds = new Set(current.map((category) => category.id))
-      return [...current, ...defaults.filter((category) => !currentIds.has(category.id))]
-    })(),
-    leadHunterProspects: deduplicateLeadHunterProspects(state.leadHunterProspects || []),
-    leadHunterSearches: state.leadHunterSearches || [],
-    leadHunterRoutes: state.leadHunterRoutes || [],
-    leadHunterSettings: state.leadHunterSettings || createDefaultLeadHunterSettings(),
+    contentItems: state.contentItems || [],
+    contentPillars: state.contentPillars?.length ? state.contentPillars : createDefaultContentPillars(createdAt),
     companySettings: {
       ...state.companySettings,
       document: state.companySettings.document?.trim() || HERO_DRONE_CNPJ,

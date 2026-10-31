@@ -35,6 +35,14 @@ export const isFirebaseConfigured = Boolean(
     firebaseConfig.appId,
 )
 
+// VITE_LEAD_HUNTER_API_URL é o nome antigo da mesma variável; continua aceito
+// para o build não quebrar em ambientes que ainda não a renomearam.
+export const cloudflareWorkerBaseUrl = () => {
+  const workerBaseUrl = String(env.VITE_API_URL || env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
+  if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
+  return workerBaseUrl
+}
+
 const safeFetch = async (input: RequestInfo, init?: RequestInit) => {
   try {
     return await fetch(input, init)
@@ -92,8 +100,7 @@ export const updateFirebaseUserTemporaryPassword = async (email: string, passwor
     throw new Error('Entre novamente antes de alterar a senha.')
   }
   const token = await firebaseAuth.currentUser.getIdToken()
-  const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
-  if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
+  const workerBaseUrl = cloudflareWorkerBaseUrl()
   const response = await safeFetch(
     `${workerBaseUrl}/admin/temporary-password`,
     {
@@ -111,8 +118,7 @@ export const updateFirebaseUserTemporaryPassword = async (email: string, passwor
 
 export const claimFirebaseWorkspaceInvitation = async () => {
   if (!firebaseAuth?.currentUser) throw new Error('Sessão de login indisponível.')
-  const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
-  if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
+  const workerBaseUrl = cloudflareWorkerBaseUrl()
   const token = await firebaseAuth.currentUser.getIdToken()
   const response = await safeFetch(`${workerBaseUrl}/auth/claim-invitation`, {
     method: 'POST',
@@ -125,13 +131,7 @@ export const claimFirebaseWorkspaceInvitation = async () => {
   if (!response.ok) throw new Error(body.error || 'Não foi possível ativar o convite.')
 }
 
-const cloudflareWorkerBaseUrl = () => {
-  const workerBaseUrl = String(env.VITE_LEAD_HUNTER_API_URL || '').replace(/\/+$/, '')
-  if (!workerBaseUrl) throw new Error('Backend do Cloudflare não configurado.')
-  return workerBaseUrl
-}
-
-const cloudflareAuthorization = async () => {
+export const cloudflareAuthorization = async () => {
   if (!firebaseAuth?.currentUser) throw new Error('Sessão de login indisponível.')
   return `Bearer ${await firebaseAuth.currentUser.getIdToken()}`
 }
@@ -179,7 +179,7 @@ export const saveCloudflareWorkspace = async (state: AppState, expectedUpdatedAt
 }
 
 export type CloudflareRecordMutation = {
-  upserts?: Partial<Record<'tasks' | 'appointments' | 'leads' | 'statusHistory', Array<{ id: string }>>>
+  upserts?: Partial<Record<'tasks' | 'appointments' | 'leads' | 'statusHistory' | 'leadInteractions' | 'clients' | 'notifications', Array<{ id: string }>>>
   deletes?: Partial<Record<'tasks' | 'appointments', string[]>>
   dismissedTaskSourceKeys?: string[]
 }
