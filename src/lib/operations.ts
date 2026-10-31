@@ -201,7 +201,6 @@ export const buildOperationalTasks = (state: AppState, nowDate = new Date()): Ta
 }
 
 const buildOperationalNotifications = (state: AppState, nowDate: Date): NotificationItem[] => {
-  const today = dateOnly(nowDate)
   const now = nowDate.toISOString()
   const generated: NotificationItem[] = []
   state.quotes.forEach((quote) => {
@@ -215,7 +214,7 @@ const buildOperationalNotifications = (state: AppState, nowDate: Date): Notifica
     if (project.archivedAt || project.deletedAt) return
     if (!project.deliveryDeadline || ['Entregue', 'Concluído', 'Cancelado'].includes(project.projectStatus)) return
     const days = Math.ceil((new Date(`${project.deliveryDeadline}T23:59:59`).getTime() - nowDate.getTime()) / DAY_MS)
-    if (days <= 3) generated.push({ id: `notification-delivery-${project.id}-${today}`, userId: project.responsibleUserId, title: days < 0 ? 'Projeto atrasado' : 'Entrega próxima', message: `${project.name}: ${days < 0 ? `${Math.abs(days)} dia(s) de atraso` : `vence em ${days} dia(s)`}.`, notificationType: 'Projeto', entityType: 'Projeto', entityId: project.id, read: false, createdAt: now })
+    if (days <= 3) generated.push({ id: `notification-delivery-${project.id}-${days < 0 ? 'late' : 'soon'}`, userId: project.responsibleUserId, title: days < 0 ? 'Projeto atrasado' : 'Entrega próxima', message: `${project.name}: ${days < 0 ? `${Math.abs(days)} dia(s) de atraso` : `vence em ${days} dia(s)`}.`, notificationType: 'Projeto', entityType: 'Projeto', entityId: project.id, read: false, createdAt: now })
   })
   const previous = new Map((state.notifications ?? []).map((notification) => [notification.id, notification]))
   return [...generated.map((item) => previous.has(item.id) ? { ...item, read: previous.get(item.id)!.read, createdAt: previous.get(item.id)!.createdAt } : item), ...(state.notifications ?? []).filter((item) => !item.id.startsWith('notification-'))]

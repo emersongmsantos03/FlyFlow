@@ -41,6 +41,26 @@ describe('buildOperationalTasks', () => {
   })
 })
 
+describe('notificações automáticas', () => {
+  const project = { id: 'p1', name: 'Obra', projectStatus: 'Em edição', responsibleUserId: '', deliveryDeadline: '2026-08-07' }
+  const withProject = () => ({ ...createEmptyState(), projects: [project] }) as unknown as AppState
+
+  it('aviso lido não volta como não lido no dia seguinte', () => {
+    const first = synchronizeOperationalState(withProject(), new Date(2026, 7, 5, 12))
+    const read = { ...first, notifications: first.notifications.map((item) => ({ ...item, read: true })) }
+    const nextDay = synchronizeOperationalState(read, new Date(2026, 7, 6, 12))
+    expect(nextDay.notifications).toHaveLength(1)
+    expect(nextDay.notifications[0].read).toBe(true)
+  })
+
+  it('o atraso gera um aviso novo mesmo com o de entrega próxima já lido', () => {
+    const first = synchronizeOperationalState(withProject(), new Date(2026, 7, 6, 12))
+    const read = { ...first, notifications: first.notifications.map((item) => ({ ...item, read: true })) }
+    const late = synchronizeOperationalState(read, new Date(2026, 7, 9, 12))
+    expect(late.notifications[0]).toEqual(expect.objectContaining({ title: 'Projeto atrasado', read: false }))
+  })
+})
+
 describe('virada do dia no fuso local', () => {
   it('não vence um pagamento que vence hoje à noite', () => {
     const lateEvening = new Date(2026, 9, 30, 23, 30)
