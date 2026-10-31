@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import { Button, InputField, Modal, Select } from '../ui'
+import { Button, ConfirmPopup, InputField, Modal, Select } from '../ui'
 import { avatarTint, initials } from '../../lib/format'
 import {
   internalProjectCategories,
@@ -188,10 +188,15 @@ export function InternalProjectsPage({
   const patch = (id: string, values: Partial<InternalProject>, message = 'Projeto atualizado.') =>
     onChange(projects.map((item) => item.id === id ? { ...item, ...values, updatedAt: new Date().toISOString() } : item), message)
 
+  const [pendingRemoval, setPendingRemoval] = useState<InternalProject | null>(null)
   const remove = (id: string) => {
-    if (!window.confirm('Excluir este projeto interno permanentemente?')) return
-    onChange(projects.filter((item) => item.id !== id), 'Projeto interno excluído.')
     setMenuId('')
+    setPendingRemoval(projects.find((item) => item.id === id) ?? null)
+  }
+  const confirmRemoval = () => {
+    if (!pendingRemoval) return
+    onChange(projects.filter((item) => item.id !== pendingRemoval.id), 'Projeto interno excluído.')
+    setPendingRemoval(null)
   }
 
   const renderCard = (project: InternalProject) => {
@@ -385,6 +390,16 @@ export function InternalProjectsPage({
       )}
 
       {editing ? <ProjectEditor project={editing} users={users} onClose={() => setEditing(null)} onSave={save} /> : null}
+      {pendingRemoval ? (
+        <ConfirmPopup
+          tone="danger"
+          title="Excluir projeto interno?"
+          description={<>O projeto <strong>{pendingRemoval.name || 'sem nome'}</strong> e todo o checklist dele serão apagados permanentemente. Essa ação não pode ser desfeita.</>}
+          confirmLabel="Excluir projeto"
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={confirmRemoval}
+        />
+      ) : null}
     </div>
   )
 }

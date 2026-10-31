@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Search, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, ChevronDown, Info, Loader2, Search, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { slugify } from '../lib/format'
 
@@ -155,11 +155,264 @@ export const InputField = ({
   </label>
 )
 
-const isErrorMessage = (message: string) => /não foi possível|falha|erro|inválid|incorret|não pode|já existe|recusou|sem permissão/i.test(message)
+export type FeedbackTone = 'success' | 'error' | 'warning' | 'info' | 'loading'
 
-export const Toast = ({ message }: { message: string }) => (
-  <div className={clsx('app-toast', isErrorMessage(message) && 'is-error')} role="status">{message}</div>
+/**
+ * Infers the tone of a feedback message from its text, so every existing
+ * `setToast('…')` call gets the right color and icon without changes.
+ * Order matters: "salvo, mas não foi possível…" is a partial success
+ * (warning), not an error.
+ */
+const feedbackTone = (message: string): FeedbackTone => {
+  const text = message.trim()
+  if (/(…|\.\.\.)$/.test(text)) return 'loading'
+  if (/,\s*mas\b|\breconecte\b|demorando|interrompid|ainda será|continuará/i.test(text)) return 'warning'
+  if (/não foi possível|nao foi possivel|falha|erro|inválid|incorret|não pode|já existe|recusou|sem permissão|não tem permissão|não encontrad|muitas tentativas|inativo|nada foi/i.test(text)) return 'error'
+  if (/^(selecione|informe|confirme|conclua|aprove|vincule|escolha|para parcelar|uma proposta sem)|precisa|expirou|ainda existe|não há|não possui|nenhum|já está|já enviadas|saldo disponível|aguarde/i.test(text)) return 'warning'
+  if (/salv|criad|atualizad|excluíd|removid|enviad|conectad|copiad|adicionad|importad|exportad|concluíd|registrad|arquivad|aprovad|sucesso|baixad|realizad|efetuad|sincronizad|redefinid|cadastrad|limpo|pronto/i.test(text)) return 'success'
+  return 'info'
+}
+
+const toneTitle: Record<FeedbackTone, string> = {
+  success: 'Tudo certo',
+  error: 'Não deu certo',
+  warning: 'Atenção',
+  info: 'Aviso',
+  loading: 'Só um instante',
+}
+
+const ToneIcon = ({ tone, size = 20 }: { tone: FeedbackTone; size?: number }) => {
+  if (tone === 'success') return <CheckCircle2 size={size} />
+  if (tone === 'error') return <XCircle size={size} />
+  if (tone === 'warning') return <AlertTriangle size={size} />
+  if (tone === 'loading') return <Loader2 size={size} className="ff-spin" />
+  return <Info size={size} />
+}
+
+/**
+ * Pop-up de feedback no canto da tela. Fecha sozinho (pausa com o mouse em
+ * cima), pode ser dispensado no X e mostra a barra de tempo restante.
+ */
+export const Toast = ({ message, onClose }: { message: string; onClose?: () => void }) => {
+  const tone = feedbackTone(message)
+  const duration = tone === 'loading' ? 15_000 : Math.min(9_000, 3_200 + message.length * 35)
+  const [paused, setPaused] = useState(false)
+  const remaining = useRef(duration)
+  const startedAt = useRef(0)
+
+  useEffect(() => {
+    if (!onClose || paused) return
+    startedAt.current = Date.now()
+    const timeout = window.setTimeout(onClose, remaining.current)
+    return () => {
+      window.clearTimeout(timeout)
+      remaining.current = Math.max(0, remaining.current - (Date.now() - startedAt.current))
+    }
+  }, [onClose, paused])
+
+  return createPortal(
+    <div
+      className={clsx('ff-toast', `is-${tone}`)}
+      role={tone === 'error' ? 'alert' : 'status'}
+      aria-live={tone === 'error' ? 'assertive' : 'polite'}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <span className="ff-toast-icon"><ToneIcon tone={tone} size={18} /></span>
+      <div className="ff-toast-text">
+        <strong>{toneTitle[tone]}</strong>
+        <p>{message}</p>
+      </div>
+      {onClose ? <button className="ff-toast-close" type="button" aria-label="Fechar aviso" onClick={onClose}><X size={15} /></button> : null}
+      {onClose ? <span className="ff-toast-timer" style={{ animationDuration: `${duration}ms`, animationPlayState: paused ? 'paused' : 'running' }} /> : null}
+    </div>,
+    document.body,
+  )
+}
+
+export type DialogTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
+
+/**
+ * Moldura única dos pop-ups de confirmação, aviso e entrada de texto.
+ * Substitui os alert/confirm/prompt nativos do navegador.
+ */
+export const AppDialog = ({
+  title,
+  description,
+  tone = 'info',
+  children,
+  actions,
+  onClose,
+  as = 'div',
+  onSubmit,
+  role = 'dialog',
+}: {
+  title: string
+  description?: ReactNode
+  tone?: DialogTone
+  children?: ReactNode
+  actions: ReactNode
+  onClose: () => void
+  as?: 'div' | 'form'
+  onSubmit?: (event: React.FormEvent<HTMLFormElement>) => void
+  role?: 'dialog' | 'alertdialog'
+}) => {
+  const titleId = useId()
+  const surfaceRef = useRef<HTMLElement>(null)
+  const closeRef = useRef(onClose)
+  useLayoutEffect(() => { closeRef.current = onClose })
+
+  // Roda só ao abrir: foca o campo/botão principal, prende o Tab no pop-up e devolve o foco ao fechar.
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    const surface = surfaceRef.current
+    // Em ações destrutivas o foco vai para "Cancelar", para um Enter distraído não apagar nada.
+    const preferred = surface?.querySelector<HTMLElement>('[autofocus], input, textarea')
+      ?? surface?.querySelector<HTMLElement>(tone === 'danger' ? '.ff-dialog-actions .app-button-secondary' : '.ff-dialog-actions .app-button-primary')
+    preferred?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        closeRef.current()
+        return
+      }
+      if (event.key !== 'Tab' || !surface) return
+      const focusable = [...surface.querySelectorAll<HTMLElement>('button:not(:disabled), input, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    // Captura para tratar o Esc antes do modal que estiver por baixo.
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      previous?.focus?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só ao abrir
+  }, [])
+
+  const iconTone: FeedbackTone = tone === 'danger' ? 'error' : tone === 'neutral' ? 'info' : tone
+  const surfaceProps = {
+    className: clsx('ff-dialog', `is-${tone}`),
+    role,
+    'aria-modal': true,
+    'aria-labelledby': titleId,
+  } as const
+  const content = <>
+    <button className="ff-dialog-close" type="button" aria-label="Fechar" onClick={onClose}><X size={16} /></button>
+    <div className="ff-dialog-head">
+      <span className="ff-dialog-icon"><ToneIcon tone={iconTone} size={22} /></span>
+      <div className="min-w-0">
+        <h2 id={titleId}>{title}</h2>
+        {description ? <div className="ff-dialog-description">{description}</div> : null}
+      </div>
+    </div>
+    {children ? <div className="ff-dialog-body">{children}</div> : null}
+    <div className="ff-dialog-actions">{actions}</div>
+  </>
+  return createPortal(
+    <div className="ff-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      {as === 'form'
+        ? <form ref={surfaceRef as React.RefObject<HTMLFormElement>} {...surfaceProps} onSubmit={onSubmit}>{content}</form>
+        : <div ref={surfaceRef as React.RefObject<HTMLDivElement>} {...surfaceProps}>{content}</div>}
+    </div>,
+    document.body,
+  )
+}
+
+/** Pop-up de confirmação pronto para uso local (substitui window.confirm). */
+export const ConfirmPopup = ({
+  title,
+  description,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
+  tone = 'warning',
+  onCancel,
+  onConfirm,
+}: {
+  title: string
+  description?: ReactNode
+  confirmLabel?: string
+  cancelLabel?: string
+  tone?: 'warning' | 'danger' | 'info'
+  onCancel: () => void
+  onConfirm: () => void
+}) => (
+  <AppDialog
+    role="alertdialog"
+    title={title}
+    description={description}
+    tone={tone}
+    onClose={onCancel}
+    actions={<>
+      <Button variant="secondary" type="button" onClick={onCancel}>{cancelLabel}</Button>
+      <Button variant={tone === 'danger' ? 'danger' : 'primary'} type="button" onClick={onConfirm}>{confirmLabel}</Button>
+    </>}
+  />
 )
+
+/** Pop-up com um campo de texto (substitui window.prompt). */
+export const PromptPopup = ({
+  title,
+  description,
+  label,
+  placeholder,
+  initialValue = '',
+  inputType = 'text',
+  required = true,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
+  tone = 'info',
+  validate,
+  onCancel,
+  onSubmit,
+}: {
+  title: string
+  description?: ReactNode
+  label: string
+  placeholder?: string
+  initialValue?: string
+  inputType?: 'text' | 'password' | 'url' | 'textarea'
+  required?: boolean
+  confirmLabel?: string
+  cancelLabel?: string
+  tone?: DialogTone
+  /** Returns an error message, or '' when the value is acceptable. */
+  validate?: (value: string) => string
+  onCancel: () => void
+  onSubmit: (value: string) => void
+}) => {
+  const [value, setValue] = useState(initialValue)
+  const [touched, setTouched] = useState(false)
+  const trimmed = value.trim()
+  const error = trimmed && validate ? validate(trimmed) : ''
+  const invalid = Boolean((required && !trimmed) || error)
+  return (
+    <AppDialog
+      as="form"
+      title={title}
+      description={description}
+      tone={tone}
+      onClose={onCancel}
+      onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); setTouched(true); if (!invalid) onSubmit(trimmed) }}
+      actions={<>
+        <Button variant="secondary" type="button" onClick={onCancel}>{cancelLabel}</Button>
+        <Button variant={tone === 'danger' ? 'danger' : 'primary'} disabled={invalid} type="submit">{confirmLabel}</Button>
+      </>}
+    >
+      <label className="block">
+        <span className="field-label">{label}{required ? '' : ' (opcional)'}</span>
+        {inputType === 'textarea'
+          ? <textarea autoFocus className="field-input mt-1 min-h-28" placeholder={placeholder} value={value} onBlur={() => setTouched(true)} onChange={(event) => setValue(event.target.value)} />
+          : <input autoFocus className="field-input mt-1" type={inputType} placeholder={placeholder} value={value} onBlur={() => setTouched(true)} onChange={(event) => setValue(event.target.value)} />}
+      </label>
+      {touched && error ? <p className="field-error">{error}</p> : null}
+    </AppDialog>
+  )
+}
 
 export type SelectOption = {
   value: string
