@@ -3,13 +3,19 @@ import { useEffect, useState } from 'react'
 import { Button, EmptyState, InputField, Modal, PageToolbar, Panel, StatusBadge } from '../ui'
 import { formatDateTime } from '../../lib/format'
 import { channelById, connectionHealth, emptyMetricsSnapshot, metricChannels, type MetricsSnapshot } from '../../lib/marketing'
-import { createIntegrationToken, integrationIngestUrl, listIntegrationTokens, loadMetrics, metricsBackendAvailable, revokeIntegrationToken, type IntegrationToken } from '../../services/marketingMetrics'
+import { createIntegrationToken, integrationIngestUrl, listDataAudit, listIntegrationTokens, loadMetrics, metricsBackendAvailable, revokeIntegrationToken, type DataAuditEntry, type IntegrationToken } from '../../services/marketingMetrics'
 
 const scopeOptions: Array<[string, string, string]> = [
   ['metrics', 'Métricas', 'Enviar números dos canais e consultar a última coleta.'],
   ['links', 'Links', 'Gerar links curtos dos e-mails e consultar descadastros.'],
   ['events', 'Eventos', 'Registrar envios, respostas, bounces e descadastros.'],
+  ['crm:read', 'CRM: consultar', 'Ler leads, interações, clientes e tarefas.'],
+  ['crm:write', 'CRM: editar', 'Criar e alterar leads, interações e tarefas. Fica registrado no histórico.'],
+  ['content:read', 'Conteúdo: consultar', 'Ler o planejamento de conteúdo.'],
+  ['content:write', 'Conteúdo: editar', 'Criar e alterar o planejamento de conteúdo. Fica registrado no histórico.'],
 ]
+
+const auditActions: Record<string, string> = { create: 'Criou', update: 'Alterou', delete: 'Excluiu' }
 
 export function IntegrationsPage({ onConfirmRevoke }: { onConfirmRevoke: (label: string, action: () => void) => void }) {
   const backend = metricsBackendAvailable()
@@ -18,12 +24,14 @@ export function IntegrationsPage({ onConfirmRevoke }: { onConfirmRevoke: (label:
   const [error, setError] = useState('')
   const [label, setLabel] = useState('Rotina Claude')
   const [scopes, setScopes] = useState<string[]>(['metrics'])
+  const [audit, setAudit] = useState<DataAuditEntry[]>([])
   const [creating, setCreating] = useState(false)
   const [created, setCreated] = useState('')
   const [copied, setCopied] = useState('')
 
   useEffect(() => {
     void loadMetrics().then(setSnapshot).catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar as integrações.'))
+    if (backend) void listDataAudit().then(setAudit).catch(() => setAudit([]))
     if (backend) void listIntegrationTokens().then(setTokens).catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Não foi possível carregar os tokens.'))
   }, [backend])
 
@@ -74,7 +82,7 @@ export function IntegrationsPage({ onConfirmRevoke }: { onConfirmRevoke: (label:
       <div className="integrations-columns">
         <Panel title="Tokens de acesso" action={<KeyRound size={16} className="text-gray-400" />}>
           {backend ? <div className="stack">
-            <p className="muted-note">Cada rotina usa um token com o mínimo necessário. Nenhuma permissão dá acesso a clientes, ao financeiro ou às senhas das redes.</p>
+            <p className="muted-note">Cada rotina usa um token com o mínimo necessário. Nenhuma permissão dá acesso ao financeiro, aos usuários ou às senhas das redes.</p>
             <div className="token-create">
               <InputField label="Nome"><input className="field-input" value={label} onChange={(event) => setLabel(event.target.value)} /></InputField>
               <Button disabled={creating || !scopes.length} type="button" onClick={() => void createToken()}><Plus size={15} /> {creating ? 'Gerando…' : 'Gerar token'}</Button>
@@ -109,6 +117,27 @@ export function IntegrationsPage({ onConfirmRevoke }: { onConfirmRevoke: (label:
           </div>
         </Panel>
       </div>
+
+      {backend ? (
+        <Panel title="Alterações feitas por token">
+          {audit.length ? (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead><tr><th>Quando</th><th>Token</th><th>Ação</th><th>Seção</th><th>Registro</th></tr></thead>
+                <tbody>{audit.map((entry) => (
+                  <tr key={entry.id}>
+                    <td data-label="Quando">{formatDateTime(entry.createdAt)}</td>
+                    <td data-label="Token">{entry.tokenLabel || '-'}</td>
+                    <td data-label="Ação">{auditActions[entry.action] ?? entry.action}</td>
+                    <td data-label="Seção">{entry.section}</td>
+                    <td data-label="Registro">{entry.recordId}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          ) : <p className="muted-note">Nenhuma alteração registrada.</p>}
+        </Panel>
+      ) : null}
 
       <Panel title="Últimas coletas">
         {snapshot.runs.length ? (

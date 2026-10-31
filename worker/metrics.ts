@@ -1,3 +1,4 @@
+import { listDataAudit } from './dataApi'
 import { ackEvents, createLinks, emailReport, listSuppressions, parseEventsPayload, parseLinksPayload, pendingEvents, saoPauloDate, storeEvents, TrackingError, type TrackingEnv } from './tracking'
 
 // Métricas de marketing: recebe os dados da rotina (token de integração) e os
@@ -31,7 +32,7 @@ export interface IngestPayload {
   }>
 }
 
-export const tokenScopes = ['metrics', 'links', 'events'] as const
+export const tokenScopes = ['metrics', 'links', 'events', 'crm:read', 'crm:write', 'content:read', 'content:write'] as const
 export type TokenScope = (typeof tokenScopes)[number]
 
 export const parseScopes = (value: unknown): TokenScope[] =>
@@ -269,6 +270,9 @@ export const handleMetricsRequest = async (request: Request, url: URL, env: Metr
       const today = saoPauloDate()
       const from = dateParam(url.searchParams.get('from'), saoPauloDate(new Date(Date.now() - 29 * 86_400_000)))
       return reply(await emailReport(env, workspaceId, from, dateParam(url.searchParams.get('to'), today)), 200, origin)
+    }
+    if (request.method === 'GET' && url.pathname === '/metrics/data-audit') {
+      return reply({ entries: await listDataAudit(env, workspaceId) }, 200, origin)
     }
     if (request.method === 'GET' && url.pathname === '/crm/events/pending') {
       return reply({ events: await pendingEvents(env, workspaceId) }, 200, origin)

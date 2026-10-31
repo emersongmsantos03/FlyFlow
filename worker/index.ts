@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from 'jose'
+import { handleDataApiRequest } from './dataApi'
 import { handleIntegrationRequest, handleMetricsRequest } from './metrics'
 import { handleRedirect, handleSiteEvent } from './tracking'
 
@@ -564,6 +565,12 @@ export default {
 
     const authorization = request.headers.get('Authorization') || ''
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+    if (url.pathname.startsWith('/integrations/data/')) {
+      return handleDataApiRequest(request, url, env, token, {
+        read: (workspaceId, fallbackJson) => readWorkspaceState(env, workspaceId, fallbackJson),
+        write: (workspaceId, stateJson, updatedAt) => writeWorkspaceState(env, workspaceId, stateJson, updatedAt),
+      }, (body, status) => json(body, status, origin))
+    }
     if (url.pathname.startsWith('/integrations/') && !url.pathname.startsWith('/integrations/tokens')) {
       return handleIntegrationRequest(request, url, env, token, origin)
     }

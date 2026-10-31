@@ -213,3 +213,29 @@ Todos os dias às 3h (America/Sao_Paulo), atualize os resultados da Hero Drone n
 Os sites `herodrone.com.br`, `www.herodrone.com.br` e `loja.herodrone.com.br` enviam
 cliques para `POST /t/event` pelo script `public/flyflow-track.js`. Só esses domínios são
 aceitos, com limite de 60 cliques por minuto por IP. O ranking aparece na aba Site.
+
+## API de dados
+
+Permite que uma rotina consulte e edite CRM e conteúdo, com permissões próprias. Financeiro
+e usuários não existem nesta API. Antes de usar: `npx wrangler d1 migrations apply flyflow-db --remote`
+e `npx wrangler deploy`.
+
+| Método e caminho | Permissão |
+|---|---|
+| `GET /integrations/data/<seção>?q=&limit=&offset=` | leitura da seção |
+| `GET /integrations/data/<seção>/<id>` | leitura da seção |
+| `POST /integrations/data/<seção>` | edição da seção |
+| `PATCH /integrations/data/<seção>/<id>` | edição da seção |
+| `DELETE /integrations/data/<seção>/<id>` | edição da seção |
+
+Seções de `crm:read` e `crm:write`: `leads`, `leadInteractions`, `clients`, `tasks`.
+Seções de `content:read` e `content:write`: `contentItems`, `contentPillars`.
+
+- `PATCH` recebe só os campos alterados. Não muda `id`, `createdAt` nem o tipo de um campo.
+- `clients` só aceita leitura e `PATCH`.
+- `DELETE` nunca apaga: lead recebe `deletedAt`, conteúdo recebe `archivedAt` e tarefa vira
+  `Cancelada`. As demais seções recusam exclusão.
+- Toda escrita fica em **Integrações → Alterações feitas por token**, e o banco guarda o
+  antes e o depois em `data_api_audit`.
+- Quem estiver com o FlyFlow aberto durante uma escrita recebe o aviso de recarregar ao salvar.
+- Resposta `409`: os dados mudaram no meio. Leia de novo e repita.

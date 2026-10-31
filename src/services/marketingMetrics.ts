@@ -84,6 +84,17 @@ export const listIntegrationTokens = async () => (await request<{ tokens: Integr
 export const createIntegrationToken = (label: string, scopes: string[]) =>
   request<IntegrationToken & { token: string }>('/integrations/tokens', { method: 'POST', body: JSON.stringify({ label, scopes }) })
 
+export interface DataAuditEntry {
+  id: string
+  action: string
+  section: string
+  recordId: string
+  createdAt: string
+  tokenLabel: string | null
+}
+
+export const listDataAudit = async () => (await request<{ entries: DataAuditEntry[] }>('/metrics/data-audit')).entries
+
 export const revokeIntegrationToken = (id: string) => request(`/integrations/tokens/${id}`, { method: 'DELETE' })
 
 export const integrationIngestUrl = () => (hasBackend() ? `${cloudflareWorkerBaseUrl()}/integrations/ingest` : '')
