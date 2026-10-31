@@ -14,7 +14,8 @@
     {
       "binding": "FLYFLOW_DB",
       "database_name": "flyflow-db",
-      "database_id": "95722eaf-ebed-4963-86a7-686399fe8f58"
+      "database_id": "95722eaf-ebed-4963-86a7-686399fe8f58",
+      "migrations_dir": "worker/migrations"
     }
   ],
   "vars": {
