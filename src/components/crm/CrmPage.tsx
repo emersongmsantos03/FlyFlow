@@ -427,7 +427,7 @@ export function CrmPage({
       {priorityLead ? (
         <Modal title={displayName(priorityLead)} size="md" onClose={() => setPriorityLead(undefined)}>
           <div className="space-y-4">
-            <p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--accent-text)]">Próxima abordagem · {priorityLead.serviceInterest} · {selectedPriority?.score || 0} pontos</p>
+            <p className="text-xs font-bold uppercase tracking-[0.1em] text-[color:var(--accent-text)]">Próxima abordagem · {priorityLead.serviceInterest} · {selectedPriority?.score || 0} pontos</p>
             <div className="grid gap-2 sm:grid-cols-3">
               <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Por que agora</p><p className="mt-1 text-xs font-bold text-gray-800">{selectedPriority?.reason || 'Acompanhamento comercial recomendado'}</p></div>
               <div className="rounded-xl bg-gray-50 p-3"><p className="text-[0.65rem] font-bold uppercase text-gray-400">Serviço indicado</p><p className="mt-1 text-xs font-bold text-gray-800">{priorityLead.serviceInterest}</p></div>
@@ -829,7 +829,7 @@ function TaskWorkspace({ state, onOpenLead, onCreate, onEdit, onComplete, onReop
                 {task.status !== 'Concluída' ? <button className="text-xs font-bold text-emerald-700" type="button" onClick={() => onComplete(task)}><Check size={14} className="mr-1 inline" />Concluir</button> : <button className="text-xs font-bold text-blue-700" type="button" onClick={() => onReopen(task)}><Clock3 size={14} className="mr-1 inline" />Voltar para pendente</button>}
                 {task.status !== 'Cancelada' && task.status !== 'Concluída' ? <button className="text-xs font-bold text-gray-500" type="button" onClick={() => onCancel(task)}>Cancelar</button> : null}
                 <button className="text-xs font-bold text-red-600" type="button" onClick={() => onDelete(task)}><Trash2 size={13} className="mr-1 inline" />Excluir</button>
-                {lead ? <button className="ml-auto text-xs font-bold text-[var(--accent-text)]" type="button" onClick={() => onOpenLead(lead)}>Abrir contato</button> : null}
+                {lead ? <button className="ml-auto text-xs font-bold text-[color:var(--accent-text)]" type="button" onClick={() => onOpenLead(lead)}>Abrir contato</button> : null}
               </div>
             </article>
           })}{!tasks.length ? <p className="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">Nenhuma tarefa.</p> : null}</div>
@@ -1075,5 +1075,5 @@ function DrawerList({ children, empty }: { children: ReactNode; empty: string })
 }
 
 function Timeline({ items }: { items: Array<{ id: string; at: string; title: string; description: string }> }) {
-  return <div className="space-y-4">{items.map((item) => <div key={item.id} className="relative border-l-2 border-gray-200 pl-4 before:absolute before:-left-[5px] before:top-1 before:h-2 before:w-2 before:rounded-full before:bg-[var(--ink)] text-[var(--on-ink)]"><strong className="text-sm text-gray-950">{item.title}</strong><p className="mt-0.5 text-xs text-gray-500">{formatDateTime(item.at)}</p><p className="mt-1 text-sm leading-6 text-gray-600">{item.description}</p></div>)}{!items.length ? <p className="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">Nenhuma atividade registrada.</p> : null}</div>
+  return <div className="space-y-4">{items.map((item) => <div key={item.id} className="relative border-l-2 border-gray-200 pl-4 before:absolute before:-left-[5px] before:top-1 before:h-2 before:w-2 before:rounded-full before:bg-[var(--ink)] text-[color:var(--on-ink)]"><strong className="text-sm text-gray-950">{item.title}</strong><p className="mt-0.5 text-xs text-gray-500">{formatDateTime(item.at)}</p><p className="mt-1 text-sm leading-6 text-gray-600">{item.description}</p></div>)}{!items.length ? <p className="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500">Nenhuma atividade registrada.</p> : null}</div>
 }

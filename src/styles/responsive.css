@@ -1,0 +1,66 @@
+/* ── Ajustes de responsividade ────────────────────────────────────────────
+   Carregado por último para corrigir encaixes em celular (320–767px) e
+   tablet (768–1023px) sem mexer no visual do desktop. */
+
+/* Botões "ativos" com fundo escuro: a regra global `button { color: inherit }`
+   anulava a cor do texto e deixava o rótulo invisível (ex.: Projetos internos). */
+button.bg-\[var\(--ink\)\] { color: var(--on-ink); }
+
+/* Colunas fixas (sticky) das tabelas de projetos precisam de fundo, senão o
+   conteúdo que rola por baixo aparece sobreposto. */
+.customer-project-name, .customer-project-actions, .customer-project-header > span:first-child, .customer-project-header > span:last-child { background: var(--surface); }
+.customer-project-row:hover .customer-project-name, .customer-project-row:hover .customer-project-actions { background: var(--surface-2); }
+
+/* Segurança no Meu perfil: campos sem espaçamento interno. */
+.profile-security > div { display: grid; gap: 0.85rem; padding: 1rem; }
+.profile-security-note { display: flex; align-items: flex-start; gap: 0.5rem; }
+.profile-security-note p { display: grid; gap: 0.1rem; }
+.profile-security-note strong { color: var(--text-primary); font-weight: 600; }
+
+@media (max-width: 1023px) {
+  /* Em telas estreitas as colunas fixas dos dois lados não cabem juntas:
+     a tabela passa a rolar inteira na horizontal. */
+  .customer-project-name, .customer-project-actions, .customer-project-header > span:last-child { position: static; }
+}
+
+@media (max-width: 767px) {
+  /* Tabelas viram cartões: rótulo à esquerda, valor à direita, quebrando linha
+     em vez de cortar o texto. */
+  .data-table { min-width: 0; }
+  .data-table tr { padding: 0.65rem 0.25rem; }
+  .data-table td { align-items: center; overflow-wrap: anywhere; }
+  .data-table td[data-label]::before { flex: none; }
+  .data-table td > * { min-width: 0; }
+  .data-table td:first-child { justify-content: flex-start; padding-bottom: 0.35rem; text-align: left; }
+  .data-table td:first-child::before { display: none; }
+  .data-table td .flex-wrap { justify-content: flex-end; }
+  .users-directory .data-table tr { padding-inline: 1.2rem; }
+
+  /* Ações dos cabeçalhos de página alinhadas à esquerda, abaixo do título. */
+  .page-toolbar-actions, .page-toolbar-actions > .justify-end { justify-content: flex-start; }
+  .crm-commercial-header-layout { align-items: stretch; }
+  .crm-commercial-header-copy { align-items: flex-start; }
+
+  /* Abas do Comercial: 2 por linha em vez de estourar a largura. */
+  .crm-toolbar-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.15rem; }
+  .crm-toolbar-tabs > button { min-width: 0; padding-inline: 0.5rem; white-space: nowrap; }
+}
+
+@media (max-width: 639px) {
+  /* Grades de uma coluna (formulários) não podem crescer além da tela por
+     causa de um texto longo, como o nome do contato num seletor. */
+  .grid:not([class*=" grid-cols-"]):not([class^="grid-cols-"]) { grid-template-columns: minmax(0, 1fr); }
+
+  /* Central de notificações ocupa a largura da tela em vez de sair pela esquerda. */
+  .notification-center { position: fixed; top: 3.4rem; right: 0.75rem; left: 0.75rem; width: auto; max-width: none; }
+
+  /* Abas do projeto aberto: 2 por linha em vez de cortar o nome. */
+  .project-workspace-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* Menus suspensos (Atalhos, Mais ações, Importar…) abrem como painel na base
+     da tela, sempre dentro da área visível. */
+  .action-menu[open] > .action-menu-popover { position: fixed; top: auto; right: 0.75rem; bottom: calc(4.25rem + env(safe-area-inset-bottom)); left: 0.75rem; z-index: 60; width: auto; max-height: 60vh; overflow-y: auto; }
+
+  /* Barra "Salvar alterações" do perfil não fica sob o botão flutuante (+). */
+  .profile-mobile-save { margin-right: 3.25rem; }
+}
