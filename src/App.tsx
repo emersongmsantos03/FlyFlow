@@ -67,8 +67,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useController, useForm, type Control, type FieldValues, type Path } from 'react-hook-form'
 import {
   Bar,
@@ -85,7 +84,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Button, EmptyState, InputField, MetricCard, Modal, PageToolbar, Panel, Select, StatusBadge, Tag, Toast, type SelectOption } from './components/ui'
+import { AppDialog, Button, EmptyState, InputField, MetricCard, Modal, PageToolbar, Panel, PromptPopup, Select, StatusBadge, Tag, Toast, type SelectOption } from './components/ui'
 import { CrmPage, type CrmView } from './components/crm/CrmPage'
 import { ContactDetail } from './components/crm/ContactDetail'
 import { InternalProjectsPage } from './components/internalProjects/InternalProjectsPage'
@@ -1723,11 +1722,8 @@ function App() {
     }
   }, [authSession, cloudflareDataReady, firebaseAuthReady, state])
 
-  useEffect(() => {
-    if (!toast) return
-    const timeout = window.setTimeout(() => setToast(''), Math.min(8_000, 2_800 + toast.length * 30))
-    return () => window.clearTimeout(timeout)
-  }, [toast])
+  // O próprio Toast controla o tempo na tela (e pausa com o mouse em cima).
+  const dismissToast = useCallback(() => setToast(''), [])
 
   const metrics = useMemo(() => calculateDashboardMetrics(state, period, regime), [period, regime, state])
   const monthlySeries = useMemo(() => buildMonthlySeries(state, regime), [regime, state])
@@ -6155,7 +6151,7 @@ ${companyName}`
     return (
       <>
         <LoginScreen onSubmit={handleLogin} onPasswordReset={handlePasswordReset} />
-        {toast ? <Toast message={toast} /> : null}
+        {toast ? <Toast key={toast} message={toast} onClose={dismissToast} /> : null}
       </>
     )
   }
@@ -6225,7 +6221,7 @@ ${companyName}`
 
   return (
     <div className="app-shell">
-      {toast ? <Toast message={toast} /> : null}
+      {toast ? <Toast key={toast} message={toast} onClose={dismissToast} /> : null}
       {confirmDialog ? (
         <ConfirmDialog
           dialog={confirmDialog}
@@ -7231,17 +7227,13 @@ function ProposalDeleteForm({ quote, links, onDelete, onCancelQuote, onArchive, 
 }
 
 function NoticeDialog({ dialog, onClose }: { dialog: NoticeDialogState; onClose: () => void }) {
-  const toneClass = dialog.tone === 'danger'
-    ? 'border-red-200 bg-red-50 text-red-700'
-    : dialog.tone === 'warning'
-      ? 'border-amber-200 bg-amber-50 text-amber-700'
-      : 'border-sky-200 bg-sky-50 text-sky-700'
-  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="notice-dialog-title">
-    <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl">
-      <div className="flex items-start gap-4"><div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border ${toneClass}`}><AlertTriangle size={24} /></div><div><h2 id="notice-dialog-title" className="text-lg font-black text-gray-950">{dialog.title}</h2><p className="mt-2 text-sm leading-6 text-gray-600">{dialog.description}</p></div></div>
-      <div className="mt-5 flex justify-end"><Button type="button" onClick={onClose}>{dialog.buttonLabel || 'Entendi'}</Button></div>
-    </div>
-  </div>
+  return <AppDialog
+    title={dialog.title}
+    description={dialog.description}
+    tone={dialog.tone === 'neutral' || !dialog.tone ? 'info' : dialog.tone}
+    onClose={onClose}
+    actions={<Button type="button" onClick={onClose}>{dialog.buttonLabel || 'Entendi'}</Button>}
+  />
 }
 
 function EmailComposer({
@@ -7288,6 +7280,34 @@ function EmailComposer({
   const formatMessage = (command: string, value?: string) => {
     editorRef.current?.focus()
     document.execCommand(command, false, value)
+    syncEditor()
+  }
+
+  // O pop-up de link tira o foco do editor; guardamos a seleção para aplicar o link no lugar certo.
+  const [linkPromptOpen, setLinkPromptOpen] = useState(false)
+  const savedSelection = useRef<Range | null>(null)
+  const rememberEditorSelection = () => {
+    const selection = window.getSelection()
+    const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null
+    savedSelection.current = range && editorRef.current?.contains(range.commonAncestorContainer) ? range.cloneRange() : null
+  }
+  const insertLink = (rawUrl: string) => {
+    setLinkPromptOpen(false)
+    const url = /^(https?:|mailto:|tel:)/i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const selection = window.getSelection()
+    if (selection && savedSelection.current) {
+      selection.removeAllRanges()
+      selection.addRange(savedSelection.current)
+    }
+    if (!selection || selection.isCollapsed) {
+      const escaped = url.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      document.execCommand('insertHTML', false, `<a href="${escaped}">${escaped}</a>`)
+    } else {
+      document.execCommand('createLink', false, url)
+    }
     syncEditor()
   }
 
@@ -7345,6 +7365,19 @@ function EmailComposer({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-3 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="email-composer-title">
+      {linkPromptOpen ? (
+        <PromptPopup
+          title="Adicionar link"
+          description="Selecione um trecho do texto antes para transformá-lo em link, ou o endereço será inserido no ponto do cursor."
+          label="Endereço do link"
+          placeholder="https://www.herodrone.com.br"
+          inputType="url"
+          confirmLabel="Inserir link"
+          validate={(value) => /^(https?:\/\/|mailto:|tel:)?[^\s]+\.[^\s]+|^(mailto:|tel:)\S+$/i.test(value) ? '' : 'Informe um endereço válido, como www.site.com.br.'}
+          onCancel={() => setLinkPromptOpen(false)}
+          onSubmit={insertLink}
+        />
+      ) : null}
       <form className="email-composer-surface flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border shadow-2xl" onSubmit={submit}>
         <header className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
@@ -7384,10 +7417,7 @@ function EmailComposer({
                 <button type="button" title="Sublinhado" aria-label="Sublinhado" onClick={() => formatMessage('underline')}><Underline size={16} /></button>
                 <span className="mx-1 h-5 w-px bg-gray-200" />
                 <button type="button" title="Lista com marcadores" aria-label="Lista com marcadores" onClick={() => formatMessage('insertUnorderedList')}><List size={16} /></button>
-                <button type="button" title="Adicionar link" aria-label="Adicionar link" onClick={() => {
-                  const url = window.prompt('Cole o endereço do link:')
-                  if (url) formatMessage('createLink', url)
-                }}><Link2 size={16} /></button>
+                <button type="button" title="Adicionar link" aria-label="Adicionar link" onMouseDown={rememberEditorSelection} onClick={() => setLinkPromptOpen(true)}><Link2 size={16} /></button>
                 <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-bold" title="Adicionar imagem">
                   <ImagePlus size={16} /> Imagem
                   <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => {
@@ -7472,17 +7502,20 @@ function EmailComposer({
 }
 
 function InputDialog({ dialog, onCancel, onSubmit }: { dialog: InputDialogState; onCancel: () => void; onSubmit: (value: string) => void }) {
-  const [value, setValue] = useState(dialog.initialValue ?? '')
-  const invalid = Boolean(dialog.required && !value.trim())
-  const inputClass = 'field-input mt-1'
-  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="input-dialog-title">
-    <form className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-5 shadow-2xl" onSubmit={(event) => { event.preventDefault(); if (!invalid) onSubmit(value.trim()) }}>
-      <h2 id="input-dialog-title" className="text-lg font-black text-gray-950">{dialog.title}</h2>
-      {dialog.description ? <p className="mt-2 text-sm leading-6 text-gray-600">{dialog.description}</p> : null}
-      <label className="mt-5 block"><span className="field-label">{dialog.label}{dialog.required ? '' : ' (opcional)'}</span>{dialog.inputType === 'textarea' ? <textarea autoFocus className={`${inputClass} min-h-28`} placeholder={dialog.placeholder} value={value} onChange={(event) => setValue(event.target.value)} /> : <input autoFocus className={inputClass} type={dialog.inputType === 'password' ? 'password' : dialog.inputType === 'url' ? 'url' : 'text'} placeholder={dialog.placeholder} value={value} onChange={(event) => setValue(event.target.value)} />}</label>
-      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button variant="secondary" type="button" onClick={onCancel}>{dialog.cancelLabel || 'Cancelar'}</Button><Button variant={dialog.tone === 'danger' ? 'danger' : 'primary'} disabled={invalid} type="submit">{dialog.confirmLabel || 'Confirmar'}</Button></div>
-    </form>
-  </div>
+  return <PromptPopup
+    title={dialog.title}
+    description={dialog.description}
+    label={dialog.label}
+    placeholder={dialog.placeholder}
+    initialValue={dialog.initialValue}
+    inputType={dialog.inputType}
+    required={Boolean(dialog.required)}
+    confirmLabel={dialog.confirmLabel}
+    cancelLabel={dialog.cancelLabel}
+    tone={dialog.tone === 'neutral' || !dialog.tone ? 'info' : dialog.tone}
+    onCancel={onCancel}
+    onSubmit={onSubmit}
+  />
 }
 
 function ConfirmDialog({
@@ -7495,32 +7528,17 @@ function ConfirmDialog({
   onConfirm: () => void
 }) {
   const isDanger = dialog.tone === 'danger'
-
-  return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4" role="alertdialog" aria-modal="true">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl">
-        <div className="flex items-start gap-4">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border ${isDanger ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-            <AlertTriangle size={24} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-lg font-black text-gray-950">{dialog.title}</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-600">{dialog.description}</p>
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button className="w-full sm:w-auto" variant="secondary" type="button" onClick={onCancel}>
-            {dialog.cancelLabel ?? 'Cancelar'}
-          </Button>
-          <Button className="w-full sm:w-auto" variant={isDanger ? 'danger' : 'primary'} type="button" onClick={onConfirm}>
-            {dialog.confirmLabel}
-          </Button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
+  return <AppDialog
+    role="alertdialog"
+    title={dialog.title}
+    description={dialog.description}
+    tone={isDanger ? 'danger' : 'warning'}
+    onClose={onCancel}
+    actions={<>
+      <Button variant="secondary" type="button" onClick={onCancel}>{dialog.cancelLabel ?? 'Cancelar'}</Button>
+      <Button variant={isDanger ? 'danger' : 'primary'} type="button" onClick={onConfirm}>{dialog.confirmLabel}</Button>
+    </>}
+  />
 }
 
 const isValidAcceptanceDocument = (value: string) => {
