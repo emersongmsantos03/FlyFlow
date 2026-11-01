@@ -449,3 +449,6 @@ button.detail-row:hover { background: var(--surface-2); }
 .inline-alert.is-danger { background: var(--danger-soft); color: var(--danger); }
 .text-danger { color: var(--danger); }
 .crm-card-badges .status-badge { font-size: 0.66rem; }
+
+.metric-group { display: grid; gap: 0.4rem; }
+.metric-group__title { margin: 0.25rem 0 0; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
