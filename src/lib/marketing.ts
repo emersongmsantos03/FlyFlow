@@ -91,6 +91,8 @@ export interface MetricDefinition {
   format?: MetricFormat
   /** `total` é um estoque (seguidores): vale o último dia. `sum` soma os dias do período. */
   kind?: 'total' | 'sum' | 'average'
+  /** Bloco do relatório em que a métrica aparece (Audiência, Alcance, Engajamento…). */
+  group?: string
 }
 
 export interface ChannelDefinition {
@@ -102,45 +104,67 @@ export interface ChannelDefinition {
 }
 
 export const metricChannels: ChannelDefinition[] = [
-  { id: 'instagram', label: 'Instagram', description: 'Seguidores, alcance e engajamento do perfil.', color: '#b4465a', metrics: [
-    { key: 'followers', label: 'Seguidores', kind: 'total' },
-    { key: 'reach', label: 'Alcance' },
-    { key: 'impressions', label: 'Impressões' },
-    { key: 'profile_visits', label: 'Visitas ao perfil' },
-    { key: 'engagement', label: 'Interações' },
-    { key: 'likes', label: 'Curtidas' },
-    { key: 'comments', label: 'Comentários' },
-    { key: 'shares', label: 'Compartilhamentos' },
-    { key: 'saves', label: 'Salvos' },
-    { key: 'video_views', label: 'Visualizações de vídeo' },
-    { key: 'website_clicks', label: 'Cliques no link da bio' },
-    { key: 'posts', label: 'Publicações' },
+  { id: 'instagram', label: 'Instagram', description: 'Seguidores, alcance, visualizações e engajamento do perfil.', color: '#b4465a', metrics: [
+    { key: 'followers', label: 'Seguidores', kind: 'total', group: 'Audiência' },
+    { key: 'followers_gained', label: 'Novos seguidores', group: 'Audiência' },
+    { key: 'followers_lost', label: 'Deixaram de seguir', group: 'Audiência' },
+    { key: 'following', label: 'Seguindo', kind: 'total', group: 'Audiência' },
+    { key: 'reach', label: 'Alcance', group: 'Alcance' },
+    { key: 'views', label: 'Visualizações', group: 'Alcance' },
+    { key: 'impressions', label: 'Impressões', group: 'Alcance' },
+    { key: 'profile_visits', label: 'Visitas ao perfil', group: 'Alcance' },
+    { key: 'engagement', label: 'Interações', group: 'Engajamento' },
+    { key: 'accounts_engaged', label: 'Contas que interagiram', group: 'Engajamento' },
+    { key: 'likes', label: 'Curtidas', group: 'Engajamento' },
+    { key: 'comments', label: 'Comentários', group: 'Engajamento' },
+    { key: 'shares', label: 'Compartilhamentos', group: 'Engajamento' },
+    { key: 'saves', label: 'Salvamentos', group: 'Engajamento' },
+    { key: 'website_clicks', label: 'Cliques no link da bio', group: 'Engajamento' },
+    { key: 'video_views', label: 'Visualizações de vídeo', group: 'Alcance' },
+    { key: 'posts', label: 'Publicações', group: 'Conteúdo' },
+    { key: 'feed_posts', label: 'Posts no feed', group: 'Conteúdo' },
+    { key: 'reels', label: 'Reels publicados', group: 'Reels' },
+    { key: 'reels_views', label: 'Visualizações de Reels', group: 'Reels' },
+    { key: 'reels_reach', label: 'Alcance de Reels', group: 'Reels' },
+    { key: 'reels_interactions', label: 'Interações em Reels', group: 'Reels' },
+    { key: 'stories', label: 'Stories publicados', group: 'Stories' },
+    { key: 'stories_views', label: 'Visualizações de Stories', group: 'Stories' },
+    { key: 'stories_reach', label: 'Alcance de Stories', group: 'Stories' },
   ] },
   { id: 'youtube', label: 'YouTube', description: 'Inscritos, visualizações e tempo assistido.', color: '#c0392b', metrics: [
-    { key: 'subscribers', label: 'Inscritos', kind: 'total' },
-    { key: 'views', label: 'Visualizações' },
-    { key: 'watch_minutes', label: 'Minutos assistidos' },
-    { key: 'likes', label: 'Curtidas' },
-    { key: 'comments', label: 'Comentários' },
-    { key: 'shares', label: 'Compartilhamentos' },
-    { key: 'subscribers_gained', label: 'Inscritos ganhos' },
-    { key: 'subscribers_lost', label: 'Inscritos perdidos' },
+    { key: 'subscribers', label: 'Inscritos', kind: 'total', group: 'Audiência' },
+    { key: 'subscribers_gained', label: 'Novos inscritos', group: 'Audiência' },
+    { key: 'subscribers_lost', label: 'Cancelaram inscrição', group: 'Audiência' },
+    { key: 'views', label: 'Visualizações', group: 'Alcance' },
+    { key: 'watch_minutes', label: 'Minutos assistidos', group: 'Alcance' },
+    { key: 'likes', label: 'Curtidas', group: 'Engajamento' },
+    { key: 'comments', label: 'Comentários', group: 'Engajamento' },
+    { key: 'shares', label: 'Compartilhamentos', group: 'Engajamento' },
+    { key: 'videos', label: 'Vídeos publicados', group: 'Conteúdo' },
   ] },
   { id: 'tiktok', label: 'TikTok', description: 'Seguidores e visualizações.', color: '#22262b', metrics: [
     { key: 'followers', label: 'Seguidores', kind: 'total' },
     { key: 'views', label: 'Visualizações' },
     { key: 'engagement', label: 'Interações' },
   ] },
-  { id: 'facebook', label: 'Facebook', description: 'Seguidores e alcance da página.', color: '#3b6ea5', metrics: [
-    { key: 'followers', label: 'Seguidores', kind: 'total' },
-    { key: 'reach', label: 'Alcance' },
-    { key: 'impressions', label: 'Impressões' },
-    { key: 'engagement', label: 'Interações' },
-    { key: 'page_views', label: 'Visitas à página' },
-    { key: 'likes', label: 'Reações' },
-    { key: 'comments', label: 'Comentários' },
-    { key: 'shares', label: 'Compartilhamentos' },
-    { key: 'video_views', label: 'Visualizações de vídeo' },
+  { id: 'facebook', label: 'Facebook', description: 'Seguidores, alcance e interações da página.', color: '#3b6ea5', metrics: [
+    { key: 'followers', label: 'Seguidores', kind: 'total', group: 'Audiência' },
+    { key: 'followers_gained', label: 'Novos seguidores', group: 'Audiência' },
+    { key: 'followers_lost', label: 'Deixaram de seguir', group: 'Audiência' },
+    { key: 'views', label: 'Visualizações', group: 'Alcance' },
+    { key: 'page_views', label: 'Visitas à página', group: 'Alcance' },
+    { key: 'reach', label: 'Alcance', group: 'Alcance' },
+    { key: 'impressions', label: 'Impressões', group: 'Alcance' },
+    { key: 'video_views', label: 'Visualizações de vídeo', group: 'Alcance' },
+    { key: 'engagement', label: 'Interações', group: 'Engajamento' },
+    { key: 'likes', label: 'Curtidas', group: 'Engajamento' },
+    { key: 'reactions', label: 'Reações', group: 'Engajamento' },
+    { key: 'comments', label: 'Comentários', group: 'Engajamento' },
+    { key: 'shares', label: 'Compartilhamentos', group: 'Engajamento' },
+    { key: 'post_clicks', label: 'Cliques nos posts', group: 'Engajamento' },
+    { key: 'posts', label: 'Publicações', group: 'Conteúdo' },
+    { key: 'reels', label: 'Reels publicados', group: 'Reels' },
+    { key: 'reels_views', label: 'Visualizações de Reels', group: 'Reels' },
   ] },
   { id: 'linkedin', label: 'LinkedIn', description: 'Seguidores e impressões da página.', color: '#2d6f9e', metrics: [
     { key: 'followers', label: 'Seguidores', kind: 'total' },
@@ -160,19 +184,27 @@ export const metricChannels: ChannelDefinition[] = [
     { key: 'click_rate', label: 'Taxa de clique', format: 'percent', kind: 'average' },
   ] },
   { id: 'google_business', label: 'Google Meu Negócio', description: 'Visualizações do perfil e ações de quem encontrou a empresa.', color: '#2d6f9e', metrics: [
-    { key: 'profile_views', label: 'Visualizações do perfil' },
-    { key: 'search_views', label: 'Vistas na Busca' },
-    { key: 'maps_views', label: 'Vistas no Maps' },
-    { key: 'website_clicks', label: 'Cliques no site' },
-    { key: 'calls', label: 'Ligações' },
-    { key: 'direction_requests', label: 'Pedidos de rota' },
+    { key: 'profile_views', label: 'Visualizações do perfil', group: 'Alcance' },
+    { key: 'search_views', label: 'Vistas na Busca', group: 'Alcance' },
+    { key: 'maps_views', label: 'Vistas no Maps', group: 'Alcance' },
+    { key: 'photo_views', label: 'Visualizações de fotos', group: 'Alcance' },
+    { key: 'website_clicks', label: 'Cliques no site', group: 'Ações' },
+    { key: 'calls', label: 'Ligações', group: 'Ações' },
+    { key: 'direction_requests', label: 'Pedidos de rota', group: 'Ações' },
+    { key: 'messages', label: 'Mensagens', group: 'Ações' },
+    { key: 'reviews', label: 'Avaliações recebidas', group: 'Reputação' },
+    { key: 'rating', label: 'Nota média', kind: 'average', group: 'Reputação' },
   ] },
-  { id: 'site', label: 'Site', description: 'Visitantes, páginas e botões de herodrone.com.br e da loja.', color: '#5c6b73', metrics: [
-    { key: 'users', label: 'Visitantes' },
-    { key: 'sessions', label: 'Sessões' },
-    { key: 'pageviews', label: 'Páginas vistas' },
-    { key: 'button_clicks', label: 'Cliques em botões' },
-    { key: 'conversions', label: 'Conversões' },
+  { id: 'site', label: 'Site', description: 'Visitantes, páginas, origem do tráfego e botões de herodrone.com.br e da loja.', color: '#5c6b73', metrics: [
+    { key: 'users', label: 'Visitantes', group: 'Tráfego' },
+    { key: 'sessions', label: 'Sessões', group: 'Tráfego' },
+    { key: 'pageviews', label: 'Páginas vistas', group: 'Tráfego' },
+    { key: 'traffic_direct', label: 'Acesso direto', group: 'Origem do tráfego' },
+    { key: 'traffic_google', label: 'Google', group: 'Origem do tráfego' },
+    { key: 'traffic_instagram', label: 'Instagram', group: 'Origem do tráfego' },
+    { key: 'traffic_facebook', label: 'Facebook', group: 'Origem do tráfego' },
+    { key: 'button_clicks', label: 'Cliques em botões', group: 'Conversão' },
+    { key: 'conversions', label: 'Conversões', group: 'Conversão' },
   ] },
   { id: 'ads', label: 'Anúncios', description: 'Investimento e resultado das campanhas pagas.', color: '#b56b2d', metrics: [
     { key: 'spend', label: 'Investimento', format: 'currency' },
@@ -245,6 +277,19 @@ export const emptyMetricsSnapshot: MetricsSnapshot = { points: [], posts: [], co
 
 const metricKind = (channel: ChannelDefinition, key: string) =>
   channel.metrics.find((metric) => metric.key === key)?.kind ?? 'sum'
+
+export const metricGroup = (channel: ChannelDefinition, key: string) =>
+  channel.metrics.find((metric) => metric.key === key)?.group ?? (key.startsWith('traffic_') ? 'Origem do tráfego' : 'Outras métricas')
+
+/** Agrupa as métricas recebidas na ordem dos blocos definidos no canal. */
+export const groupMetricKeys = (channel: ChannelDefinition, keys: string[]) => {
+  const groups = new Map<string, string[]>()
+  keys.forEach((key) => {
+    const group = metricGroup(channel, key)
+    groups.set(group, [...(groups.get(group) ?? []), key])
+  })
+  return [...groups.entries()].map(([title, items]) => ({ title, keys: items }))
+}
 
 export const metricFormat = (channel: ChannelDefinition, key: string): MetricFormat =>
   channel.metrics.find((metric) => metric.key === key)?.format ?? 'number'

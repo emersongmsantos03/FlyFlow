@@ -13,6 +13,7 @@ import {
   compareMetric,
   connectionHealth,
   emptyMetricsSnapshot,
+  groupMetricKeys,
   matchPostToContent,
   metricChannels,
   metricFormat,
@@ -263,20 +264,23 @@ function ChannelDetail({ channel, snapshot, range, comparison, contentItems }: {
   }
 
   return <>
-    {keys.length ? (
-      <section className="kpi-row">
-        {keys.slice(0, 8).map((key) => {
-          const result = compareMetric(snapshot.points, channel, key, range.from, range.to, comparison)
-          return (
-            <button key={key} className={`kpi-tile ${metric === key ? 'is-active' : ''}`} type="button" onClick={() => setSelected(key)}>
-              <span>{metricLabel(channel, key)}</span>
-              <strong>{formatMetric(result.value, metricFormat(channel, key))}</strong>
-              <Comparison difference={result.difference} delta={result.delta} format={metricFormat(channel, key)} />
-            </button>
-          )
-        })}
+    {groupMetricKeys(channel, keys).map((group) => (
+      <section key={group.title} className="metric-group">
+        <h3 className="metric-group__title">{group.title}</h3>
+        <div className="kpi-row">
+          {group.keys.map((key) => {
+            const result = compareMetric(snapshot.points, channel, key, range.from, range.to, comparison)
+            return (
+              <button key={key} className={`kpi-tile ${metric === key ? 'is-active' : ''}`} type="button" onClick={() => setSelected(key)}>
+                <span>{metricLabel(channel, key)}</span>
+                <strong>{formatMetric(result.value, metricFormat(channel, key))}</strong>
+                <Comparison difference={result.difference} delta={result.delta} format={metricFormat(channel, key)} />
+              </button>
+            )
+          })}
+        </div>
       </section>
-    ) : null}
+    ))}
 
     {metric ? (
       <Panel
