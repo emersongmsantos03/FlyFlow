@@ -150,7 +150,7 @@ export function IntegrationsPage({ onConfirmRevoke }: { onConfirmRevoke: (label:
                   <td data-label="Quando">{formatDateTime(run.createdAt)}</td>
                   <td data-label="Canal">{channelById(run.source).label}</td>
                   <td data-label="Conta">{run.account || '-'}</td>
-                  <td data-label="Situação"><StatusBadge>{run.status === 'ok' ? 'Concluído' : 'Falhou'}</StatusBadge></td>
+                  <td data-label="Situação"><StatusBadge>{run.status === 'ok' ? 'Concluído' : run.status === 'pending' ? 'Aguardando' : 'Falhou'}</StatusBadge></td>
                   <td data-label="Recebido">{run.pointsCount} métricas · {run.postsCount} posts</td>
                   <td data-label="Mensagem">{run.message || '-'}</td>
                 </tr>
