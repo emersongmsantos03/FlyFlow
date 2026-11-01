@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, ExternalLink, Minus, Plug, Plus, RefreshCw, Table2, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, ExternalLink, Loader2, Minus, Plug, Plus, Printer, RefreshCw, Table2, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button, EmptyState, InputField, Modal, PageToolbar, Panel, Select } from '../ui'
@@ -29,6 +29,8 @@ import {
   type MetricsSnapshot,
 } from '../../lib/marketing'
 import { loadEmailReport, loadMetrics, saveManualMetrics } from '../../services/marketingMetrics'
+import { postsInRange, socialChannelIds, topPosts } from '../../lib/socialReport'
+import { FormatPanel, PostGallery, SocialReport, WeekdayPanel } from './SocialReport'
 import type { ContentItem } from '../../types'
 
 const periods = [{ value: '7', label: '7 dias' }, { value: '30', label: '30 dias' }, { value: '90', label: '90 dias' }, { value: 'custom', label: 'Personalizado' }]
@@ -105,7 +107,7 @@ export function MetricsPage({ contentItems, canManageIntegrations, onOpenIntegra
   useEffect(() => { void refresh() }, [refresh])
 
   const channelsWithData = useMemo(() => {
-    const received = [...new Set([...snapshot.points.map((point) => point.source), ...snapshot.posts.map((post) => post.source)])]
+    const received = [...new Set([...snapshot.points.map((point) => point.source), ...snapshot.posts.map((post) => post.source), ...snapshot.connections.map((item) => item.source)])]
     const known = metricChannels.filter((channel) => received.includes(channel.id))
     return [...known, ...received.filter((id) => !metricChannels.some((channel) => channel.id === id)).map(channelById)]
   }, [snapshot])
@@ -121,6 +123,7 @@ export function MetricsPage({ contentItems, canManageIntegrations, onOpenIntegra
         action={<>
           <Button variant="secondary" type="button" disabled={loading} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''} size={15} /> Atualizar</Button>
           <Button variant="secondary" type="button" onClick={() => setManualOpen(true)}><Plus size={15} /> Lançar manualmente</Button>
+          <Button variant="secondary" type="button" onClick={() => window.print()} title="Imprimir ou salvar como PDF"><Printer size={15} /> Exportar PDF</Button>
           {canManageIntegrations ? <Button type="button" onClick={onOpenIntegrations}><Plug size={15} /> Integrações</Button> : null}
         </>}
       />
@@ -145,7 +148,11 @@ export function MetricsPage({ contentItems, canManageIntegrations, onOpenIntegra
       </div>
 
       {validRange && tab === 'overview' ? (channelsWithData.length
-        ? <Overview channels={channelsWithData} snapshot={snapshot} range={range} comparison={comparison} onSelect={setTab} />
+        ? <>
+            <SocialReport points={snapshot.points} posts={snapshot.posts} connections={snapshot.connections} range={range} comparison={comparison} contentItems={contentItems} onSelect={setTab} />
+            <header className="report-section-head"><div><h2>Todos os canais</h2><p>Clique em um canal para ver o detalhe.</p></div></header>
+            <Overview channels={channelsWithData} snapshot={snapshot} range={range} comparison={comparison} onSelect={setTab} />
+          </>
         : !loading && !error ? <EmptyState
             title="Nenhuma métrica recebida ainda"
             description="Assim que a rotina enviar a primeira coleta, os números de cada canal aparecem aqui. Você também pode lançar um valor manualmente."
@@ -211,7 +218,7 @@ function Overview({ channels, snapshot, range, comparison, onSelect }: { channel
                 const result = compareMetric(snapshot.points, channel, key, range.from, range.to, comparison)
                 return <div key={key}><span>{metricLabel(channel, key)}</span><strong>{formatMetric(result.value, metricFormat(channel, key))}</strong><Delta value={result.delta} /></div>
               })}
-              {!keys.length ? <p className="muted-note">Só posts recebidos até agora.</p> : null}
+              {!keys.length ? <p className="muted-note">{snapshot.posts.some((post) => post.source === channel.id) ? 'Só posts recebidos até agora.' : connections.length ? <><Loader2 size={12} className="animate-spin" /> Conectado, importando o histórico.</> : 'Sem dados ainda.'}</p> : null}
             </div>
             {series.some((point) => point.value !== null) ? (
               <div className="channel-card__spark" aria-hidden="true">
@@ -246,7 +253,14 @@ function ChannelDetail({ channel, snapshot, range, comparison, contentItems }: {
     .slice(0, 12)
   const postKeys = [...new Set(posts.flatMap((post) => Object.keys(post.metrics)))].slice(0, 5)
 
-  if (!keys.length && !posts.length) return <EmptyState title={`Sem dados de ${channel.label}`} description={`${channel.description} Os números aparecem aqui depois da primeira coleta.`} />
+  const isSocial = (socialChannelIds as readonly string[]).includes(channel.id)
+  const periodPosts = isSocial ? postsInRange(snapshot.posts, range, [channel.id]) : []
+
+  if (!keys.length && !posts.length) {
+    return accounts.length
+      ? <div className="report-pending is-large"><Loader2 size={18} className="animate-spin" /><div><strong>{channel.label} conectado. Importando o histórico.</strong><span>O Metricool leva até 48 horas para trazer os dados de uma rede recém-conectada. A coleta da madrugada preenche os últimos 90 dias assim que eles chegarem.</span></div></div>
+      : <EmptyState title={`Sem dados de ${channel.label}`} description={`${channel.description} Os números aparecem aqui depois da primeira coleta.`} />
+  }
 
   return <>
     {keys.length ? (
@@ -301,8 +315,16 @@ function ChannelDetail({ channel, snapshot, range, comparison, contentItems }: {
       </Panel>
     ) : null}
 
+    {periodPosts.length ? <>
+      <PostGallery title="Destaques do período" posts={topPosts(periodPosts, 6)} contentItems={contentItems} />
+      <div className="report-grid">
+        <FormatPanel posts={periodPosts} />
+        <WeekdayPanel posts={periodPosts} />
+      </div>
+    </> : null}
+
     {posts.length ? (
-      <Panel title="Melhores publicações">
+      <Panel title={isSocial ? 'Todas as publicações' : 'Melhores publicações'}>
         <div className="table-scroll">
           <table className="data-table">
             <thead><tr><th>Publicação</th><th>Data</th>{postKeys.map((key) => <th key={key}>{metricLabel(channel, key)}</th>)}<th /></tr></thead>
