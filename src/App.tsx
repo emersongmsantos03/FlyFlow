@@ -142,6 +142,7 @@ import {
 import { buildPriorityWhatsAppMessage } from './lib/whatsappMessages'
 import { allPermissions, can, canOpenPage, permissionLabels, permissionSummary, rolePermissionPresets } from './lib/permissions'
 import {
+  addBusinessDays,
   addCalendarDays,
   calendarDaysBetween,
   createOperationalChecklist,
@@ -2769,14 +2770,14 @@ ${companyName}`
           clientId: matchedClient?.id ?? createdClient?.id ?? values.clientId,
           leadId: values.leadId || '',
         }
-        const defaultDeliveryDays = Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1)
-        const automaticDeliveryDeadline = addCalendarDays(projectValues.captureDate, defaultDeliveryDays)
+        const defaultDeliveryDays = Math.max(Number(current.companySettings.defaultDeliveryDays) || 3, 1)
+        const automaticDeliveryDeadline = addBusinessDays(projectValues.captureDate, defaultDeliveryDays)
         const deliveryDaysAfterCapture = projectValues.deliveryDeadlineNegotiated
           ? Math.max(Number(projectValues.deliveryDaysAfterCapture) || 0, 0)
           : defaultDeliveryDays
         const normalizedProjectValues: ProjectFormValues = {
           ...projectValues,
-          deliveryDeadline: addCalendarDays(projectValues.captureDate, deliveryDaysAfterCapture),
+          deliveryDeadline: projectValues.deliveryDeadlineNegotiated ? addCalendarDays(projectValues.captureDate, deliveryDaysAfterCapture) : automaticDeliveryDeadline,
           deliveryDaysAfterCapture,
         }
         const nextClients = createdClient ? [createdClient, ...current.clients] : current.clients
@@ -3248,9 +3249,9 @@ ${companyName}`
         const captureDate = values.startAt.slice(0, 10)
         const captureStartTime = values.startAt.slice(11, 16)
         const captureEndTime = values.endAt.slice(11, 16)
-        const defaultDeliveryDays = Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1)
+        const defaultDeliveryDays = Math.max(Number(current.companySettings.defaultDeliveryDays) || 3, 1)
         const automaticDeliveryDeadline = project && appointment.appointmentType === 'Captação'
-          ? addCalendarDays(captureDate, defaultDeliveryDays)
+          ? addBusinessDays(captureDate, defaultDeliveryDays)
           : ''
         const deliveryDaysAfterCapture = project?.deliveryDeadlineNegotiated
           ? Math.max(project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline), 0)
@@ -3262,7 +3263,7 @@ ${companyName}`
               captureStartTime,
               captureEndTime,
               originalDeliveryDeadline: automaticDeliveryDeadline,
-              deliveryDeadline: addCalendarDays(captureDate, deliveryDaysAfterCapture),
+              deliveryDeadline: project?.deliveryDeadlineNegotiated ? addCalendarDays(captureDate, deliveryDaysAfterCapture) : automaticDeliveryDeadline,
               deliveryDaysAfterCapture,
               address: appointment.address || project.address,
               projectStatus: ['Aguardando agendamento', 'Agendado', 'Confirmação pendente', 'Aguardando sinal'].includes(project.projectStatus)
@@ -3414,7 +3415,7 @@ ${companyName}`
                   deliveryDeadline: '',
                   originalDeliveryDeadline: undefined,
                   deliveryDeadlineNegotiated: false,
-                  deliveryDaysAfterCapture: Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1),
+                  deliveryDaysAfterCapture: Math.max(Number(current.companySettings.defaultDeliveryDays) || 3, 1),
                   projectStatus: 'Aguardando agendamento' as const,
                   updatedAt: now,
                 }
@@ -4971,7 +4972,7 @@ ${companyName}`
         captureEndTime: '',
         deliveryDeadline: '',
         deliveryDeadlineNegotiated: false,
-        deliveryDaysAfterCapture: Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1),
+        deliveryDaysAfterCapture: Math.max(Number(current.companySettings.defaultDeliveryDays) || 3, 1),
         address: quote?.serviceLocation || lead.address,
         city: lead.city,
         contactName: contactDisplayName(lead),
@@ -5297,9 +5298,9 @@ ${companyName}`
             ? 'Aguardando sinal'
             : 'Não faturado'
 
-        const automaticDeliveryDeadline = addCalendarDays(
+        const automaticDeliveryDeadline = addBusinessDays(
           values.captureDate,
-          Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1),
+          Math.max(Number(current.companySettings.defaultDeliveryDays) || 3, 1),
         )
         const project: Project = {
           id: createId('project'),
@@ -5493,15 +5494,15 @@ ${companyName}`
       (current) => {
         const captureCompleted = project.projectStatus === 'Confirmado' && nextStatus === 'Em edição'
         const captureDate = project.captureDate || dateInput()
-        const automaticDeliveryDeadline = addCalendarDays(
+        const automaticDeliveryDeadline = addBusinessDays(
           captureDate,
-          Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1),
+          Math.max(Number(current.companySettings.defaultDeliveryDays) || 3, 1),
         )
         const deliveryDaysAfterCapture = project.deliveryDeadlineNegotiated
           ? Math.max(project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline), 0)
-          : Math.max(Number(current.companySettings.defaultDeliveryDays) || 7, 1)
+          : Math.max(Number(current.companySettings.defaultDeliveryDays) || 3, 1)
         const deliveryDeadline = captureCompleted
-          ? addCalendarDays(captureDate, deliveryDaysAfterCapture)
+          ? (project.deliveryDeadlineNegotiated ? addCalendarDays(captureDate, deliveryDaysAfterCapture) : automaticDeliveryDeadline)
           : project.deliveryDeadline
         const updatedProject: Project = {
           ...project,
@@ -5686,7 +5687,7 @@ ${companyName}`
       `Restante: ${formatCurrency(remaining)}`,
       `Validade: ${formatDate(quote.expirationDate)}`,
       'Esta proposta é válida por 7 dias corridos a partir da data de emissão. Após esse prazo, os valores e a disponibilidade poderão ser revisados.',
-      'Prazo de entrega: até 7 dias corridos após a realização da captação.',
+      'Prazo de entrega: até 3 dias úteis após a realização da captação.',
       '',
       'Condições:',
       quote.paymentTerms,
@@ -5931,7 +5932,7 @@ ${companyName}`
     doc.setFontSize(9)
     doc.setTextColor(31, 41, 55)
     doc.text(formatDate(quote.expirationDate), margin + 4, y + 10)
-    doc.text('Até 7 dias após a captação', margin + conditionsHalf + 4, y + 10)
+    doc.text('Até 3 dias úteis após a captação', margin + conditionsHalf + 4, y + 10)
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.2)
@@ -6016,7 +6017,7 @@ ${companyName}`
     write(`Validade: ${formatDate(quote.expirationDate)}`)
     write(`Condições: ${quote.paymentTerms || 'A combinar'}`)
     write(`PIX: ${state.companySettings.pixKey || state.companySettings.document || '52.075.318/0001-35'}`)
-    write('Prazo de entrega: até 7 dias corridos após a captação.')
+    write('Prazo de entrega: até 3 dias úteis após a captação.')
 
     const blob = doc.output('blob')
     const fileName = getQuotePdfFilename(quote, recipient.company)
@@ -8843,7 +8844,7 @@ function ProjectWorkspace({
   const checklistCategories = [...new Set(checklist.map((item) => item.category))]
   const completedChecklistCategories = checklistCategories.filter((category) => checklist.filter((item) => item.category === category).every((item) => item.completed)).length
   const checklistProgress = checklistCategories.length ? Math.round((completedChecklistCategories / checklistCategories.length) * 100) : 0
-  const defaultDeliveryDays = Math.max(Number(state.companySettings.defaultDeliveryDays) || 7, 1)
+  const defaultDeliveryDays = Math.max(Number(state.companySettings.defaultDeliveryDays) || 3, 1)
 
   const primaryAction = (!project.captureDate || project.projectStatus === 'Aguardando agendamento')
     ? { label: 'Agendar captação', action: onScheduleCapture, icon: <CalendarDays size={16} /> }
@@ -8869,7 +8870,7 @@ function ProjectWorkspace({
 
         {tab === 'summary' ? <div className="space-y-3">
           <div className="project-workspace-stats grid grid-cols-3 rounded-xl border border-gray-200"><div><p>Total do projeto</p><strong>{formatCurrency(project.totalValue)}</strong></div><div><p>Valor recebido</p><strong className="text-emerald-700">{formatCurrency(profit.paid)}</strong></div><div><p>Saldo pendente</p><strong>{formatCurrency(pending)}</strong></div></div>
-          <div className="grid gap-3 sm:grid-cols-2"><div className="project-workspace-info-card rounded-xl border border-gray-200 p-4"><div className="flex items-center gap-2 text-gray-500"><CalendarDays size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Captação</p></div><p className="mt-3 text-base font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-3 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[var(--accent-text)]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`project-workspace-info-card rounded-xl border p-4 ${deadline.boxClass}`}><div className="flex items-center gap-2 text-gray-500"><Clock size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Prazo de entrega</p></div><p className={`mt-3 text-base font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[var(--accent-text)]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
+          <div className="grid gap-3 sm:grid-cols-2"><div className="project-workspace-info-card rounded-xl border border-gray-200 p-4"><div className="flex items-center gap-2 text-gray-500"><CalendarDays size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Captação</p></div><p className="mt-3 text-base font-black text-gray-900">{project.captureDate ? formatDate(project.captureDate) : 'Não agendada'}{project.captureStartTime ? ` · ${project.captureStartTime}` : ''}</p><div className="mt-3 flex flex-wrap gap-2">{!project.captureDate ? <button className="text-xs font-black text-[var(--accent-text)]" type="button" onClick={onScheduleCapture}>Agendar agora</button> : null}<a className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-black text-amber-900 hover:bg-amber-100" href={SARPAS_URL} target="_blank" rel="noopener noreferrer"><ShieldCheck size={14} /> Solicitar voo no SARPAS</a></div></div><div className={`project-workspace-info-card rounded-xl border p-4 ${deadline.boxClass}`}><div className="flex items-center gap-2 text-gray-500"><Clock size={16} /><p className="text-[0.68rem] font-black uppercase tracking-wide">Prazo de entrega</p></div><p className={`mt-3 text-base font-black ${deadline.textClass}`}>{project.deliveryDeadline ? `${formatDate(project.deliveryDeadline)} · ${deadline.label}` : 'Definida ao agendar a captação'}</p><div className="mt-2 flex items-center justify-between gap-2"><span className="text-xs text-gray-500">{project.deliveryDeadlineNegotiated ? `Negociado: ${project.deliveryDaysAfterCapture ?? calendarDaysBetween(project.captureDate, project.deliveryDeadline)} dia(s) após a captação` : `Padrão: ${defaultDeliveryDays} dias úteis após a captação`}</span>{project.captureDate ? <button className="shrink-0 text-xs font-black text-[var(--accent-text)]" type="button" onClick={onEdit}>Ajustar prazo</button> : null}</div></div></div>
           <div className="flex flex-wrap gap-2">{location ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={mapsLink(location)} target="_blank" rel="noreferrer"><MapPin size={15} /> Abrir mapa</a> : null}{project.links[0] ? <a className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700" href={project.links[0]} target="_blank" rel="noreferrer"><FileText size={15} /> Arquivos</a> : null}{project.projectStatus === 'Aguardando aprovação do cliente' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onAddAdjustment}>Registrar ajuste</Button> : null}{project.projectStatus === 'Aguardando pagamento final' ? <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" type="button" onClick={onExceptionalDelivery}>Liberar entrega</Button> : null}</div>
         </div> : null}
 
@@ -10210,7 +10211,7 @@ function ProposalGenerator({
           </div>
           <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
             <CalendarDays className="shrink-0 text-amber-700" size={18} />
-            <div><p className="text-xs font-black uppercase text-amber-800">Prazo de entrega</p><p className="mt-0.5 text-sm font-bold text-gray-800">Até 7 dias corridos após a realização da captação.</p></div>
+            <div><p className="text-xs font-black uppercase text-amber-800">Prazo de entrega</p><p className="mt-0.5 text-sm font-bold text-gray-800">Até 3 dias úteis após a realização da captação.</p></div>
           </div>
           {expirationDate !== standardExpirationDate ? <InputField label="Motivo da validade diferente"><textarea className="field-input min-h-16" required value={validityChangeReason} onChange={(event) => setValidityChangeReason(event.target.value)} /></InputField> : null}
 
@@ -10922,7 +10923,7 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies, onTo
           <Panel id="settings-commercial" title="Padrão comercial">
             <div className="grid gap-4 md:grid-cols-3">
               <InputField label="Entrada padrão (%)" error={getError(errors.defaultDepositPercentage?.message)}><input className="field-input" type="number" min="0" max="100" {...register('defaultDepositPercentage')} /></InputField>
-              <InputField label="Entrega padrão (dias)" error={getError(errors.defaultDeliveryDays?.message)}><input className="field-input" type="number" min="1" {...register('defaultDeliveryDays')} /></InputField>
+              <InputField label="Entrega padrão (dias úteis)" error={getError(errors.defaultDeliveryDays?.message)}><input className="field-input" type="number" min="1" {...register('defaultDeliveryDays')} /></InputField>
               <InputField label="Revisões inclusas" error={getError(errors.defaultFreeRevisions?.message)}><input className="field-input" type="number" min="0" {...register('defaultFreeRevisions')} /></InputField>
               <div className="md:col-span-3">
                 <InputField label="Condições padrão de pagamento" error={getError(errors.paymentTerms?.message)}><textarea className="field-input min-h-24" {...register('paymentTerms')} /></InputField>
@@ -11052,7 +11053,7 @@ function SettingsPage({ state, onSubmit, onClearContacts, onClearCompanies, onTo
               <InputField label="Titular do PIX" error={getError(errors.pixHolderName?.message)}><input className="field-input" {...register('pixHolderName')} /></InputField>
               <div className="grid gap-3 sm:grid-cols-2">
                 <SmallStat label="Entrada padrão" value={`${Number(watch('defaultDepositPercentage') || 0).toFixed(0)}%`} />
-                <SmallStat label="Entrega padrão" value={`${Number(watch('defaultDeliveryDays') || 0).toFixed(0)} dias`} />
+                <SmallStat label="Entrega padrão" value={`${Number(watch('defaultDeliveryDays') || 0).toFixed(0)} dias úteis`} />
               </div>
             </div>
           </Panel>
@@ -12031,9 +12032,9 @@ function ClosedServiceForm({
   const [depositPaid, setDepositPaid] = useState(false)
   const [captureAddress, setCaptureAddress] = useState(lead.address)
   const [localContactPhone, setLocalContactPhone] = useState(lead.whatsapp || lead.phone)
-  const defaultDeliveryDays = Math.max(Number(state.companySettings.defaultDeliveryDays) || 7, 1)
+  const defaultDeliveryDays = Math.max(Number(state.companySettings.defaultDeliveryDays) || 3, 1)
   const [captureDate, setCaptureDate] = useState(dateInput(3))
-  const [deliveryDeadline, setDeliveryDeadline] = useState(() => addCalendarDays(dateInput(3), defaultDeliveryDays))
+  const [deliveryDeadline, setDeliveryDeadline] = useState(() => addBusinessDays(dateInput(3), defaultDeliveryDays))
   const [deliveryDeadlineNegotiated, setDeliveryDeadlineNegotiated] = useState(false)
   const [deliveryDaysAfterCapture, setDeliveryDaysAfterCapture] = useState(defaultDeliveryDays)
   const remainingValue = Math.max(totalValue - depositValue, 0)
@@ -12060,11 +12061,11 @@ function ClosedServiceForm({
 
   const updateCaptureDate = (nextDate: string) => {
     setCaptureDate(nextDate)
-    if (nextDate) setDeliveryDeadline(addCalendarDays(nextDate, deliveryDaysAfterCapture))
+    if (nextDate) setDeliveryDeadline(deliveryDeadlineNegotiated ? addCalendarDays(nextDate, deliveryDaysAfterCapture) : addBusinessDays(nextDate, defaultDeliveryDays))
   }
 
   const updateDeliveryDeadline = (nextDate: string) => {
-    const automaticDeadline = captureDate ? addCalendarDays(captureDate, defaultDeliveryDays) : ''
+    const automaticDeadline = captureDate ? addBusinessDays(captureDate, defaultDeliveryDays) : ''
     const negotiatedDays = captureDate && nextDate ? Math.max(calendarDaysBetween(captureDate, nextDate), 0) : defaultDeliveryDays
     setDeliveryDeadline(nextDate)
     setDeliveryDaysAfterCapture(negotiatedDays)
@@ -12177,7 +12178,7 @@ function ClosedServiceForm({
           <InputField label="Prazo máximo para entregar ao cliente">
             <input className="field-input" name="deliveryDeadline" type="date" value={deliveryDeadline} onChange={(event) => updateDeliveryDeadline(event.currentTarget.value)} required />
             <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
-              <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
+              <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias úteis após a captação.`} O vermelho aparece somente depois desta data.</span>
               {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[var(--accent-text)]" type="button" onClick={() => updateDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
             </div>
           </InputField>
@@ -12319,9 +12320,9 @@ function ProjectForm({
 }) {
   const settings = state.companySettings
   const defaultTotal = state.services[0]?.defaultPrice ?? 500
-  const defaultDeliveryDays = Math.max(Number(settings.defaultDeliveryDays) || 7, 1)
+  const defaultDeliveryDays = Math.max(Number(settings.defaultDeliveryDays) || 3, 1)
   const initialCaptureDate = project ? project.captureDate : dateInput(3)
-  const initialAutomaticDeliveryDeadline = initialCaptureDate ? addCalendarDays(initialCaptureDate, defaultDeliveryDays) : ''
+  const initialAutomaticDeliveryDeadline = initialCaptureDate ? addBusinessDays(initialCaptureDate, defaultDeliveryDays) : ''
   const initialDeliveryDeadline = project?.deliveryDeadline || initialAutomaticDeliveryDeadline
   const initialDeliveryDeadlineNegotiated = project?.deliveryDeadlineNegotiated ?? Boolean(
     project?.captureDate && project.deliveryDeadline && project.deliveryDeadline !== initialAutomaticDeliveryDeadline,
@@ -12392,17 +12393,16 @@ function ProjectForm({
 
   useEffect(() => {
     if (!captureDate) return
-    const expectedDeadline = addCalendarDays(
-      captureDate,
-      deliveryDeadlineNegotiated ? deliveryDaysAfterCapture : defaultDeliveryDays,
-    )
+    const expectedDeadline = deliveryDeadlineNegotiated
+      ? addCalendarDays(captureDate, deliveryDaysAfterCapture)
+      : addBusinessDays(captureDate, defaultDeliveryDays)
     if (deliveryDeadline !== expectedDeadline) {
       setValue('deliveryDeadline', expectedDeadline, { shouldDirty: true, shouldValidate: true })
     }
   }, [captureDate, defaultDeliveryDays, deliveryDeadline, deliveryDeadlineNegotiated, deliveryDaysAfterCapture, setValue])
 
   const changeProjectDeliveryDeadline = (nextDate: string) => {
-    const automaticDeadline = captureDate ? addCalendarDays(captureDate, defaultDeliveryDays) : ''
+    const automaticDeadline = captureDate ? addBusinessDays(captureDate, defaultDeliveryDays) : ''
     const nextDays = captureDate && nextDate ? Math.max(calendarDaysBetween(captureDate, nextDate), 0) : defaultDeliveryDays
     setValue('deliveryDeadline', nextDate, { shouldDirty: true, shouldValidate: true })
     setValue('deliveryDaysAfterCapture', nextDays, { shouldDirty: true })
@@ -12458,7 +12458,7 @@ function ProjectForm({
         <input className="hidden" type="checkbox" {...register('deliveryDeadlineNegotiated')} />
         <input type="hidden" {...register('deliveryDaysAfterCapture')} />
         <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
-          <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias após a captação.`} O vermelho aparece somente depois desta data.</span>
+          <span>{deliveryDeadlineNegotiated ? `Entrega combinada: ${deliveryDaysAfterCapture} dia(s) após a captação.` : `Prazo padrão: ${defaultDeliveryDays} dias úteis após a captação.`} O vermelho aparece somente depois desta data.</span>
           {deliveryDeadlineNegotiated && captureDate ? <button className="font-black text-[var(--accent-text)]" type="button" onClick={() => changeProjectDeliveryDeadline(addCalendarDays(captureDate, defaultDeliveryDays))}>Usar padrão</button> : null}
         </div>
       </InputField>

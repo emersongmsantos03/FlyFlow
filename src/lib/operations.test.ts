@@ -1,7 +1,7 @@
 import { createEmptyState } from '../data/demoData'
 import { describe, expect, it } from 'vitest'
 import type { AppState, Lead } from '../types'
-import { buildOperationalTasks, synchronizeOperationalState } from './operations'
+import { addBusinessDays, buildOperationalTasks, synchronizeOperationalState } from './operations'
 
 const now = new Date('2026-08-05T12:00:00.000Z')
 
@@ -69,5 +69,19 @@ describe('virada do dia no fuso local', () => {
       payments: [{ id: 'p', clientId: 'c', paymentType: 'Sinal', amount: 100, dueDate: '2026-10-30', paymentMethod: 'PIX', status: 'Pendente', notes: '', createdAt: '', updatedAt: '' }],
     }, lateEvening)
     expect(state.payments[0].status).toBe('Pendente')
+  })
+})
+
+describe('addBusinessDays', () => {
+  it('conta três dias úteis a partir de uma segunda-feira', () => {
+    expect(addBusinessDays('2026-11-02', 3)).toBe('2026-11-05')
+  })
+
+  it('pula o fim de semana', () => {
+    expect(addBusinessDays('2026-11-05', 3)).toBe('2026-11-10')
+  })
+
+  it('não conta o sábado como primeiro dia', () => {
+    expect(addBusinessDays('2026-11-07', 1)).toBe('2026-11-09')
   })
 })

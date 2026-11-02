@@ -58,6 +58,17 @@ export const addCalendarDays = (date: string, days: number) => {
   return dateOnly(parsed)
 }
 
+// Prazo padrão de entrega: sábados e domingos não contam. Feriados não entram no cálculo.
+export const addBusinessDays = (date: string, days: number) => {
+  const parsed = new Date(`${date}T12:00:00`)
+  let remaining = days
+  while (remaining > 0) {
+    parsed.setDate(parsed.getDate() + 1)
+    if (parsed.getDay() !== 0 && parsed.getDay() !== 6) remaining -= 1
+  }
+  return dateOnly(parsed)
+}
+
 export const calendarDaysBetween = (startDate: string, endDate: string) => {
   if (!startDate || !endDate) return 0
   const start = new Date(`${startDate}T12:00:00`).getTime()
