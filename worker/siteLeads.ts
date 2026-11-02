@@ -49,7 +49,7 @@ export const applySiteLead = (state: Row, lead: SiteLead, now: string, newId: ()
   const blocked = Boolean(found?.doNotContact)
   const tags = [...new Set([...(Array.isArray(found?.tags) ? found.tags as string[] : []), SITE_TAG, ...(blocked ? [] : [AWAITING_CONTACT_TAG])])]
   const record: Row = found
-    ? { ...found, fullName: found.fullName || lead.fullName, email: found.email || lead.email, city: found.city || lead.city, tags, lastContactAt: now, whatsappConsentAt: now, updatedAt: now }
+    ? { ...found, fullName: found.fullName || lead.fullName, email: found.email || lead.email, city: found.city || lead.city, notes: found.notes || summary, tags, lastContactAt: now, whatsappConsentAt: now, updatedAt: now }
     : {
         id: newId(), fullName: lead.fullName, companyName: '', phone: lead.whatsapp, whatsapp: lead.whatsapp, email: lead.email, instagram: '', city: lead.city, neighborhood: '', address: '',
         source: 'Site', serviceInterest: 'Outro', pipelineStage: 'Entrada', temperature: 'Quente', estimatedValue: 0, probability: 0, entryDate: now, lastContactAt: now, notes: summary,

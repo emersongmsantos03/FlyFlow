@@ -903,7 +903,7 @@ function ContactDrawer({ lead, state, onClose, onEdit, onDelete, onLose, onAttac
       <nav className="crm-drawer-tabs sticky top-0 z-10 flex overflow-x-auto border-b border-gray-200 bg-white px-2">{([
         ['overview', 'Visão geral'], ['activities', 'Atividades'], ['tasks', 'Tarefas'], ['quotes', 'Propostas'], ['projects', 'Projetos'], ['finance', 'Financeiro'], ['files', 'Arquivos'],
       ] as Array<[DrawerTab, string]>).map(([value, label]) => <button key={value} className={`min-h-11 whitespace-nowrap border-b-2 px-3 text-xs font-bold ${tab === value ? 'is-active' : 'border-transparent text-gray-500 hover:text-gray-800'}`} type="button" onClick={() => setTab(value)}>{label}</button>)}</nav>
-      <div className="space-y-4 p-4">
+      <div className="crm-drawer-body space-y-4 p-4">
         {tab === 'overview' ? <>
           <div className="grid grid-cols-2 gap-2">{[
             ['Valor potencial', formatCurrency(lead.estimatedValue), <CircleDollarSign key="icon" size={16} />, 'green'],

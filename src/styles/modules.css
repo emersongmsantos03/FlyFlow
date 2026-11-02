@@ -98,7 +98,7 @@ button.detail-row:hover { background: var(--surface-2); }
 .crm-add-card { width: 100%; padding: 0.35rem; border: 0; border-radius: var(--radius-sm); background: none; font-size: 0.76rem; color: var(--text-muted); }
 .crm-add-card:hover { background: var(--surface); color: var(--text-primary); }
 .crm-scroll-button { border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); color: var(--text-secondary); }
-.crm-contact-drawer { position: fixed; inset: 0 0 0 auto; z-index: 50; width: min(100%, 34rem); overflow-y: auto; border-left: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg); }
+.crm-contact-drawer { background: var(--surface); box-shadow: var(--shadow-lg); }
 .crm-drawer-tabs button { border-bottom-color: transparent; background: none; color: var(--text-muted); }
 .crm-drawer-tabs button.is-active { border-bottom-color: var(--text-primary); color: var(--text-primary); }
 .drawer-avatar { width: 2.5rem; height: 2.5rem; }
