@@ -40,6 +40,13 @@ export const parseSiteLead = (body: unknown): SiteLead | null => {
   return { fullName, whatsapp, email, city: text(input.cidade, 80), spaceType: text(input.tipo, 80), goal: text(input.objetivo, 300), source: text(input.origem, 40) }
 }
 
+// O cadastro mais recente vai no topo: o agente lê o primeiro "Objetivo:" das notas, e as anotações manuais continuam abaixo.
+const mergeNotes = (notes: unknown, summary: string) => {
+  const older = String(notes ?? '').split('\n').filter((line) => line.trim() !== summary).join('\n').trim()
+  if (!summary) return older
+  return older ? `${summary}\n${older}` : summary
+}
+
 export const applySiteLead = (state: Row, lead: SiteLead, now: string, newId: () => string) => {
   const leads = Array.isArray(state.leads) ? state.leads as Row[] : []
   const interactions = Array.isArray(state.leadInteractions) ? state.leadInteractions as Row[] : []
@@ -49,7 +56,7 @@ export const applySiteLead = (state: Row, lead: SiteLead, now: string, newId: ()
   const blocked = Boolean(found?.doNotContact)
   const tags = [...new Set([...(Array.isArray(found?.tags) ? found.tags as string[] : []), SITE_TAG, ...(blocked ? [] : [AWAITING_CONTACT_TAG])])]
   const record: Row = found
-    ? { ...found, fullName: found.fullName || lead.fullName, email: found.email || lead.email, city: found.city || lead.city, notes: found.notes || summary, tags, lastContactAt: now, whatsappConsentAt: now, updatedAt: now }
+    ? { ...found, fullName: found.fullName || lead.fullName, email: found.email || lead.email, city: lead.city || found.city, notes: mergeNotes(found.notes, summary), tags, lastContactAt: now, whatsappConsentAt: now, updatedAt: now }
     : {
         id: newId(), fullName: lead.fullName, companyName: '', phone: lead.whatsapp, whatsapp: lead.whatsapp, email: lead.email, instagram: '', city: lead.city, neighborhood: '', address: '',
         source: 'Site', serviceInterest: 'Outro', pipelineStage: 'Entrada', temperature: 'Quente', estimatedValue: 0, probability: 0, entryDate: now, lastContactAt: now, notes: summary,

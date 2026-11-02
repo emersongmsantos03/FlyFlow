@@ -35,6 +35,20 @@ describe('cadastro do site', () => {
     expect(record.tags).toEqual(expect.arrayContaining(['x', AWAITING_CONTACT_TAG]))
   })
 
+  it('usa o objetivo e a cidade do cadastro mais recente sem perder as anotações', () => {
+    const leads = [{ id: 'a', whatsapp: '5542984275772', city: 'Curitiba', notes: 'Espaço: Casa · Objetivo: Vender\nCliente prefere manhã', tags: [] }]
+    const { record } = applySiteLead({ leads }, parseSiteLead(valid)!, now, ids())
+    expect(record.city).toBe('Campo Largo')
+    expect(String(record.notes).match(/Objetivo: ([^·\n]+)/)?.[1].trim()).toBe('Airbnb')
+    expect(record.notes).toContain('Cliente prefere manhã')
+  })
+
+  it('não repete as notas quando o mesmo cadastro chega de novo', () => {
+    const first = applySiteLead({ leads: [{ id: 'a', whatsapp: '5542984275772', notes: 'Cliente prefere manhã', tags: [] }] }, parseSiteLead(valid)!, now, ids())
+    const second = applySiteLead(first.state, parseSiteLead(valid)!, now, ids())
+    expect(second.record.notes).toBe(first.record.notes)
+  })
+
   it('não agenda contato para quem pediu para sair', () => {
     const leads = [{ id: 'a', whatsapp: '5542984275772', doNotContact: true, tags: [] }]
     expect(applySiteLead({ leads }, parseSiteLead(valid)!, now, ids()).record.tags).not.toContain(AWAITING_CONTACT_TAG)
