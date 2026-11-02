@@ -253,11 +253,11 @@ export const emailReport = async (env: TrackingEnv, workspaceId: string, from: s
   return { rows: rows.results, people: people.results }
 }
 
-const siteCors = (origin: string | null): Record<string, string> => (origin && siteOrigins.has(origin)
+export const siteCors = (origin: string | null): Record<string, string> => (origin && siteOrigins.has(origin)
   ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin' }
   : { Vary: 'Origin' })
 
-const withinRateLimit = async (env: TrackingEnv, ip: string) => {
+export const withinRateLimit = async (env: TrackingEnv, ip: string) => {
   const key = `ratelimit:track:${await sha256(ip)}:${Math.floor(Date.now() / 60_000)}`
   const count = Number(await env.GOOGLE_OAUTH.get(key)) || 0
   if (count >= SITE_EVENTS_PER_MINUTE) return false

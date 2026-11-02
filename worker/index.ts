@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from 'jose'
 import { handleDataApiRequest } from './dataApi'
 import { handleIntegrationRequest, handleMetricsRequest } from './metrics'
+import { handleSiteLead } from './siteLeads'
 import { handleRedirect, handleSiteEvent } from './tracking'
 
 interface Env {
@@ -546,6 +547,12 @@ export default {
     const redirectMatch = url.pathname.match(/^\/r\/([A-Za-z0-9]{4,32})$/)
     if (redirectMatch && (request.method === 'GET' || request.method === 'HEAD')) return handleRedirect(redirectMatch[1], request, env)
     if (url.pathname === '/t/event') return handleSiteEvent(request, env)
+    if (url.pathname === '/t/cadastro') {
+      return handleSiteLead(request, env, {
+        read: (workspaceId, fallbackJson) => readWorkspaceState(env, workspaceId, fallbackJson),
+        write: (workspaceId, stateJson, updatedAt) => writeWorkspaceState(env, workspaceId, stateJson, updatedAt),
+      })
+    }
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) })
     if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, service: 'flyflow-api' }, 200, origin)
     if (request.method === 'GET' && url.pathname === '/internal/status') {
