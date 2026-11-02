@@ -215,11 +215,56 @@ export const buildInsights = (current: SocialTotals, previous: SocialTotals, pos
   const weekdays = buildWeekdayPerformance(posts).filter((item) => item.posts)
   if (weekdays.length >= 3) {
     const best = [...weekdays].sort((left, right) => right.avgEngagement - left.avgEngagement)[0]
-    insights.push({ tone: 'neutral', text: `Posts publicados ${best.label === 'Sáb' || best.label === 'Dom' ? 'no' : 'na'} ${best.label.toLowerCase()} tiveram mais interações em média.` })
+    const fullName: Record<string, string> = { Dom: 'no domingo', Seg: 'na segunda', Ter: 'na terça', Qua: 'na quarta', Qui: 'na quinta', Sex: 'na sexta', Sáb: 'no sábado' }
+    insights.push({ tone: 'neutral', text: `Posts publicados ${fullName[best.label] ?? best.label} tiveram mais interações em média.` })
   }
   const champion = topPosts(posts, 1)[0]
   if (champion && postEngagement(champion)) {
     insights.push({ tone: 'positive', text: `Post campeão: “${(champion.title || champion.format || 'publicação').slice(0, 60)}” em ${channelById(champion.source).label}, com ${integer(postEngagement(champion))} interações.` })
   }
   return insights
+}
+
+// ---------------------------------------------------------------- visual
+
+/** Série diária somando as redes, para os mini gráficos dos destaques. */
+export const buildTotalSeries = (rows: Array<Record<string, number | string | null>>, sources: string[]) =>
+  rows.map((row) => {
+    const values = sources.map((source) => row[source]).filter((value): value is number => typeof value === 'number')
+    return { date: String(row.date), value: values.length ? values.reduce((total, value) => total + value, 0) : null }
+  })
+
+/** Interações diárias somadas das redes (usa `engagement` ou soma as partes). */
+export const buildEngagementSeries = (points: MetricPoint[], sources: string[], range: DateRange) => {
+  const days = buildMetricSeries([], '', '', range.from, range.to).map((point) => point.date)
+  const byDay = new Map<string, number>()
+  sources.forEach((source) => {
+    const keys = has(points, source, 'engagement') ? ['engagement'] : engagementParts
+    points.forEach((point) => {
+      if (point.source !== source || !keys.includes(point.metric) || point.date < range.from || point.date > range.to) return
+      byDay.set(point.date, (byDay.get(point.date) ?? 0) + point.value)
+    })
+  })
+  return days.map((date) => ({ date, value: byDay.get(date) ?? null }))
+}
+
+/** Seguidores de uma rede por dia, para o mini gráfico do cartão da rede. */
+export const buildNetworkAudienceSeries = (points: MetricPoint[], source: string, range: DateRange) =>
+  buildAudienceSeries(points, [source], range).map((row) => ({ date: String(row.date), value: typeof row[source] === 'number' ? row[source] as number : null }))
+
+export interface InteractionSlice { key: string; label: string; value: number }
+
+/** Curtidas, comentários, salvos e compartilhamentos do período; usa as métricas diárias e, sem elas, os posts. */
+export const buildInteractionBreakdown = (points: MetricPoint[], sources: string[], range: DateRange, posts: MetricPost[]): InteractionSlice[] => {
+  const labels: Record<string, string> = { likes: 'Curtidas', comments: 'Comentários', saves: 'Salvos', shares: 'Compartilhamentos' }
+  const fromPoints = engagementParts.map((key) => ({
+    key,
+    label: labels[key],
+    value: points.filter((point) => sources.includes(point.source) && (point.metric === key || (key === 'likes' && point.metric === 'reactions')) && point.date >= range.from && point.date <= range.to)
+      .reduce((total, point) => total + point.value, 0),
+  }))
+  const slices = fromPoints.some((slice) => slice.value > 0)
+    ? fromPoints
+    : engagementParts.map((key) => ({ key, label: labels[key], value: posts.reduce((total, post) => total + (post.metrics[key] ?? 0), 0) }))
+  return slices.filter((slice) => slice.value > 0)
 }
