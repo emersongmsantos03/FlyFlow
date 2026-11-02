@@ -49,7 +49,6 @@ import {
   MessageCircle,
   Moon,
   PackageCheck,
-  Palette,
   Paperclip,
   Pencil,
   Plug,
@@ -12670,6 +12669,9 @@ function AppointmentForm({
   const watchedClientId = watch('clientId')
   const watchedLeadId = watch('leadId')
   const watchedColor = watch('color')
+  // Cores vindas do Google ou de versões antigas podem chegar em maiúsculas, sem # ou vazias.
+  const normalizedColor = /^#?[0-9a-f]{6}$/i.test(watchedColor ?? '') ? `#${watchedColor.replace('#', '').toLowerCase()}` : '#d8a500'
+  const selectedColorOption = appointmentColorOptions.find((option) => option.value === normalizedColor)
   const watchedStartAt = watch('startAt')
   const watchedEndAt = watch('endAt')
   const watchedAddress = watch('address') ?? ''
@@ -12737,29 +12739,99 @@ function AppointmentForm({
   }, [getValues, setValue, state.leads, watchedLeadId])
 
   return (
-    <form className="appointment-form" onSubmit={handleSubmit(onSubmit)}>
+    <form className="appointment-form" onSubmit={handleSubmit(onSubmit)} style={{ '--event-color': normalizedColor, '--event-on-color': readableEventTextColor(normalizedColor) } as React.CSSProperties}>
       <input type="hidden" {...register('clientId')} />
       <input type="hidden" {...register('leadId')} />
       <input type="hidden" {...register('color')} />
       <input type="hidden" {...register('address')} />
-      <section className="appointment-form__section">
-        <header className="appointment-form__section-heading">
-          <span><CalendarDays size={17} /></span>
-          <div><strong>Informações do evento</strong><small>Defina o compromisso e como ele aparecerá na agenda.</small></div>
-        </header>
-        <div className="appointment-form__grid">
-          <div className="md:col-span-2"><InputField label={isEditing ? 'Título' : 'Título do agendamento'} error={getError(errors.title?.message)}><input autoFocus={!isEditing} className="field-input" placeholder="Ex.: Reunião de alinhamento com cliente" {...register('title')} /></InputField></div>
-          <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><EnumSelect name="appointmentType" control={control} options={appointmentTypes} /></InputField>
-          <InputField label="Status" error={getError(errors.status?.message)}><EnumSelect name="status" control={control} options={appointmentStatuses} /></InputField>
+
+      <section className="appt-hero" aria-label="Identificação do evento">
+        <span className="appt-hero__bar" aria-hidden="true" />
+        <div className="appt-hero__body">
+          <label className="appt-hero__title">
+            <span className="sr-only">Título do agendamento</span>
+            <input autoFocus={!isEditing} placeholder="Adicionar título" {...register('title')} />
+          </label>
+          {errors.title?.message ? <p className="field-error">{getError(errors.title.message)}</p> : null}
+          <div className="appt-hero__meta">
+            <InputField label="Tipo" error={getError(errors.appointmentType?.message)}><EnumSelect name="appointmentType" control={control} options={appointmentTypes} /></InputField>
+            <InputField label="Status" error={getError(errors.status?.message)}><EnumSelect name="status" control={control} options={appointmentStatuses} /></InputField>
+          </div>
+          <div className="appt-color" role="radiogroup" aria-label="Cor do evento">
+            <div className="appt-color__head">
+              <span className="field-label">Cor do evento</span>
+              <span className="appt-color__current"><i aria-hidden="true" />{selectedColorOption?.label ?? 'Personalizada'}</span>
+            </div>
+            <div className="appt-color__swatches">
+              {appointmentColorOptions.map((option) => {
+                const selected = normalizedColor === option.value
+                return (
+                  <button
+                    key={option.value}
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={option.label}
+                    className={`appt-swatch ${selected ? 'is-selected' : ''}`}
+                    style={{ '--swatch': option.value, '--swatch-on': readableEventTextColor(option.value) } as React.CSSProperties}
+                    type="button"
+                    onClick={() => setValue('color', option.value, { shouldDirty: true })}
+                    title={option.label}
+                  >{selected ? <Check size={14} strokeWidth={3} /> : null}</button>
+                )
+              })}
+              <label
+                className={`appt-swatch appt-swatch--custom ${selectedColorOption ? '' : 'is-selected'}`}
+                style={{ '--swatch': normalizedColor, '--swatch-on': readableEventTextColor(normalizedColor) } as React.CSSProperties}
+                title="Escolher outra cor"
+              >
+                <input type="color" aria-label="Escolher outra cor" value={normalizedColor} onChange={(event) => setValue('color', event.currentTarget.value, { shouldDirty: true })} />
+                {selectedColorOption ? <Plus size={14} strokeWidth={2.5} /> : <Check size={14} strokeWidth={3} />}
+              </label>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="appointment-form__section">
-        <header className="appointment-form__section-heading">
-          <span><ContactRound size={17} /></span>
-          <div><strong>Vínculos</strong><small>Conecte o evento ao contato e ao projeto correspondente.</small></div>
+      <section className="appt-card">
+        <header className="appt-card__head">
+          <span className="appt-card__icon"><Clock size={16} /></span>
+          <h3>Quando</h3>
+          <span className="appt-card__badge" aria-live="polite">{currentDuration > 0 ? formatDurationLabel(currentDuration) : 'Defina o horário'}</span>
         </header>
-        <div className="appointment-form__grid">
+        <div className="appt-card__grid">
+          <InputField label="Início" error={getError(errors.startAt?.message)}><input className="field-input" type="datetime-local" {...register('startAt')} /></InputField>
+          <InputField label="Fim" error={getError(errors.endAt?.message)}><input className="field-input" type="datetime-local" {...register('endAt')} /></InputField>
+        </div>
+        <div className="appt-presets" role="group" aria-label="Duração rápida">
+          {[15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => (
+            <button key={minutes} aria-pressed={currentDuration === minutes} className={currentDuration === minutes ? 'is-active' : ''} type="button" onClick={() => setAppointmentDuration(minutes)}>
+              {formatDurationLabel(minutes)}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="appt-card">
+        <header className="appt-card__head">
+          <span className="appt-card__icon"><MapPin size={16} /></span>
+          <h3>Onde</h3>
+        </header>
+        <MapsAddressField
+          label="Endereço ou local"
+          error={getError(errors.address?.message)}
+          value={watchedAddress}
+          onChange={(nextValue) => setValue('address', nextValue, { shouldDirty: true, shouldValidate: true })}
+          placeholder="Busque um endereço ou informe o local"
+        />
+      </section>
+
+      <section className="appt-card">
+        <header className="appt-card__head">
+          <span className="appt-card__icon"><Link2 size={16} /></span>
+          <h3>Vínculos</h3>
+          <span className="appt-card__hint">Opcional</span>
+        </header>
+        <div className="appt-card__grid">
           <InputField label="Contato no CRM" error={getError(errors.clientId?.message || errors.leadId?.message)}>
             <Select value={selectedContactKey} placeholder="Sem contato vinculado" searchable searchPlaceholder="Pesquisar contato ou empresa por nome..." clearable options={contactOptions.map((contact) => ({ value: contact.key, label: `${contact.label} · ${contact.detail}`, keywords: contact.label }))} onChange={chooseContact} />
           </InputField>
@@ -12769,78 +12841,35 @@ function AppointmentForm({
         </div>
       </section>
 
-      <section className="appointment-form__section">
-        <header className="appointment-form__section-heading">
-          <span><Clock size={17} /></span>
-          <div><strong>Quando e onde</strong><small>Organize o horário e o local do compromisso.</small></div>
-          <div className="appointment-form__duration"><small>Duração</small><strong>{formatDurationLabel(currentDuration)}</strong></div>
+      <section className="appt-card">
+        <header className="appt-card__head">
+          <span className="appt-card__icon"><FileText size={16} /></span>
+          <h3>Observações</h3>
         </header>
-        <div className="appointment-form__grid">
-          <InputField label="Início" error={getError(errors.startAt?.message)}><input className="field-input" type="datetime-local" {...register('startAt')} /></InputField>
-          <InputField label="Fim" error={getError(errors.endAt?.message)}><input className="field-input" type="datetime-local" {...register('endAt')} /></InputField>
-          <div className="appointment-duration-presets md:col-span-2" aria-label="Duração rápida">
-            <span>Duração rápida</span>
-            {[15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => (
-              <button key={minutes} className={currentDuration === minutes ? 'is-active' : ''} type="button" onClick={() => setAppointmentDuration(minutes)}>
-                {formatDurationLabel(minutes)}
-              </button>
-            ))}
-            <small>Ou ajuste o horário final livremente.</small>
-          </div>
-          <div className="md:col-span-2">
-            <MapsAddressField
-              label="Endereço ou local"
-              error={getError(errors.address?.message)}
-              value={watchedAddress}
-              onChange={(nextValue) => setValue('address', nextValue, { shouldDirty: true, shouldValidate: true })}
-              placeholder="Busque um endereço ou informe o local do evento"
-            />
-          </div>
-        </div>
+        <label className="block">
+          <span className="sr-only">Observações</span>
+          <textarea className="field-input appt-notes" placeholder="Briefing, pontos importantes, links ou instruções…" {...register('notes')} />
+          {errors.notes?.message ? <p className="field-error">{getError(errors.notes.message)}</p> : null}
+        </label>
       </section>
 
-      <section className="appointment-form__section">
-        <header className="appointment-form__section-heading">
-          <span><Palette size={17} /></span>
-          <div><strong>Detalhes e identificação</strong><small>Adicione contexto e escolha como o evento será destacado.</small></div>
-        </header>
-        <div className="appointment-form__grid">
-          <div className="md:col-span-2"><InputField label="Observações" error={getError(errors.notes?.message)}><textarea className="field-input min-h-24 resize-y" placeholder="Briefing, pontos importantes, links ou instruções…" {...register('notes')} /></InputField></div>
-          <div className="md:col-span-2">
-            <InputField label="Cor do evento" error={getError(errors.color?.message)}>
-              <div className="appointment-form__color-picker">
-                <div className="appointment-form__colors">
-                {appointmentColorOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    aria-label={option.label}
-                    aria-pressed={watchedColor === option.value}
-                    className={watchedColor === option.value ? 'is-selected' : ''}
-                    style={{ '--appointment-color': option.value } as React.CSSProperties}
-                    type="button"
-                    onClick={() => setValue('color', option.value)}
-                    title={option.label}
-                  ><span /></button>
-                ))}
-                </div>
-                <small className="appointment-form__color-name" style={{ '--appointment-color': watchedColor } as React.CSSProperties}><i />{appointmentColorOptions.find((option) => option.value === watchedColor)?.label || 'Personalizada'}</small>
-              </div>
-            </InputField>
-          </div>
-          <label className={`appointment-form__calendar-sync md:col-span-2 ${watchedCreateGoogleCalendar ? 'is-active' : ''}`}>
-            <input type="checkbox" {...register('createGoogleCalendar')} />
-            <span><CalendarDays size={18} /></span>
-            <div><strong>Google Calendar</strong><small>{isEditing ? 'Atualizar este evento no Google após salvar.' : 'Sincronizar automaticamente após criar.'}</small></div>
-            <i>{watchedCreateGoogleCalendar ? 'Ativo' : 'Opcional'}</i>
-          </label>
-        </div>
-      </section>
+      <label className={`appt-sync ${watchedCreateGoogleCalendar ? 'is-active' : ''}`}>
+        <input className="sr-only" type="checkbox" role="switch" {...register('createGoogleCalendar')} />
+        <span className="appt-sync__icon"><CalendarDays size={17} /></span>
+        <span className="appt-sync__text">
+          <strong>Google Calendar</strong>
+          <small>{watchedCreateGoogleCalendar
+            ? (isEditing ? 'As alterações serão enviadas ao Google ao salvar.' : 'O evento será criado no Google ao salvar.')
+            : 'Fica só no FlyFlow, sem sincronizar.'}</small>
+        </span>
+        <span className="appt-switch" aria-hidden="true"><span /></span>
+      </label>
 
       <div className="appointment-form__actions">
         <div>
           {appointment && onDelete ? <Button
             className="appointment-form__delete"
-            variant="danger"
+            variant="ghost"
             type="button"
             aria-label="Excluir este agendamento"
             onPointerDown={(event) => event.stopPropagation()}
@@ -12849,7 +12878,7 @@ function AppointmentForm({
               event.stopPropagation()
               onDelete()
             }}
-          ><Trash2 size={16} /> Excluir agendamento</Button> : null}
+          ><Trash2 size={16} /> <span>Excluir</span></Button> : null}
         </div>
         <div>
           <Button variant="secondary" type="button" onClick={onCancel}>Cancelar</Button>

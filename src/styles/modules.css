@@ -153,9 +153,9 @@ button.detail-row:hover { background: var(--surface-2); }
 .task-title-input { border: 0; border-bottom: 1px solid var(--border); background: none; font-size: 1rem; font-weight: 600; color: var(--text-primary); outline: none; }
 .task-title-input:focus { border-bottom-color: var(--accent); }
 .task-section-label { font-size: 0.74rem; font-weight: 550; color: var(--text-secondary); }
-.task-type-chips button, .task-duration-chips button, .appointment-duration-presets button { border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 0.76rem; color: var(--text-secondary); }
-.task-type-chips button.is-active, .task-duration-chips button.is-active, .appointment-duration-presets button.is-active { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
-.task-schedule-card, .appointment-form__section { border-color: var(--border-subtle) !important; background: var(--surface-2); }
+.task-type-chips button, .task-duration-chips button { border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 0.76rem; color: var(--text-secondary); }
+.task-type-chips button.is-active, .task-duration-chips button.is-active { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
+.task-schedule-card { border-color: var(--border-subtle) !important; background: var(--surface-2); }
 
 /* Financeiro -------------------------------------------------------------- */
 .finance-current-balance { display: inline-flex; align-items: center; gap: 0.4rem; min-height: var(--control-height); padding: 0 0.7rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); font-size: 0.78rem; color: var(--text-muted); }
