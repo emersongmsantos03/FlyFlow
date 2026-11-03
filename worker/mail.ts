@@ -13,6 +13,8 @@ export interface MailSocket {
   writable: WritableStream<Uint8Array>
   startTls(): MailSocket
   close(): Promise<void> | void
+  /** No Workers, rejeita com o motivo real quando a conexão ou o TLS não abre. */
+  opened?: Promise<unknown>
 }
 export type Dial = (host: string, port: number, tls: Tls) => MailSocket | Promise<MailSocket>
 
@@ -86,7 +88,15 @@ class Connection {
   private reader!: ReadableStreamDefaultReader<Uint8Array>
   private writer!: WritableStreamDefaultWriter<Uint8Array>
   private buffer = new Uint8Array(0)
-  constructor(private socket: MailSocket) { this.attach() }
+  constructor(private socket: MailSocket, private host = '', private port = 0) { this.attach() }
+  /** Espera a conexão abrir; sem isso o Workers só diz "Stream was cancelled". */
+  async ready(stage: string) {
+    if (!this.socket.opened) return
+    try { await this.socket.opened } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      fail(`${stage} não abriu (${reason}; ${this.host} → ${await resolveForDiagnosis(this.host)}, porta ${this.port})`, 502)
+    }
+  }
   private attach() { this.reader = this.socket.readable.getReader(); this.writer = this.socket.writable.getWriter() }
   private async fill() {
     const { value, done } = await this.reader.read()
@@ -117,11 +127,21 @@ class Connection {
     this.socket = this.socket.startTls()
     this.buffer = new Uint8Array(0)
     this.attach()
+    await this.ready('TLS (STARTTLS)')
   }
   async close() {
     try { this.reader.releaseLock(); this.writer.releaseLock() } catch { /* já liberado */ }
     try { await this.socket.close() } catch { /* ignorado */ }
   }
+}
+
+/** Endereços do servidor, só para o diagnóstico quando a conexão não abre. */
+const resolveForDiagnosis = async (host: string) => {
+  try {
+    const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=A`, { headers: { accept: 'application/dns-json' }, signal: AbortSignal.timeout(5000) })
+    const body = await response.json() as { Answer?: Array<{ type: number; data: string }> }
+    return (body.Answer ?? []).filter((item) => item.type === 1).map((item) => item.data).join(', ') || 'sem endereço IPv4'
+  } catch { return 'DNS não consultado' }
 }
 
 const withDeadline = async <T>(milliseconds: number, work: Promise<T>, onTimeout: () => void): Promise<T> => {
@@ -157,7 +177,11 @@ const describe = (label: string, error: unknown): MailError => {
   return new MailError(`${label}: ${detail.replace(/\s+/g, ' ').slice(0, 200) || 'falha de conexão'}`, 502)
 }
 const labelled = async <T>(label: string, work: () => Promise<T>) => {
-  try { return await work() } catch (error) { throw describe(label, error) }
+  try { return await work() } catch (error) {
+    // Falhas de rede (502/504) ganham o servidor e a porta; erros de senha já dizem SMTP/IMAP.
+    if (error instanceof MailError && error.status >= 502 && !error.message.startsWith(label)) throw new MailError(`${label}: ${error.message}`, error.status)
+    throw describe(label, error)
+  }
 }
 
 const smtpSession = <T>(dial: Dial, config: ServerConfig, work: (connection: Connection) => Promise<T>) =>
@@ -166,9 +190,10 @@ const imapSession = <T>(dial: Dial, config: ServerConfig, work: (imap: Imap) => 
   labelled(`IMAP ${config.host}:${config.port}`, () => imapSessionRaw(dial, config, work))
 
 async function smtpSessionRaw<T>(dial: Dial, config: ServerConfig, work: (connection: Connection) => Promise<T>): Promise<T> {
-  const connection = new Connection(await dial(config.host, config.port, config.port === 465 ? 'on' : 'starttls'))
+  const connection = new Connection(await dial(config.host, config.port, config.port === 465 ? 'on' : 'starttls'), config.host, config.port)
   return withDeadline(60_000, (async () => {
     try {
+      await connection.ready(config.port === 465 ? 'Conexão TLS' : 'Conexão')
       if ((await smtpReply(connection)).code !== 220) fail('O servidor SMTP recusou a conexão.', 502)
       let hello = await smtpCommand(connection, 'EHLO flyflow.herodrone.com.br', [250], 'O servidor SMTP recusou a apresentação.')
       if (config.port === 587) {
@@ -257,10 +282,11 @@ const quote = (value: string) => `"${value.replace(/\\/g, '\\\\').replace(/"/g, 
 const asciiSafe = (value: string) => /^[\x20-\x7e]*$/.test(value)
 
 async function imapSessionRaw<T>(dial: Dial, config: ServerConfig, work: (imap: Imap) => Promise<T>): Promise<T> {
-  const connection = new Connection(await dial(config.host, config.port, config.port === 993 ? 'on' : 'starttls'))
+  const connection = new Connection(await dial(config.host, config.port, config.port === 993 ? 'on' : 'starttls'), config.host, config.port)
   const imap = new Imap(connection)
   return withDeadline(90_000, (async () => {
     try {
+      await connection.ready(config.port === 993 ? 'Conexão TLS' : 'Conexão')
       const greeting = await imap.response()
       if (!/^\* (OK|PREAUTH)/i.test(greeting.text)) fail('O servidor IMAP recusou a conexão.', 502)
       if (config.port === 143) {

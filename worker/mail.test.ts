@@ -199,3 +199,19 @@ describe('diagnóstico', () => {
     await expect(verifyAccount(dial, account)).rejects.toThrow(/SMTP smtp\.umbler\.com:587: proxy request failed.*IMAP imap\.umbler\.com:993: proxy request failed/)
   })
 })
+
+describe('conexão que não abre', () => {
+  it('usa o motivo do opened e consulta o DNS', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async () => new Response(JSON.stringify({ Answer: [{ type: 1, data: '203.0.113.7' }] }))) as typeof fetch
+    try {
+      const dial: Dial = () => {
+        const opened = Promise.reject(new Error('connection refused'))
+        opened.catch(() => undefined)
+        const readable = new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error('Stream was cancelled.')) } })
+        return { readable, writable: new WritableStream<Uint8Array>(), close: () => undefined, startTls: () => { throw new Error('não') }, opened }
+      }
+      await expect(verifyAccount(dial, account)).rejects.toThrow(/SMTP smtp\.umbler\.com:587: Conexão não abriu \(connection refused; smtp\.umbler\.com → 203\.0\.113\.7, porta 587\)/)
+    } finally { globalThis.fetch = original }
+  })
+})
