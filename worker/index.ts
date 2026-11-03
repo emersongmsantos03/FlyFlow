@@ -1,5 +1,7 @@
 import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT } from 'jose'
+import { connect } from 'cloudflare:sockets'
 import { handleDataApiRequest } from './dataApi'
+import { handleMailRequest, type Dial, type MailSocket } from './mail'
 import { handleIntegrationRequest, handleMetricsRequest } from './metrics'
 import { handleSiteLead } from './siteLeads'
 import { handleRedirect, handleSiteEvent } from './tracking'
@@ -12,7 +14,11 @@ interface Env {
   GOOGLE_OAUTH: KVNamespace
   FLYFLOW_DB: D1Database
   IP_HASH_SALT?: string
+  MAIL_ENCRYPTION_KEY?: string
 }
+
+const cloudflareDial: Dial = (host, port, tls) =>
+  connect({ hostname: host, port }, { secureTransport: tls, allowHalfOpen: false }) as unknown as MailSocket
 
 const allowedOrigins = new Set([
   'https://flyflow.herodrone.com.br',
@@ -779,6 +785,20 @@ export default {
     const userId = token ? await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID) : null
     if (!userId) {
       return json({ error: 'Autenticação Firebase inválida.' }, 401, origin)
+    }
+
+    if (url.pathname.startsWith('/mail/')) {
+      try {
+        // Mesmo workspace usado pela conexão Google: a caixa do domínio é da empresa.
+        const identity = await verifyFirebaseIdentity(token, env.FIREBASE_PROJECT_ID)
+        const d1Access = identity ? await claimD1Invitation(env, identity) : null
+        const workspaceId = d1Access?.workspaceId || await workspaceForUser(token, userId, env.FIREBASE_PROJECT_ID).catch(() => '')
+        if (!workspaceId) return json({ error: 'Usuário sem workspace ativo para conectar o e-mail.' }, 403, origin)
+        const result = await handleMailRequest(request, env, workspaceId, cloudflareDial)
+        return json(result.body, result.status, origin)
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'Falha no e-mail do domínio.' }, 500, origin)
+      }
     }
 
     if (url.pathname.startsWith('/google/')) {

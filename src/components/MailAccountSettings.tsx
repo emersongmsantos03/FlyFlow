@@ -5,8 +5,10 @@ import { webmailUrl } from '../lib/format'
 import { Button, Panel, Select } from './ui'
 
 const empty: MailAccount = { connected: false, email: '', name: '', smtp: { host: '', port: 465, user: '', pass: '' }, imap: { host: '', port: 993, user: '', pass: '' } }
-export function MailAccountSettings() {
-  const [account, setAccount] = useState<MailAccount>(empty)
+/** `bare` tira o painel para usar dentro do modal do Inbox; `onSaved` avisa quando a conta conectou. */
+export function MailAccountSettings({ bare, defaultEmail, onSaved }: { bare?: boolean; defaultEmail?: string; onSaved?: (account: MailAccount) => void } = {}) {
+  // Aberto pelo Inbox: já vem com o e-mail da empresa e os servidores da Umbler, onde está o contato@.
+  const [account, setAccount] = useState<MailAccount>(() => (defaultEmail ? { ...empty, email: defaultEmail, smtp: { host: 'smtp.umbler.com', port: 587, user: defaultEmail, pass: '' }, imap: { host: 'imap.umbler.com', port: 993, user: defaultEmail, pass: '' } } : empty))
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [available, setAvailable] = useState(false)
@@ -28,7 +30,7 @@ export function MailAccountSettings() {
   }, [checkRevision])
   const save = async () => {
     setBusy(true); setMessage('Testando SMTP e IMAP…')
-    try { setAccount(await saveDomainMail(account)); setMessage('Conta conectada. O Inbox e o envio de propostas usarão este e-mail e a assinatura cadastrada.') }
+    try { const saved = await saveDomainMail(account); setAccount(saved); setMessage('Conta conectada. O Inbox e o envio de propostas usarão este e-mail e a assinatura cadastrada.'); onSaved?.(saved) }
     catch (error) { if (error instanceof MailServiceUnavailableError) setAvailable(false); setMessage(error instanceof Error ? error.message : 'Não foi possível salvar a conta.') }
     finally { setBusy(false) }
   }
@@ -38,7 +40,7 @@ export function MailAccountSettings() {
     catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível desconectar.') }
     finally { setBusy(false) }
   }
-  return <Panel title="E-mail com domínio próprio" id="settings-mail">
+  const content = (
     <div className="space-y-4">
       <p className="text-sm text-gray-500">Conecte SMTP para enviar e IMAP para receber. Quando conectada, esta conta será usada no Inbox e nas propostas. A agenda Google continua independente.</p>
       {!available ? <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
@@ -64,5 +66,6 @@ export function MailAccountSettings() {
       <div className="flex flex-wrap gap-2"><Button type="button" disabled={busy || checking || !available || !account.email} onClick={() => void save()}>{busy ? 'Aguarde…' : 'Testar e salvar conexão'}</Button>{account.connected ? <Button type="button" variant="secondary" disabled={busy || !available} onClick={() => void disconnect()}>Desconectar</Button> : null}</div>
       {message && available ? <p role="status" className="text-sm text-gray-500">{message}</p> : null}
     </div>
-  </Panel>
+  )
+  return bare ? content : <Panel title="E-mail com domínio próprio" id="settings-mail">{content}</Panel>
 }
