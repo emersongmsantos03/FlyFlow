@@ -192,3 +192,10 @@ describe('rotas', () => {
     expect((await handleMailRequest(new Request('https://w/mail/account'), env, 'ws1', dial)).body).toMatchObject({ connected: false })
   })
 })
+
+describe('diagnóstico', () => {
+  it('mostra a etapa e o motivo quando a conexão cai, testando SMTP e IMAP', async () => {
+    const dial: Dial = (host, port) => { throw new Error(`proxy request failed, cannot connect to ${host}:${port}`) }
+    await expect(verifyAccount(dial, account)).rejects.toThrow(/SMTP smtp\.umbler\.com:587: proxy request failed.*IMAP imap\.umbler\.com:993: proxy request failed/)
+  })
+})
