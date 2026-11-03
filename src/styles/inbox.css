@@ -20,9 +20,25 @@
 .mail-toggle input { margin-top: 0.15rem; accent-color: var(--accent); }
 .mail-toggle strong { display: block; font-size: 0.78rem; font-weight: 600; }
 .mail-toggle small { font-size: 0.7rem; color: var(--text-muted); }
-.mail-account-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.mail-account-card { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.35rem; margin-top: auto; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .mail-account-card small { display: block; font-size: 0.66rem; color: var(--text-muted); }
 .mail-account-card strong { display: block; overflow: hidden; font-size: 0.75rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.mail-account-card__switch { display: grid; width: 100%; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; padding: 0.35rem; border: 1px solid transparent; border-radius: var(--radius-md); background: none; color: var(--text-primary); text-align: left; cursor: pointer; }
+.mail-account-card__switch:hover, .mail-account-card__switch[aria-expanded="true"] { border-color: var(--border); background: var(--surface-3); }
+.mail-account-card__switch > svg { color: var(--text-muted); }
+.mail-account-card__switch small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-account-menu { position: absolute; bottom: calc(100% + 0.35rem); left: 0; right: 0; z-index: 20; display: grid; gap: 0.1rem; padding: 0.35rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 0.16)); }
+.mail-account-menu > small { padding: 0.25rem 0.45rem; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.mail-account-menu hr { margin: 0.25rem 0; border: 0; border-top: 1px solid var(--border); }
+.mail-account-menu button { display: grid; min-width: 0; grid-template-columns: 1rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; padding: 0.45rem; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-primary); font-size: 0.78rem; text-align: left; cursor: pointer; }
+.mail-account-menu button:hover { background: var(--surface-3); }
+.mail-account-menu button[aria-checked="true"] { background: var(--accent-soft); }
+.mail-account-menu button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-account-menu button > svg:last-child:not(:first-child) { color: var(--accent-text); }
+.mail-connect__alt { margin-top: 0.75rem; text-align: center; }
+.mail-connect__alt button { display: inline-flex; align-items: center; gap: 0.4rem; border: 0; background: none; color: var(--text-secondary); font-size: 0.8rem; text-decoration: underline; cursor: pointer; }
+/* No computador a troca fica no cartão da conta (embaixo); as abas só aparecem no celular/tablet. */
+@media (min-width: 1024px) { .mail-accounts { display: none; } }
 
 /* Lista */
 .mail-list-column { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--border); }

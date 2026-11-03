@@ -1,13 +1,14 @@
 import {
-  AlertTriangle, ArrowLeft, ChevronDown, Copy, Download, ExternalLink, Image as ImageIcon, Inbox as InboxIcon, Mail, MailOpen,
-  Megaphone, Paperclip, PenLine, RefreshCw, Reply, Search, Send, Star, Tag, Users, X,
+  AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronsUpDown, Copy, Download, ExternalLink, Image as ImageIcon, Inbox as InboxIcon, Mail, MailOpen,
+  Megaphone, Paperclip, PenLine, Plus, RefreshCw, Reply, Search, Send, Settings, Star, Tag, Users, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
-import { Button, PageToolbar } from '../ui'
+import { Button, Modal, PageToolbar } from '../ui'
+import { MailAccountSettings } from '../MailAccountSettings'
 import { avatarTint, formatDateTime, slugify, webmailUrl } from '../../lib/format'
 import type { Lead } from '../../types'
-import { getDomainMailConnection } from '../../services/domainMail'
+import { getDomainMailConnection, readDomainMessage } from '../../services/domainMail'
 import {
   CONFIGURED_GOOGLE_OAUTH_CLIENT_ID, connectGoogleWorkspace, getGoogleWorkspaceConnection, getStoredGoogleOAuthClientId,
   listGoogleWorkspaceEmails, type GoogleMailboxMessage,
@@ -102,6 +103,9 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
   const [crmOnly, setCrmOnly] = useState(false)
   const [selectedId, setSelectedId] = useState('')
   const [mobileReading, setMobileReading] = useState(false)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [domainSetupOpen, setDomainSetupOpen] = useState(false)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   const leadByEmail = useMemo(() => new Map(leads.filter((lead) => lead.email).map((lead) => [lead.email.trim().toLowerCase(), lead])), [leads])
@@ -188,7 +192,24 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
     return () => window.removeEventListener('keydown', onKey)
   }, [selectIndex])
 
+  useEffect(() => {
+    if (!accountMenuOpen) return
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', close)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close) }
+  }, [accountMenuOpen])
+
+  const domainSetup = domainSetupOpen ? (
+    <Modal title={domain.connected ? 'Caixa do domínio' : 'Adicionar caixa de e-mail'} size="lg" onClose={() => setDomainSetupOpen(false)}>
+      <MailAccountSettings bare defaultEmail={companyEmail} onSaved={() => { setDomainSetupOpen(false); setRevision((value) => value + 1); switchAccount('domain') }} />
+    </Modal>
+  ) : null
+
   const switchAccount = (next: MailAccountKind) => {
+    setAccountMenuOpen(false)
     setAccount(next)
     setFolder(next === 'gmail' ? 'primary' : 'inbox')
     setSelectedId('')
@@ -207,6 +228,8 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
       <div className="mail-page module-page">
         <PageToolbar title="Inbox" description="Seus e-mails dentro do FlyFlow, ligados aos contatos do CRM." />
         <ConnectGmailCard clientId={googleClientId} companyEmail={companyEmail} onConnected={() => { setAccount('gmail'); setRevision((value) => value + 1) }} />
+        <p className="mail-connect__alt"><button type="button" onClick={() => setDomainSetupOpen(true)}><Mail size={14} /> Prefere o e-mail do domínio ({companyEmail || 'contato@…'})? Conectar via IMAP/SMTP</button></p>
+        {domainSetup}
       </div>
     )
   }
@@ -257,11 +280,34 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
 
           {!gmail.connected ? <ConnectGmailCard compact clientId={googleClientId} companyEmail={companyEmail} onConnected={() => { setAccount('gmail'); setFolder('primary'); setRevision((value) => value + 1) }} /> : null}
 
-          <div className="mail-account-card">
-            <span className="avatar-chip" data-tint={avatarTint(accountEmail)}>{initialsOf(accountEmail)}</span>
-            <div><small>{activeAccount === 'gmail' ? 'Gmail conectado' : 'E-mail de domínio'}</small><strong title={accountEmail}>{accountEmail}</strong></div>
+          <div className="mail-account-card" ref={accountMenuRef}>
+            <button type="button" className="mail-account-card__switch" aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)} title="Trocar de caixa de e-mail">
+              <span className="avatar-chip" data-tint={avatarTint(accountEmail)}>{initialsOf(accountEmail)}</span>
+              <span><small>{activeAccount === 'gmail' ? 'Gmail conectado' : 'E-mail do domínio'}</small><strong title={accountEmail}>{accountEmail}</strong></span>
+              <ChevronsUpDown size={14} />
+            </button>
             <a className="icon-button" href={activeAccount === 'gmail' ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(accountEmail)}` : webmailUrl(accountEmail || companyEmail)} target="_blank" rel="noreferrer" aria-label="Abrir no navegador" title="Abrir no navegador"><ExternalLink size={14} /></a>
+            {accountMenuOpen ? (
+              <div className="mail-account-menu" role="menu" aria-label="Caixas de e-mail">
+                <small>Caixas de e-mail</small>
+                {gmail.connected ? (
+                  <button role="menuitemradio" aria-checked={activeAccount === 'gmail'} type="button" onClick={() => switchAccount('gmail')}>
+                    <GmailMark /><span title={gmail.email}><strong>{gmail.email}</strong><small>Gmail</small></span>{activeAccount === 'gmail' ? <Check size={14} /> : null}
+                  </button>
+                ) : null}
+                {domain.connected ? (
+                  <button role="menuitemradio" aria-checked={activeAccount === 'domain'} type="button" onClick={() => switchAccount('domain')}>
+                    <Mail size={14} /><span title={domain.email}><strong>{domain.email}</strong><small>Domínio · IMAP/SMTP</small></span>{activeAccount === 'domain' ? <Check size={14} /> : null}
+                  </button>
+                ) : null}
+                <hr />
+                <button role="menuitem" type="button" onClick={() => { setAccountMenuOpen(false); setDomainSetupOpen(true) }}>
+                  {domain.connected ? <><Settings size={14} /><span>Configurar {domain.email}</span></> : <><Plus size={14} /><span>Adicionar {companyEmail || 'e-mail do domínio'}</span></>}
+                </button>
+              </div>
+            ) : null}
           </div>
+          {domainSetup}
         </aside>
 
         <div className="mail-list-column">
@@ -431,9 +477,18 @@ function DomainReader({ row, leadOf, onOpenLead, onReply, onBack }: {
   onReply: (draft: InboxReplyDraft) => void
   onBack: () => void
 }) {
-  const message = row.domain!
+  const [full, setFull] = useState<GoogleMailboxMessage | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const message = full ?? row.domain!
   const lead = leadOf(row.counterpart)
   const person = parseAddress(row.counterpart)
+  useEffect(() => {
+    // A lista traz só o começo de cada e-mail; o corpo inteiro vem ao abrir.
+    if (!(row.domain as GoogleMailboxMessage & { truncated?: boolean })?.truncated) return
+    let active = true
+    readDomainMessage(row.id).then((value) => { if (active) setFull(value) }).catch((error) => { if (active) setLoadError(error instanceof Error ? error.message : 'Não foi possível abrir a mensagem inteira.') })
+    return () => { active = false }
+  }, [row.id, row.domain])
   return (
     <article className="mail-thread">
       <ReaderHeader subject={row.subject} lead={lead} onOpenLead={onOpenLead} onBack={onBack}>
@@ -447,6 +502,7 @@ function DomainReader({ row, leadOf, onOpenLead, onReply, onBack }: {
             <time>{message.date ? formatDateTime(new Date(message.date).toISOString()) : ''}</time>
           </div>
           <EmailBody html="" text={message.body || message.snippet} sender={person.email} />
+          {loadError ? <p className="mail-note"><AlertTriangle size={14} /> {loadError} Mostrando o começo do e-mail.</p> : null}
           {message.hasAttachments ? <p className="mail-note"><Paperclip size={14} /> Esta mensagem tem anexos. Abra o webmail para baixar.</p> : null}
         </section>
       </div>
