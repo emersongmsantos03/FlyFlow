@@ -157,3 +157,12 @@ button.mail-message__head:hover { background: var(--surface-2); }
   .mail-reader__actions { width: 100%; justify-content: flex-end; }
   .mail-thread__messages { padding: 0.6rem; }
 }
+
+/* Passo a passo do contato@ via Gmail */
+.mail-guide { display: grid; gap: 0.9rem; color: var(--text-primary); font-size: 0.875rem; line-height: 1.5; }
+.mail-guide ol { display: grid; gap: 0.75rem; margin: 0; padding-left: 1.25rem; }
+.mail-guide li { display: grid; gap: 0.2rem; }
+.mail-guide li span { color: var(--text-secondary); }
+.mail-guide code { padding: 0.05rem 0.3rem; border-radius: var(--radius-sm); background: var(--surface-3); font-size: 0.8em; }
+.mail-guide__note { padding: 0.6rem 0.75rem; border-radius: var(--radius-md); background: var(--surface-2); color: var(--text-secondary); font-size: 0.8rem; }
+.mail-guide__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }

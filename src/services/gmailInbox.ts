@@ -135,11 +135,20 @@ const mapWithConcurrency = async <T, R>(items: T[], concurrency: number, mapper:
   return results
 }
 
-export const listGmailMessages = async (input: { folder: GmailFolderId; search?: string; pageToken?: string; maxResults?: number }) => {
+/**
+ * Caixa de um endereço que chega ao Gmail por redirecionamento (ex.: contato@ da Umbler)
+ * e sai pelo "Enviar como". São só buscas do Gmail; nada muda na conta.
+ */
+export const aliasFolders = (alias: string) => [
+  { id: 'alias-inbox', label: 'Recebidos', q: `in:inbox {deliveredto:${alias} to:${alias} cc:${alias}}` },
+  { id: 'alias-sent', label: 'Enviados', q: `in:sent from:${alias}` },
+] as const
+
+export const listGmailMessages = async (input: { folder: GmailFolderId; search?: string; pageToken?: string; maxResults?: number; query?: string }) => {
   const folder = gmailFolders.find((item) => item.id === input.folder) ?? gmailFolders[0]
   const params = new URLSearchParams({
     maxResults: String(input.maxResults ?? 25),
-    q: [folder.q, input.search?.trim()].filter(Boolean).join(' '),
+    q: [input.query ?? folder.q, input.search?.trim()].filter(Boolean).join(' '),
   })
   if (input.pageToken) params.set('pageToken', input.pageToken)
   const list = await gmailApi<{ messages?: Array<{ id: string }>; nextPageToken?: string; resultSizeEstimate?: number }>(`messages?${params}`)

@@ -1,6 +1,6 @@
 import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronsUpDown, Copy, Download, ExternalLink, Image as ImageIcon, Inbox as InboxIcon, Mail, MailOpen,
-  Megaphone, Paperclip, PenLine, Plus, RefreshCw, Reply, Search, Send, Settings, Star, Tag, Users, X,
+  Megaphone, Paperclip, PenLine, RefreshCw, Reply, Search, Send, Settings, Star, Tag, Users, X,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
@@ -16,10 +16,12 @@ import {
 import {
   buildEmailDocument, dayGroupLabel, downloadGmailAttachment, formatFileSize, gmailFolders, gmailThreadUrl, hasRemoteImages,
   initialsOf, listGmailMessages, listTime, loadGmailThread, loadGmailUnread, parseAddress, readMailIds, trustImageSender, trustedImageSenders,
-  type GmailAttachment, type GmailFolderId, type GmailListItem, type GmailThreadMessage,
+  aliasFolders, type GmailAttachment, type GmailFolderId, type GmailListItem, type GmailThreadMessage,
 } from '../../services/gmailInbox'
 
 export type MailAccountKind = 'gmail' | 'domain'
+/** `alias`: o contato@ que chega ao Gmail por redirecionamento e sai pelo "Enviar como". */
+type InboxAccount = MailAccountKind | 'alias'
 
 export interface InboxReplyDraft {
   to: string
@@ -27,6 +29,8 @@ export interface InboxReplyDraft {
   subject: string
   quoted: string
   via: MailAccountKind
+  /** Endereço "Enviar como" do Gmail. */
+  from?: string
   reply?: { threadId?: string; messageId?: string; references?: string }
 }
 
@@ -78,20 +82,25 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
   connectionRevision: number
   onOpenLead: (lead: Lead) => void
   onReply: (draft: InboxReplyDraft) => void
-  onComposeNew: (via: MailAccountKind) => void
+  onComposeNew: (via: MailAccountKind, from?: string) => void
 }) {
   const [revision, setRevision] = useState(0)
   const gmail = useMemo(() => getGoogleWorkspaceConnection(), [connectionRevision, revision]) // eslint-disable-line react-hooks/exhaustive-deps
   const domain = useMemo(() => getDomainMailConnection(), [connectionRevision, revision]) // eslint-disable-line react-hooks/exhaustive-deps
-  const [account, setAccount] = useState<MailAccountKind>(() => (getGoogleWorkspaceConnection().connected || !getDomainMailConnection().connected ? 'gmail' : 'domain'))
-  const activeAccount: MailAccountKind = account === 'gmail' && !gmail.connected && domain.connected ? 'domain' : account === 'domain' && !domain.connected ? 'gmail' : account
-  const accountEmail = activeAccount === 'gmail' ? gmail.email : domain.email
-  const connected = activeAccount === 'gmail' ? gmail.connected : domain.connected
+  // O e-mail da empresa (contato@) vira uma caixa separada dentro do Gmail quando não há IMAP direto.
+  const alias = companyEmail.trim().toLowerCase()
+  const aliasAvailable = gmail.connected && !domain.connected && Boolean(alias) && alias !== gmail.email.trim().toLowerCase()
+  const [account, setAccount] = useState<InboxAccount>(() => (getGoogleWorkspaceConnection().connected || !getDomainMailConnection().connected ? 'gmail' : 'domain'))
+  const activeAccount: InboxAccount = account === 'alias'
+    ? (aliasAvailable ? 'alias' : 'gmail')
+    : account === 'gmail' && !gmail.connected && domain.connected ? 'domain' : account === 'domain' && !domain.connected ? 'gmail' : account
+  const viaGmail = activeAccount !== 'domain'
+  const accountEmail = activeAccount === 'gmail' ? gmail.email : activeAccount === 'alias' ? alias : domain.email
+  const connected = viaGmail ? gmail.connected : domain.connected
 
   const [folder, setFolder] = useState<string>('primary')
-  const currentFolder = activeAccount === 'gmail'
-    ? gmailFolders.find((item) => item.id === folder) ?? gmailFolders[0]
-    : domainFolders.find((item) => item.id === folder) ?? domainFolders[0]
+  const folderList: ReadonlyArray<{ id: string; label: string; q?: string }> = activeAccount === 'gmail' ? gmailFolders : activeAccount === 'alias' ? aliasFolders(alias) : domainFolders
+  const currentFolder = folderList.find((item) => item.id === folder) ?? folderList[0]
   const [rows, setRows] = useState<Row[]>([])
   const [nextPage, setNextPage] = useState('')
   const [unread, setUnread] = useState<number | null>(null)
@@ -116,15 +125,16 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
     setLoading(true)
     setError('')
     try {
-      if (activeAccount === 'gmail') {
+      if (activeAccount !== 'domain') {
+        const query = activeAccount === 'alias' ? currentFolder.q : undefined
         const [result, unreadCount] = await Promise.all([
-          listGmailMessages({ folder: currentFolder.id as GmailFolderId, search }),
-          loadGmailUnread().catch(() => null),
+          listGmailMessages({ folder: currentFolder.id as GmailFolderId, search, query }),
+          activeAccount === 'gmail' ? loadGmailUnread().catch(() => null) : Promise.resolve(null),
         ])
         const loaded = applyRead(result.messages.map(fromGmail))
         setRows(currentFolder.id === 'unread' ? loaded.filter((row) => row.unread) : loaded)
         setNextPage(result.nextPageToken)
-        setUnread(unreadCount)
+        setUnread(activeAccount === 'alias' ? loaded.filter((row) => row.unread).length : unreadCount)
       } else {
         const result = await listGoogleWorkspaceEmails({ box: currentFolder.id as 'inbox' | 'sent', maxResults: 40, account: 'domain' })
         const loaded = applyRead(result.map(fromDomain))
@@ -138,16 +148,16 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
     } finally {
       setLoading(false)
     }
-  }, [activeAccount, connected, currentFolder.id, search])
+  }, [activeAccount, connected, currentFolder.id, currentFolder.q, search])
 
   useEffect(() => { void load() }, [load, connectionRevision])
   useEffect(() => { listRef.current?.scrollTo({ top: 0 }) }, [activeAccount, folder, search])
 
   const loadMore = async () => {
-    if (!nextPage || activeAccount !== 'gmail') return
+    if (!nextPage || activeAccount === 'domain') return
     setLoadingMore(true)
     try {
-      const result = await listGmailMessages({ folder: currentFolder.id as GmailFolderId, search, pageToken: nextPage })
+      const result = await listGmailMessages({ folder: currentFolder.id as GmailFolderId, search, pageToken: nextPage, query: activeAccount === 'alias' ? currentFolder.q : undefined })
       setRows((current) => [...current, ...applyRead(result.messages.map(fromGmail)).filter((row) => !current.some((item) => item.id === row.id))])
       setNextPage(result.nextPageToken)
     } catch (loadError) {
@@ -203,15 +213,17 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
   }, [accountMenuOpen])
 
   const domainSetup = domainSetupOpen ? (
-    <Modal title={domain.connected ? 'Caixa do domínio' : 'Adicionar caixa de e-mail'} size="lg" onClose={() => setDomainSetupOpen(false)}>
-      <MailAccountSettings bare defaultEmail={companyEmail} onSaved={() => { setDomainSetupOpen(false); setRevision((value) => value + 1); switchAccount('domain') }} />
+    <Modal title={domain.connected ? 'Caixa do domínio' : `Caixa do ${alias || 'e-mail da empresa'}`} size="lg" onClose={() => setDomainSetupOpen(false)}>
+      {domain.connected
+        ? <MailAccountSettings bare defaultEmail={companyEmail} onSaved={() => { setDomainSetupOpen(false); setRevision((value) => value + 1); switchAccount('domain') }} />
+        : <AliasSetupGuide alias={alias} gmail={gmail.email} onDone={() => { setDomainSetupOpen(false); if (aliasAvailable) switchAccount('alias') }} />}
     </Modal>
   ) : null
 
-  const switchAccount = (next: MailAccountKind) => {
+  const switchAccount = (next: InboxAccount) => {
     setAccountMenuOpen(false)
     setAccount(next)
-    setFolder(next === 'gmail' ? 'primary' : 'inbox')
+    setFolder(next === 'gmail' ? 'primary' : next === 'alias' ? 'alias-inbox' : 'inbox')
     setSelectedId('')
     setSearch('')
     setSearchDraft('')
@@ -228,7 +240,7 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
       <div className="mail-page module-page">
         <PageToolbar title="Inbox" description="Seus e-mails dentro do FlyFlow, ligados aos contatos do CRM." />
         <ConnectGmailCard clientId={googleClientId} companyEmail={companyEmail} onConnected={() => { setAccount('gmail'); setRevision((value) => value + 1) }} />
-        <p className="mail-connect__alt"><button type="button" onClick={() => setDomainSetupOpen(true)}><Mail size={14} /> Prefere o e-mail do domínio ({companyEmail || 'contato@…'})? Conectar via IMAP/SMTP</button></p>
+        <p className="mail-connect__alt"><button type="button" onClick={() => setDomainSetupOpen(true)}><Mail size={14} /> Como trazer o {companyEmail || 'contato@…'} para o FlyFlow</button></p>
         {domainSetup}
       </div>
     )
@@ -246,25 +258,27 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
     <div className="mail-page module-page">
       <PageToolbar
         title="Inbox"
-        description={activeAccount === 'gmail' ? 'Seu Gmail dentro do FlyFlow, com os contatos do CRM marcados.' : 'Caixa do e-mail de domínio, ligada aos contatos do CRM.'}
+        description={activeAccount === 'gmail' ? 'Seu Gmail dentro do FlyFlow, com os contatos do CRM marcados.' : activeAccount === 'alias' ? `E-mails do ${alias}, recebidos e enviados pelo Gmail.` : 'Caixa do e-mail de domínio, ligada aos contatos do CRM.'}
         action={<>
           <Button variant="secondary" type="button" disabled={loading} onClick={() => void load()}><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Atualizar</Button>
-          <Button type="button" onClick={() => onComposeNew(activeAccount)}><PenLine size={15} /> Escrever</Button>
+          <Button type="button" onClick={() => onComposeNew(activeAccount === 'domain' ? 'domain' : 'gmail', activeAccount === 'alias' ? alias : undefined)}><PenLine size={15} /> Escrever</Button>
         </>}
       />
 
       <section className={clsx('mail-shell', mobileReading && 'is-reading')}>
         <aside className="mail-sidebar">
-          {gmail.connected && domain.connected ? (
+          {gmail.connected && (domain.connected || aliasAvailable) ? (
             <div className="mail-accounts" role="tablist" aria-label="Conta">
               <button role="tab" aria-selected={activeAccount === 'gmail'} className={clsx(activeAccount === 'gmail' && 'is-active')} type="button" onClick={() => switchAccount('gmail')}><GmailMark /> Gmail</button>
-              <button role="tab" aria-selected={activeAccount === 'domain'} className={clsx(activeAccount === 'domain' && 'is-active')} type="button" onClick={() => switchAccount('domain')} title={domain.email}><Mail size={14} /> Domínio</button>
+              {domain.connected
+                ? <button role="tab" aria-selected={activeAccount === 'domain'} className={clsx(activeAccount === 'domain' && 'is-active')} type="button" onClick={() => switchAccount('domain')} title={domain.email}><Mail size={14} /> Domínio</button>
+                : <button role="tab" aria-selected={activeAccount === 'alias'} className={clsx(activeAccount === 'alias' && 'is-active')} type="button" onClick={() => switchAccount('alias')} title={alias}><Mail size={14} /> {alias.split('@')[0]}@</button>}
             </div>
           ) : null}
 
           <nav className="mail-folders" aria-label="Pastas">
-            {(activeAccount === 'gmail' ? gmailFolders : domainFolders).map((item) => {
-              const count = activeAccount === 'gmail' ? (item.id === 'unread' ? unread : null) : item.id === 'inbox' ? unread : null
+            {folderList.map((item) => {
+              const count = activeAccount === 'gmail' ? (item.id === 'unread' ? unread : null) : item.id === 'inbox' || item.id === 'alias-inbox' ? unread : null
               return (
                 <button key={item.id} className={clsx(currentFolder.id === item.id && 'is-active')} type="button" onClick={() => { setFolder(item.id); setSelectedId(''); setMobileReading(false) }}>
                   {folderIcons[item.id] ?? <Mail size={16} />}<span>{item.label}</span>{count ? <strong>{count > 999 ? '999+' : count}</strong> : null}
@@ -283,16 +297,21 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
           <div className="mail-account-card" ref={accountMenuRef}>
             <button type="button" className="mail-account-card__switch" aria-haspopup="menu" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)} title="Trocar de caixa de e-mail">
               <span className="avatar-chip" data-tint={avatarTint(accountEmail)}>{initialsOf(accountEmail)}</span>
-              <span><small>{activeAccount === 'gmail' ? 'Gmail conectado' : 'E-mail do domínio'}</small><strong title={accountEmail}>{accountEmail}</strong></span>
+              <span><small>{activeAccount === 'gmail' ? 'Gmail conectado' : activeAccount === 'alias' ? 'Via Gmail' : 'E-mail do domínio'}</small><strong title={accountEmail}>{accountEmail}</strong></span>
               <ChevronsUpDown size={14} />
             </button>
-            <a className="icon-button" href={activeAccount === 'gmail' ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(accountEmail)}` : webmailUrl(accountEmail || companyEmail)} target="_blank" rel="noreferrer" aria-label="Abrir no navegador" title="Abrir no navegador"><ExternalLink size={14} /></a>
+            <a className="icon-button" href={viaGmail ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(gmail.email)}` : webmailUrl(accountEmail || companyEmail)} target="_blank" rel="noreferrer" aria-label="Abrir no navegador" title="Abrir no navegador"><ExternalLink size={14} /></a>
             {accountMenuOpen ? (
               <div className="mail-account-menu" role="menu" aria-label="Caixas de e-mail">
                 <small>Caixas de e-mail</small>
                 {gmail.connected ? (
                   <button role="menuitemradio" aria-checked={activeAccount === 'gmail'} type="button" onClick={() => switchAccount('gmail')}>
                     <GmailMark /><span title={gmail.email}><strong>{gmail.email}</strong><small>Gmail</small></span>{activeAccount === 'gmail' ? <Check size={14} /> : null}
+                  </button>
+                ) : null}
+                {aliasAvailable ? (
+                  <button role="menuitemradio" aria-checked={activeAccount === 'alias'} type="button" onClick={() => switchAccount('alias')}>
+                    <Mail size={14} /><span title={alias}><strong>{alias}</strong><small>Via Gmail</small></span>{activeAccount === 'alias' ? <Check size={14} /> : null}
                   </button>
                 ) : null}
                 {domain.connected ? (
@@ -302,7 +321,7 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
                 ) : null}
                 <hr />
                 <button role="menuitem" type="button" onClick={() => { setAccountMenuOpen(false); setDomainSetupOpen(true) }}>
-                  {domain.connected ? <><Settings size={14} /><span>Configurar {domain.email}</span></> : <><Plus size={14} /><span>Adicionar {companyEmail || 'e-mail do domínio'}</span></>}
+                  {domain.connected ? <><Settings size={14} /><span>Configurar {domain.email}</span></> : <><Settings size={14} /><span>Como configurar o {alias || 'e-mail da empresa'}</span></>}
                 </button>
               </div>
             ) : null}
@@ -319,7 +338,7 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
           </header>
           <form className="mail-search" onSubmit={submitSearch}>
             <Search size={15} />
-            <input id="mail-search" value={searchDraft} onChange={(event) => { setSearchDraft(event.target.value); if (activeAccount === 'domain') setSearch(event.target.value) }} placeholder={activeAccount === 'gmail' ? 'Buscar no Gmail (Enter)' : 'Buscar nesta caixa'} />
+            <input id="mail-search" value={searchDraft} onChange={(event) => { setSearchDraft(event.target.value); if (activeAccount === 'domain') setSearch(event.target.value) }} placeholder={viaGmail ? 'Buscar no Gmail (Enter)' : 'Buscar nesta caixa'} />
             {searchDraft ? <button type="button" aria-label="Limpar busca" onClick={() => { setSearchDraft(''); setSearch('') }}><X size={14} /></button> : null}
           </form>
           {error ? <p className="mail-error"><AlertTriangle size={15} /><span>{error}</span></p> : null}
@@ -365,8 +384,8 @@ export function InboxPage({ leads, companyEmail, googleClientId, connectionRevis
 
         <div className="mail-reader">
           {selected ? (
-            activeAccount === 'gmail'
-              ? <GmailReader key={selected.threadId} row={selected} account={accountEmail} leadOf={leadOf} onOpenLead={onOpenLead} onReply={onReply} onBack={() => setMobileReading(false)} />
+            viaGmail
+              ? <GmailReader key={selected.threadId} row={selected} account={gmail.email} fromAlias={activeAccount === 'alias' ? alias : undefined} leadOf={leadOf} onOpenLead={onOpenLead} onReply={onReply} onBack={() => setMobileReading(false)} />
               : <DomainReader key={selected.id} row={selected} leadOf={leadOf} onOpenLead={onOpenLead} onReply={onReply} onBack={() => setMobileReading(false)} />
           ) : (
             <div className="mail-reader__empty"><Mail size={38} /><strong>Selecione uma conversa</strong><span>Use J e K para navegar e / para buscar.</span></div>
@@ -394,9 +413,11 @@ function ReaderHeader({ subject, lead, onOpenLead, onBack, children }: { subject
   )
 }
 
-function GmailReader({ row, account, leadOf, onOpenLead, onReply, onBack }: {
+function GmailReader({ row, account, fromAlias, leadOf, onOpenLead, onReply, onBack }: {
   row: Row
   account: string
+  /** Na caixa do contato@, a resposta sai como contato@. */
+  fromAlias?: string
   leadOf: (value: string) => Lead | undefined
   onOpenLead: (lead: Lead) => void
   onReply: (draft: InboxReplyDraft) => void
@@ -430,6 +451,7 @@ function GmailReader({ row, account, leadOf, onOpenLead, onReply, onBack }: {
       subject: replySubject(message.subject),
       quoted: quoteOf({ date: message.date, from: message.from, text: message.text || message.snippet }),
       via: 'gmail',
+      from: fromAlias,
       reply: { threadId: message.threadId, messageId: message.messageId, references: message.references },
     })
   }
@@ -572,6 +594,31 @@ function Attachments({ items }: { items: GmailAttachment[] }) {
         </button>
       ))}
       {error ? <p className="mail-error"><AlertTriangle size={14} /><span>{error}</span></p> : null}
+    </div>
+  )
+}
+
+/** Passo a passo para o contato@ (Umbler) chegar ao Gmail e sair como contato@. */
+function AliasSetupGuide({ alias, gmail, onDone }: { alias: string; gmail: string; onDone: () => void }) {
+  const address = alias || 'contato@suaempresa.com.br'
+  return (
+    <div className="mail-guide">
+      <p>O FlyFlow mostra o <strong>{address}</strong> como uma caixa separada, usando o Gmail <strong>{gmail || 'conectado'}</strong> para receber e enviar. São dois ajustes, feitos uma vez só:</p>
+      <ol>
+        <li>
+          <strong>Na Umbler: redirecionar para o Gmail.</strong>
+          <span>Painel da Umbler → E-mails → {address} → Redirecionamento → adicione <code>{gmail || 'seu Gmail'}</code> e mantenha a cópia na caixa.</span>
+        </li>
+        <li>
+          <strong>No Gmail: enviar como {address}.</strong>
+          <span>Gmail → Configurações → Ver todas → Contas e importação → Enviar e-mail como → Adicionar outro endereço. Use <code>smtp.umbler.com</code>, porta <code>587</code> com TLS, usuário <code>{address}</code> e a senha do e-mail. Confirme com o código que chega pelo redirecionamento.</span>
+        </li>
+      </ol>
+      <p className="mail-guide__note">Pronto: os e-mails que chegarem para o {address} aparecem na caixa dele aqui no Inbox, e as respostas saem como {address}. Enquanto o “Enviar como” não estiver confirmado, o Gmail envia pelo endereço principal.</p>
+      <div className="mail-guide__actions">
+        <a className="app-button app-button-secondary inline-flex" href="https://mail.google.com/mail/u/0/#settings/accounts" target="_blank" rel="noreferrer"><ExternalLink size={15} /> Abrir configurações do Gmail</a>
+        <Button type="button" onClick={onDone}>Entendi</Button>
+      </div>
     </div>
   )
 }
