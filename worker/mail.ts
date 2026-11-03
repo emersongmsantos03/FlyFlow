@@ -150,7 +150,22 @@ async function smtpCommand(connection: Connection, command: string, expect: numb
   return reply
 }
 
-async function smtpSession<T>(dial: Dial, config: ServerConfig, work: (connection: Connection) => Promise<T>): Promise<T> {
+/** Erros de rede/TLS viram mensagens com a etapa, para saber o que falhou sem expor a senha. */
+const describe = (label: string, error: unknown): MailError => {
+  if (error instanceof MailError) return error
+  const detail = error instanceof Error ? error.message : String(error)
+  return new MailError(`${label}: ${detail.replace(/\s+/g, ' ').slice(0, 200) || 'falha de conexão'}`, 502)
+}
+const labelled = async <T>(label: string, work: () => Promise<T>) => {
+  try { return await work() } catch (error) { throw describe(label, error) }
+}
+
+const smtpSession = <T>(dial: Dial, config: ServerConfig, work: (connection: Connection) => Promise<T>) =>
+  labelled(`SMTP ${config.host}:${config.port}`, () => smtpSessionRaw(dial, config, work))
+const imapSession = <T>(dial: Dial, config: ServerConfig, work: (imap: Imap) => Promise<T>) =>
+  labelled(`IMAP ${config.host}:${config.port}`, () => imapSessionRaw(dial, config, work))
+
+async function smtpSessionRaw<T>(dial: Dial, config: ServerConfig, work: (connection: Connection) => Promise<T>): Promise<T> {
   const connection = new Connection(await dial(config.host, config.port, config.port === 465 ? 'on' : 'starttls'))
   return withDeadline(60_000, (async () => {
     try {
@@ -241,7 +256,7 @@ class Imap {
 const quote = (value: string) => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 const asciiSafe = (value: string) => /^[\x20-\x7e]*$/.test(value)
 
-async function imapSession<T>(dial: Dial, config: ServerConfig, work: (imap: Imap) => Promise<T>): Promise<T> {
+async function imapSessionRaw<T>(dial: Dial, config: ServerConfig, work: (imap: Imap) => Promise<T>): Promise<T> {
   const connection = new Connection(await dial(config.host, config.port, config.port === 993 ? 'on' : 'starttls'))
   const imap = new Imap(connection)
   return withDeadline(90_000, (async () => {
@@ -358,8 +373,13 @@ export async function readMail(dial: Dial, account: StoredAccount, id: unknown):
 }
 
 export async function verifyAccount(dial: Dial, account: StoredAccount) {
-  await smtpSession(dial, account.smtp, async () => undefined)
-  await imapSession(dial, account.imap, async (imap) => { await imap.command('EXAMINE "INBOX"', undefined, 'Não foi possível abrir a caixa de entrada.') })
+  // Testa os dois e devolve os dois resultados, para não esconder o segundo erro.
+  const results = await Promise.allSettled([
+    smtpSession(dial, account.smtp, async () => undefined),
+    imapSession(dial, account.imap, async (imap) => { await imap.command('EXAMINE "INBOX"', undefined, 'Não foi possível abrir a caixa de entrada.') }),
+  ])
+  const errors = results.flatMap((result) => result.status === 'rejected' ? [describe('E-mail', result.reason)] : [])
+  if (errors.length) throw new MailError(errors.map((error) => error.message).join(' · '), errors.some((error) => error.status === 400) ? 400 : 502)
 }
 
 export async function sendMail(dial: Dial, account: StoredAccount, input: unknown) {
