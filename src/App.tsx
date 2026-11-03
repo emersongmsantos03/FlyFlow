@@ -416,6 +416,8 @@ interface InputDialogState {
 interface EmailComposerState {
   /** Conta que envia; vem do Inbox quando é uma resposta. */
   via?: 'gmail' | 'domain'
+  /** Endereço "Enviar como" do Gmail (caixa do contato@ via Gmail). */
+  from?: string
   reply?: { threadId?: string; messageId?: string; references?: string }
   lead?: Lead
   whatsappUrl?: string
@@ -2209,6 +2211,7 @@ ${companyName}`
       signatureImageUrl: state.companySettings.emailSignatureImageUrl,
       attachments: composer.attachment ? [composer.attachment] : [],
       via: composer.via,
+      from: composer.from,
       reply: composer.reply,
     })
     const now = new Date().toISOString()
@@ -6491,11 +6494,13 @@ ${companyName}`
                 subject: draft.subject,
                 body: draft.quoted,
                 via: draft.via,
+                from: draft.from,
                 reply: draft.reply,
                 lead: state.leads.find((lead) => lead.email.trim().toLowerCase() === draft.to.toLowerCase()),
               })}
-              onComposeNew={(via) => setEmailComposer({
+              onComposeNew={(via, from) => setEmailComposer({
                 via,
+                from,
                 to: '',
                 displayName: 'novo destinatário',
                 subject: '',

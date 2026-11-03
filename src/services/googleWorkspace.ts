@@ -310,6 +310,8 @@ export const sendGoogleWorkspaceEmail = async (input: {
   attachments?: GoogleEmailAttachment[]
   /** Conta que envia. Sem valor, vale o e-mail de domínio quando ele estiver conectado. */
   via?: 'gmail' | 'domain'
+  /** Pelo Gmail: endereço "Enviar como" (ex.: contato@). Sem alias verificado, o Gmail usa a conta principal. */
+  from?: string
   /** Resposta: mantém a conversa agrupada no Gmail e no cliente de quem recebe. */
   reply?: { threadId?: string; messageId?: string; references?: string }
 }) => {
@@ -380,7 +382,9 @@ export const sendGoogleWorkspaceEmail = async (input: {
       bytesToBase64(bytes).replace(/(.{76})/g, '$1\r\n'),
     ].join('\r\n'))
   }
+  const fromAlias = input.via !== 'domain' && input.from && /^[^\s<>@,;"]+@[^\s<>@,;"]+$/.test(input.from) ? input.from : ''
   const raw = [
+    ...(fromAlias ? [`From: ${fromAlias}`] : []),
     `To: ${recipients.join(', ')}`,
     `Subject: ${encodeMimeHeader(input.subject)}`,
     ...(input.reply?.messageId ? [`In-Reply-To: ${input.reply.messageId}`, `References: ${[input.reply.references, input.reply.messageId].filter(Boolean).join(' ')}`] : []),
