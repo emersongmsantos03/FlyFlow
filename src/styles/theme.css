@@ -360,3 +360,9 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   .ff-toast, .ff-dialog, .ff-dialog-backdrop { animation: none; }
 }
+
+/* Bandeirinha de idioma (PT/EN) */
+.language-toggle { gap: 0.3rem; width: auto !important; padding: 0 0.55rem; font-size: 0.95rem; line-height: 1; }
+.language-toggle small { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; color: var(--text-secondary); }
+.auth-card-head { position: relative; }
+.auth-language-toggle { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; height: 2rem; border: 1px solid var(--border, rgba(127,127,127,.3)); border-radius: 999px; background: none; color: inherit; cursor: pointer; }

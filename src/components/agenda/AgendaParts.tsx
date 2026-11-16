@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Reac
 import { createPortal } from 'react-dom'
 import { capitalize, mapsLink, whatsappLink } from '../../lib/format'
 import type { Appointment, TaskItem } from '../../types'
+import { APP_LOCALE } from '../../i18n/lang'
 
 export type AnchorRect = Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom'>
 
@@ -25,7 +26,7 @@ export function MiniMonth({ selected, busyDays, onSelect }: { selected: Date; bu
   return (
     <section className="gcal-mini" aria-label="Minicalendário">
       <header>
-        <strong>{capitalize(month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))}</strong>
+        <strong>{capitalize(month.toLocaleDateString(APP_LOCALE, { month: 'long', year: 'numeric' }))}</strong>
         <span>
           <button type="button" aria-label="Mês anterior" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft size={15} /></button>
           <button type="button" aria-label="Próximo mês" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight size={15} /></button>
@@ -39,7 +40,7 @@ export function MiniMonth({ selected, busyDays, onSelect }: { selected: Date; bu
             <button
               key={key}
               type="button"
-              aria-label={day.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}
+              aria-label={day.toLocaleDateString(APP_LOCALE, { day: 'numeric', month: 'long' })}
               className={[day.getMonth() !== month.getMonth() ? 'is-outside' : '', key === today ? 'is-today' : '', key === selectedKey ? 'is-selected' : ''].join(' ')}
               onClick={() => onSelect(day)}
             >
@@ -80,8 +81,8 @@ function Popover({ anchor, width, onClose, children }: { anchor: AnchorRect; wid
 const formatSlot = (startAt: string, endAt: string) => {
   const start = new Date(startAt)
   const end = new Date(endAt)
-  const time = (date: Date) => date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  return `${capitalize(start.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }))} · ${time(start)} – ${time(end)}`
+  const time = (date: Date) => date.toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })
+  return `${capitalize(start.toLocaleDateString(APP_LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }))} · ${time(start)} – ${time(end)}`
 }
 
 export function QuickCreatePopover({ anchor, startAt, endAt, onClose, onSaveEvent, onSaveTask, onMoreOptions }: {

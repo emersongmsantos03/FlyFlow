@@ -16,6 +16,7 @@ import {
   platformBrief,
 } from '../../lib/marketing'
 import { contentPlatforms, type ContentItem, type ContentPillar, type ContentPlatform, type ContentStatus, type Project, type User } from '../../types'
+import { APP_LOCALE } from '../../i18n/lang'
 
 type PlannerView = 'calendar' | 'board' | 'list'
 
@@ -75,7 +76,7 @@ export function ContentPlannerPage({ items, pillars, users, projects, onSaveItem
 
   const pillarOf = (item: ContentItem) => pillars.find((pillar) => pillar.id === item.pillarId)
   const grid = buildMonthGrid(month)
-  const monthName = month.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  const monthName = month.toLocaleDateString(APP_LOCALE, { month: 'long', year: 'numeric' })
   const monthLabel = monthName.charAt(0).toUpperCase() + monthName.slice(1)
   const today = localDateKey(new Date())
   const byDay = useMemo(() => {
@@ -125,7 +126,7 @@ export function ContentPlannerPage({ items, pillars, users, projects, onSaveItem
         <span className="content-card__bar" style={{ background: pillar?.color ?? 'var(--border-strong)' }} />
         <span className="content-card__body">
           <strong>{item.title}</strong>
-          <small>{compact && item.scheduledAt ? `${new Date(item.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ` : ''}{item.platform} · {item.format}</small>
+          <small>{compact && item.scheduledAt ? `${new Date(item.scheduledAt).toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })} · ` : ''}{item.platform} · {item.format}</small>
           {!compact && item.scheduledAt ? <small>{formatDateTime(item.scheduledAt)}</small> : null}
         </span>
       </button>

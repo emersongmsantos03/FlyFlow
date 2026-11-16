@@ -29,6 +29,7 @@ import {
   type InternalProjectStatus,
   type User,
 } from '../../types'
+import { APP_LOCALE } from '../../i18n/lang'
 
 type ViewMode = 'board' | 'list'
 type Scope = 'active' | 'archived'
@@ -67,7 +68,7 @@ const newProject = (): InternalProject => {
 }
 
 const formatDate = (value?: string) => value
-  ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(`${value}T12:00:00`))
+  ? new Intl.DateTimeFormat(APP_LOCALE, { day: '2-digit', month: 'short' }).format(new Date(`${value}T12:00:00`))
   : 'Sem prazo'
 
 const daysTo = (value?: string) => {

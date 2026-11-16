@@ -1,6 +1,7 @@
 import {
   buildMetricSeries, channelById, summarizeMetric, type ChannelDefinition, type DateRange, type MetricPoint, type MetricPost,
 } from './marketing'
+import { APP_LOCALE } from '../i18n/lang'
 
 /** Redes sociais do relatório, na ordem em que aparecem. */
 export const socialChannelIds = ['instagram', 'facebook', 'youtube', 'tiktok', 'linkedin'] as const
@@ -189,7 +190,7 @@ export const buildWeekdayPerformance = (posts: MetricPost[]) => {
 
 // ---------------------------------------------------------------- leitura automática
 
-const integer = (value: number) => Math.round(value).toLocaleString('pt-BR')
+const integer = (value: number) => Math.round(value).toLocaleString(APP_LOCALE)
 const percent = (value: number) => `${value.toFixed(1).replace('.', ',')}%`
 
 /** Frases curtas que respondem "o que mudou e o que fazer". Só fala do que tem dado. */

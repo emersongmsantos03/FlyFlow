@@ -18,6 +18,7 @@ import {
   initialsOf, listGmailMessages, listTime, loadGmailThread, loadGmailUnread, parseAddress, readMailIds, trustImageSender, trustedImageSenders,
   type GmailAttachment, type GmailFolderId, type GmailListItem, type GmailThreadMessage,
 } from '../../services/gmailInbox'
+import { APP_LOCALE } from '../../i18n/lang'
 
 export type MailAccountKind = 'gmail' | 'domain'
 
@@ -65,7 +66,7 @@ const applyRead = (rows: Row[]) => {
 }
 
 const quoteOf = (message: { date: string; from: string; text: string }) =>
-  `\n\nEm ${message.date ? new Date(message.date).toLocaleString('pt-BR') : 'mensagem anterior'}, ${message.from} escreveu:\n${message.text.split('\n').map((line) => `> ${line}`).join('\n')}`
+  `\n\nEm ${message.date ? new Date(message.date).toLocaleString(APP_LOCALE) : 'mensagem anterior'}, ${message.from} escreveu:\n${message.text.split('\n').map((line) => `> ${line}`).join('\n')}`
 
 const replySubject = (subject: string) => (/^re:/i.test(subject) ? subject : `Re: ${subject || 'Sem assunto'}`)
 
