@@ -293,6 +293,8 @@ import {
   type UserPermission,
   type UserRole,
 } from './types'
+import { APP_LOCALE } from './i18n/lang'
+import { LanguageToggle } from './i18n/LanguageToggle'
 
 type Page =
   | 'dashboard'
@@ -6281,8 +6283,8 @@ ${companyName}`
             <div><strong>{appShortName}</strong><small>{appSubtitle}</small></div>
           </div>
           <button className={`sidebar-agenda-focus ${page === 'agenda' ? 'is-active' : ''}`} type="button" onClick={() => { setPage('agenda'); setCalendarView('diaria') }}>
-            <span className="sidebar-agenda-date"><strong>{new Date().getDate()}</strong><small>{new Date().toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}</small></span>
-            <span className="sidebar-agenda-copy"><small>MINHA AGENDA</small><strong>{sidebarTodayAppointments.length ? `${sidebarTodayAppointments.length} item(ns) hoje` : 'Dia livre'}</strong><em>{sidebarNextAppointment ? `${new Date(sidebarNextAppointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${sidebarNextAppointment.title}` : 'Planejar meu dia'}</em></span>
+            <span className="sidebar-agenda-date"><strong>{new Date().getDate()}</strong><small>{new Date().toLocaleDateString(APP_LOCALE, { month: 'short' }).replace('.', '')}</small></span>
+            <span className="sidebar-agenda-copy"><small>MINHA AGENDA</small><strong>{sidebarTodayAppointments.length ? `${sidebarTodayAppointments.length} item(ns) hoje` : 'Dia livre'}</strong><em>{sidebarNextAppointment ? `${new Date(sidebarNextAppointment.startAt).toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })} · ${sidebarNextAppointment.title}` : 'Planejar meu dia'}</em></span>
             <ChevronRight size={16} />
           </button>
           <nav className="app-nav no-scrollbar">
@@ -6335,6 +6337,7 @@ ${companyName}`
               <div className={`w-28 shrink-0 ${['dashboard', 'finance', 'reports'].includes(page) ? 'hidden md:block' : 'hidden'}`}>
                 <Select size="sm" ariaLabel="Regime financeiro" value={regime} onChange={(next) => setRegime(next as AccountingRegime)} options={[{ value: 'cash', label: 'Caixa' }, { value: 'accrual', label: 'Competência' }]} />
               </div>
+              <LanguageToggle />
               <button
                 className="app-header-icon"
                 type="button"
@@ -7764,6 +7767,7 @@ function LoginScreen({
               <h2>Bem-vindo de volta</h2>
               <p>Use seus dados para acessar o FlyFlow.</p>
             </div>
+            <LanguageToggle className="auth-language-toggle" />
           </div>
           <div className="grid gap-3.5">
             <InputField label="E-mail" error={getError(errors.email?.message)}>
@@ -9012,16 +9016,16 @@ function AgendaPage({
     })
   }
   const calendarLabel = (() => {
-    if (calendarView === 'mensal') return capitalize(calendarDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
+    if (calendarView === 'mensal') return capitalize(calendarDate.toLocaleDateString(APP_LOCALE, { month: 'long', year: 'numeric' }))
     if (calendarView === 'semanal') {
       const weekStart = getWeekStart(calendarDate)
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekStart.getDate() + 6)
-      const month = (date: Date) => date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')
-      if (weekStart.getMonth() === weekEnd.getMonth()) return capitalize(weekEnd.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
+      const month = (date: Date) => date.toLocaleDateString(APP_LOCALE, { month: 'short' }).replace('.', '')
+      if (weekStart.getMonth() === weekEnd.getMonth()) return capitalize(weekEnd.toLocaleDateString(APP_LOCALE, { month: 'long', year: 'numeric' }))
       return `${capitalize(month(weekStart))} – ${month(weekEnd)} de ${weekEnd.getFullYear()}`
     }
-    return capitalize(calendarDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }))
+    return capitalize(calendarDate.toLocaleDateString(APP_LOCALE, { day: 'numeric', month: 'long', year: 'numeric' }))
   })()
   const hasFilters = Boolean(responsibleFilter || contactFilter || calendarSearch.trim() || statusFilter !== 'ativos')
   const clearFilters = () => {
@@ -9168,14 +9172,14 @@ function AgendaPage({
               const day = new Date(`${key}T12:00:00`)
               return (
                 <section key={key} className={`gcal-agenda__day ${key === dateInput() ? 'is-today' : ''}`}>
-                  <button type="button" aria-label="Abrir o dia" onClick={() => { setCalendarDate(day); onCalendarViewChange('diaria') }}><strong>{day.getDate()}</strong><small>{day.toLocaleDateString('pt-BR', { month: 'short', weekday: 'short' }).replace(/\./g, '')}</small></button>
+                  <button type="button" aria-label="Abrir o dia" onClick={() => { setCalendarDate(day); onCalendarViewChange('diaria') }}><strong>{day.getDate()}</strong><small>{day.toLocaleDateString(APP_LOCALE, { month: 'short', weekday: 'short' }).replace(/\./g, '')}</small></button>
                   <div>
                     {items.map((appointment) => {
                       const { name } = peekContact(appointment)
                       return (
                         <button key={appointment.id} className="gcal-agenda__row" type="button" onClick={(event) => showEventPeek(appointment, event.currentTarget.getBoundingClientRect())}>
                           <i style={{ background: appointment.color || 'var(--series-1)' }} />
-                          <time>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} – {new Date(appointment.endAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
+                          <time>{new Date(appointment.startAt).toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })} – {new Date(appointment.endAt).toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })}</time>
                           <strong className={taskByAppointmentId.get(appointment.id)?.status === 'Concluída' ? 'is-completed' : ''}>{appointment.title}</strong>
                           <small>{name || appointment.appointmentType}</small>
                         </button>
@@ -11437,18 +11441,18 @@ function MonthCalendar({
               className={`gcal-month__cell ${cell.getMonth() !== anchorDate.getMonth() ? 'is-outside' : ''} ${cellDate === today ? 'is-today' : ''}`}
               role="button"
               tabIndex={0}
-              aria-label={`${cell.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}: ${dayAppointments.length} itens. Clique para criar.`}
+              aria-label={`${cell.toLocaleDateString(APP_LOCALE, { day: 'numeric', month: 'long' })}: ${dayAppointments.length} itens. Clique para criar.`}
               onClick={(event) => open(event.currentTarget)}
               onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') open(event.currentTarget) }}
             >
-              <button className="gcal-month__day" type="button" aria-label="Abrir o dia" onClick={(event) => { event.stopPropagation(); onShowDay(cell) }}>{cell.getDate() === 1 ? cell.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '').replace(' de ', ' ') : cell.getDate()}</button>
+              <button className="gcal-month__day" type="button" aria-label="Abrir o dia" onClick={(event) => { event.stopPropagation(); onShowDay(cell) }}>{cell.getDate() === 1 ? cell.toLocaleDateString(APP_LOCALE, { day: 'numeric', month: 'short' }).replace('.', '').replace(' de ', ' ') : cell.getDate()}</button>
               <div className="gcal-month__items">
                 {dayAppointments.slice(0, 3).map((appointment) => {
                   const color = appointment.color || '#3f6fb5'
                   const completed = taskByAppointmentId.get(appointment.id)?.status === 'Concluída'
                   return (
                     <button key={appointment.id} className={`gcal-chip ${completed ? 'is-completed' : ''}`} style={{ '--gcal-color': color } as CSSProperties} title={appointment.title} type="button" onClick={(event) => { event.stopPropagation(); onOpenAppointment(appointment, event.currentTarget.getBoundingClientRect()) }}>
-                      <i /><time>{new Date(appointment.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time> <span>{appointment.title}</span>
+                      <i /><time>{new Date(appointment.startAt).toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })}</time> <span>{appointment.title}</span>
                     </button>
                   )
                 })}
@@ -11735,7 +11739,7 @@ function TimeGridCalendar({
             const headerIsToday = dateInputFromDate(day) === dateInput()
             return (
               <button key={day.toISOString()} className={`gcal-week__day ${headerIsToday ? 'is-today' : ''}`} type="button" onClick={() => onShowDay(day)}>
-                <small>{day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</small>
+                <small>{day.toLocaleDateString(APP_LOCALE, { weekday: 'short' }).replace('.', '')}</small>
                 <strong>{day.getDate()}</strong>
               </button>
             )
@@ -11846,7 +11850,7 @@ function TimeGridCalendar({
                   )
                 })}
 
-                {isToday ? <div className="gcal-now" style={{ top: `${(currentMinutes / 60) * hourHeight}px` }} aria-label={`Horário atual: ${currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`} /> : null}
+                {isToday ? <div className="gcal-now" style={{ top: `${(currentMinutes / 60) * hourHeight}px` }} aria-label={`Horário atual: ${currentTime.toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })}`} /> : null}
               </div>
             )
           })}

@@ -1,4 +1,5 @@
 import { gmailApi, repairTextEncoding } from './googleWorkspace'
+import { APP_LOCALE } from '../i18n/lang'
 
 /** Pastas do Gmail mostradas no Inbox. `q` usa a mesma sintaxe da busca do Gmail. */
 export const gmailFolders = [
@@ -247,16 +248,16 @@ export const dayGroupLabel = (iso: string, now = new Date()) => {
   if (dayKey(date) === dayKey(yesterday)) return 'Ontem'
   const days = (now.getTime() - date.getTime()) / 86_400_000
   if (days < 7) return 'Esta semana'
-  if (date.getFullYear() === now.getFullYear()) return date.toLocaleDateString('pt-BR', { month: 'long' }).replace(/^./, (letter) => letter.toUpperCase())
-  return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^./, (letter) => letter.toUpperCase())
+  if (date.getFullYear() === now.getFullYear()) return date.toLocaleDateString(APP_LOCALE, { month: 'long' }).replace(/^./, (letter) => letter.toUpperCase())
+  return date.toLocaleDateString(APP_LOCALE, { month: 'long', year: 'numeric' }).replace(/^./, (letter) => letter.toUpperCase())
 }
 
 /** Hora para hoje, dia e mês para o resto do ano. */
 export const listTime = (iso: string, now = new Date()) => {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
-  if (dayKey(date) === dayKey(now)) return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  return date.toLocaleDateString('pt-BR', date.getFullYear() === now.getFullYear() ? { day: '2-digit', month: 'short' } : { day: '2-digit', month: '2-digit', year: '2-digit' })
+  if (dayKey(date) === dayKey(now)) return date.toLocaleTimeString(APP_LOCALE, { hour: '2-digit', minute: '2-digit' })
+  return date.toLocaleDateString(APP_LOCALE, date.getFullYear() === now.getFullYear() ? { day: '2-digit', month: 'short' } : { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)

@@ -1,4 +1,5 @@
 import type { AppState, BankAccount, Expense, Payment, Project } from '../types'
+import { APP_LOCALE } from '../i18n/lang'
 
 export type PeriodPreset =
   | 'today'
@@ -537,7 +538,7 @@ export const buildMonthlySeries = (state: AppState, regime: AccountingRegime = '
       .reduce((total, expense) => total + expense.amount, 0)
 
     return {
-      month: monthDate.toLocaleDateString('pt-BR', { month: 'short' }),
+      month: monthDate.toLocaleDateString(APP_LOCALE, { month: 'short' }),
       faturamento: revenue,
       lucro: revenue - expenses,
       despesas: expenses,

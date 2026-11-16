@@ -1,20 +1,21 @@
-export const currencyFormatter = new Intl.NumberFormat('pt-BR', {
+import { APP_LOCALE } from '../i18n/lang'
+export const currencyFormatter = new Intl.NumberFormat(APP_LOCALE, {
   style: 'currency',
   currency: 'BRL',
 })
 
-export const numberFormatter = new Intl.NumberFormat('pt-BR')
+export const numberFormatter = new Intl.NumberFormat(APP_LOCALE)
 
-export const percentFormatter = new Intl.NumberFormat('pt-BR', {
+export const percentFormatter = new Intl.NumberFormat(APP_LOCALE, {
   maximumFractionDigits: 1,
   minimumFractionDigits: 0,
 })
 
-const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
+const dateFormatter = new Intl.DateTimeFormat(APP_LOCALE, {
   timeZone: 'America/Sao_Paulo',
 })
 
-const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
+const dateTimeFormatter = new Intl.DateTimeFormat(APP_LOCALE, {
   timeZone: 'America/Sao_Paulo',
   dateStyle: 'short',
   timeStyle: 'short',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Check, CheckCircle2, Plus, X } from 'lucide-react'
 import type { TaskItem } from '../types'
 import './AgendaQuickTasks.css'
+import { APP_LOCALE } from '../i18n/lang'
 
 const dayKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
@@ -49,7 +50,7 @@ export function AgendaQuickTasks({ open, tasks, onClose, onCreate, onOpen, onTog
   const row = (task: TaskItem) => <article key={task.id} className={task.status === 'Concluída' ? 'is-complete' : ''}>
     <button className="quick-task-check" type="button" aria-label={`${task.status === 'Concluída' ? 'Reabrir' : 'Concluir'} ${task.title}`} onClick={() => onToggle(task)}><Check size={14} /></button>
     <button className="quick-task-title" type="button" title="Abrir detalhes da tarefa" onClick={() => onOpen(task)}>{task.title}</button>
-    <time dateTime={task.dueAt}>{new Date(task.dueAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</time>
+    <time dateTime={task.dueAt}>{new Date(task.dueAt).toLocaleDateString(APP_LOCALE, { day: '2-digit', month: 'short' })}</time>
   </article>
   return <section id="agenda-quick-tasks" className="agenda-quick-tasks" aria-label="Tarefas rápidas" hidden={!open} onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}>
     <header><div><CheckCircle2 size={20} /><span><h2>Tarefas rápidas <em>{pending.length}</em></h2><p>Organize os próximos passos do seu dia.</p></span></div><button type="button" aria-label="Recolher tarefas rápidas" onClick={onClose}><X size={18} /></button></header>
